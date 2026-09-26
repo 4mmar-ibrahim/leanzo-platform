@@ -1,0 +1,45 @@
+{
+  "name": "cleanzo-backend",
+  "version": "1.0.0",
+  "description": "Production-ready backend API for Cleanzo Car & Home Care",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "seed": "tsx scripts/seed.ts",
+    "test": "tsx tests/runAllTests.ts",
+    "test:auth": "tsx tests/adminSessionInfrastructureTest.ts",
+    "test:coupons": "tsx tests/couponSystemTest.ts",
+    "test:reports": "tsx tests/reportsAndAnalyticsAccuracyTest.ts",
+    "test:packages": "tsx tests/packagesAddonsSystemTest.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "6.4.1",
+    "adm-zip": "^0.6.1",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.10.1",
+    "morgan": "^1.10.0",
+    "multer": "^2.4.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/morgan": "^1.9.9",
+    "@types/multer": "^2.2.0",
+    "@types/node": "^22.13.4",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3",
+    "prisma": "6.4.1"
+  }
+}

@@ -1,0 +1,42 @@
+[
+  {
+    "_id": "6ab198cabc173846edd709e8",
+    "customerId": "6ab198c9bc173846edd709af",
+    "customerPhone": "01011112222",
+    "label": "المنزل",
+    "governorateId": "cairo",
+    "governorateNameSnapshot": "القاهرة",
+    "cityId": "nasr-city",
+    "cityNameSnapshot": "مدينة نصر",
+    "area": "شارع الطيران",
+    "building": "عمارة 14 الجديدة",
+    "floor": "4",
+    "apartment": "8",
+    "landmark": "أمام مسجد رابعة",
+    "notes": "تم تغيير البوابة",
+    "isDefault": false,
+    "createdAt": "2026-09-21T20:51:22.073Z",
+    "updatedAt": "2026-09-21T20:51:22.113Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ab198cabc173846edd70a41",
+    "customerId": "6ab198c9bc173846edd709af",
+    "customerPhone": "01011112222",
+    "label": "فيلا الشيخ زايد",
+    "governorateId": "giza",
+    "governorateNameSnapshot": "الجيزة",
+    "cityId": "sheikh-zayed",
+    "cityNameSnapshot": "الشيخ زايد",
+    "area": "بيفرلي هيلز",
+    "building": "فيلا 5",
+    "floor": "",
+    "apartment": "",
+    "landmark": "",
+    "notes": "",
+    "isDefault": true,
+    "createdAt": "2026-09-21T20:51:22.291Z",
+    "updatedAt": "2026-09-21T20:51:22.396Z",
+    "__v": 0
+  }
+]

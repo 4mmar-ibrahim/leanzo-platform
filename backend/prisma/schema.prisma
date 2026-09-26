@@ -1,0 +1,711 @@
+// Cleanzo Prisma Schema for PostgreSQL
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. Customer User Model
+model User {
+  id             String    @id @default(uuid())
+  name           String
+  phone          String    @unique
+  password       String
+  email          String?
+  avatar         String?   @default("https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=400&q=80")
+  status         String    @default("active") // active, inactive, suspended, deleted, disabled
+  isDeleted      Boolean   @default(false)
+  deletedAt      DateTime?
+  deletedBy      String?
+  deletionReason String?
+  source         String    @default("website")
+  addresses      Json      @default("[]") // Array of IAddress
+  notes          Json      @default("[]") // Array of notes
+  tags           String[]  @default([])
+  discount       Float     @default(0)
+  totalSpent     Float     @default(0)
+  ordersCount    Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  bookings       Booking[]
+  couponUsages   CouponUsage[]
+  savedAddresses CustomerAddress[]
+
+  @@index([phone])
+  @@index([status])
+  @@index([isDeleted])
+  @@map("users")
+}
+
+// 2. Admin User Model
+model AdminUser {
+  id                          String    @id @default(uuid())
+  username                    String    @unique
+  name                        String
+  email                       String
+  phone                       String?
+  password                    String
+  role                        String    @default("manager")
+  permissions                 Json      @default("{}") // Record<string, PermissionLevel>
+  granularPermissions         String[]  @default([])
+  mustChangePasswordNextLogin Boolean   @default(false)
+  status                      String    @default("active")
+  userType                    String    @default("admin") // 'admin' | 'technician'
+  technicianId                String?   // linked Technician ID
+  avatar                      String?   @default("https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=400&q=80")
+  createdBy                   String?
+  createdByName               String?
+  lastLogin                   DateTime?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  @@index([username])
+  @@index([role])
+  @@index([technicianId])
+  @@index([userType])
+  @@map("admin_users")
+}
+
+// 3. Role Model
+model Role {
+  id            String   @id // e.g. 'owner', 'manager'
+  name          String
+  nameAr        String
+  description   String?
+  descriptionAr String?
+  permissions   Json     @default("{}")
+  isSystem      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("roles")
+}
+
+// 4. Service Model
+model Service {
+  id                     String   @id // e.g. 'car-wash-steam'
+  category               String   // 'car' | 'home'
+  subCategory            String?
+  title                  String
+  titleEn                String
+  shortDescription       String   @default("")
+  shortDescriptionEn     String   @default("")
+  description            String   @default("")
+  descriptionEn          String   @default("")
+  image                  String
+  price                  Float
+  basePrice              Float?
+  originalPrice          Float?
+  duration               Int      @default(45) // minutes
+  serviceDurationMinutes Int?     @default(45)
+  travelTimeMinutes      Int?     @default(15)
+  totalOccupiedMinutes   Int?     @default(60)
+  rating                 Float    @default(5.0)
+  reviewCount            Int      @default(0)
+  popular                Boolean  @default(false)
+  available              Boolean  @default(true)
+  active                 Boolean? @default(true)
+  isArchived             Boolean  @default(false)
+  discount               Float?   @default(0)
+  features               String[] @default([])
+  featuresEn             String[] @default([])
+  inclusions             String[] @default([])
+  inclusionsEn           String[] @default([])
+  importantNotes         String[] @default([])
+  importantNotesEn       String[] @default([])
+  order                  Int      @default(0)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  packages               ServicePackage[]
+  addons                 ServiceAddon[]
+
+  @@index([category])
+  @@index([available])
+  @@index([isArchived])
+  @@map("services")
+}
+
+// 4.1 Service Package Model
+model ServicePackage {
+  id              String   @id @default(uuid())
+  serviceId       String
+  name            String
+  nameEn          String?  @default("")
+  description     String?  @default("")
+  descriptionEn   String?  @default("")
+  price           Float
+  originalPrice   Float?
+  durationMinutes Int      @default(45)
+  active          Boolean  @default(true)
+  order           Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  service         Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([serviceId])
+  @@index([active])
+  @@map("service_packages")
+}
+
+// 4.2 Service Addon Model
+model ServiceAddon {
+  id              String   @id @default(uuid())
+  serviceId       String
+  name            String
+  nameEn          String?  @default("")
+  description     String?  @default("")
+  descriptionEn   String?  @default("")
+  price           Float
+  durationMinutes Int      @default(15)
+  active          Boolean  @default(true)
+  order           Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  service         Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([serviceId])
+  @@index([active])
+  @@map("service_addons")
+}
+
+// 5. Service Category Model
+model ServiceCategory {
+  id            String   @id
+  name          String
+  nameEn        String
+  slug          String   @unique
+  icon          String?
+  image         String?
+  description   String?
+  descriptionEn String?
+  category      String?  @default("main") // 'car' | 'home'
+  order         Int      @default(0)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("service_categories")
+}
+
+// 6. Coverage Governorate & Locations
+model LocationGovernorate {
+  id        String   @id // e.g. 'cairo', 'giza'
+  name      String
+  nameEn    String
+  active    Boolean  @default(true)
+  order     Int      @default(0)
+  cities    Json     @default("[]") // Embedded ICity[] with areas for maximum performance & sync
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+  @@map("location_governorates")
+}
+
+// 7. Booking / Order Model
+model Booking {
+  id                     String    @id // Order number e.g. 'CLN-2026-000101'
+  customerId             String?
+  customerName           String
+  customerPhone          String
+  serviceId              String
+  serviceSnapshot        Json      // Snapshot { id, title, titleEn, category, image, price, duration }
+  category               String    // 'car' | 'home'
+  date                   String    // YYYY-MM-DD
+  time                   String    // '10:00 AM'
+  timeSlotStart          String    // '10:00'
+  scheduledStart         String    // '10:00'
+  scheduledEnd           String    // '11:00'
+  duration               Int       @default(60)
+  serviceDurationMinutes Int       @default(45)
+  travelTimeMinutes      Int       @default(15)
+  totalOccupiedMinutes   Int       @default(60)
+  rescheduledFrom        String?
+  bookingNumber          String?
+  address                Json      // IBookingAddress object
+  basePrice              Float
+  totalPrice             Float?
+  discount               Float     @default(0)
+  serviceFee             Float     @default(0)
+  finalPrice             Float
+  currency               String    @default("ج.م")
+  promoCode              String?
+  couponSnapshot         Json?     // ICouponSnapshot
+  packageId              String?
+  packageSnapshot        Json?     // Snapshot { id, name, nameEn, price, originalPrice, durationMinutes }
+  addons                 Json      @default("[]") // [{ id, name, nameEn, price, durationMinutes }]
+  status                 String    @default("pending") // pending, confirmed, assigned, in_progress, completed, cancelled
+  completedAt            DateTime?
+  completedBy            Json?     // { id, name, role }
+  assignedTechnicianId   String?
+  technician             Json?     // Snapshot of assigned technician
+  timeline               Json      @default("[]") // ITimelineEvent[]
+  notes                  String?
+  metadata               Json      @default("{}")
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  user                   User?     @relation(fields: [customerId], references: [id])
+
+  @@index([customerId])
+  @@index([customerPhone])
+  @@index([serviceId])
+  @@index([category])
+  @@index([date])
+  @@index([status])
+  @@index([date, status])
+  @@index([assignedTechnicianId])
+  @@map("bookings")
+}
+
+// 8. Coupon Model
+model Coupon {
+  id                   String        @id @default(uuid())
+  code                 String        @unique
+  name                 String?       @default("")
+  discountType         String        @default("percentage") // 'percentage' | 'fixed'
+  discountValue        Float
+  minOrderAmount       Float?        @default(0)
+  maxDiscount          Float?
+  applicableServiceIds String[]      @default([])
+  totalUsageLimit      Int           @default(100)
+  currentUsageCount    Int           @default(0)
+  perCustomerLimit     Int           @default(1)
+  startDate            String        // YYYY-MM-DD
+  endDate              String        // YYYY-MM-DD
+  status               String        @default("active") // 'active' | 'inactive'
+  isArchived           Boolean       @default(false)
+  lastUsedAt           DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  usages               CouponUsage[]
+
+  @@index([code])
+  @@index([status])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([isArchived])
+  @@map("coupons")
+}
+
+// 9. Coupon Usage Model
+model CouponUsage {
+  id                  String   @id @default(uuid())
+  couponId            String
+  couponCode          String
+  customerPhone       String
+  customerId          String?
+  customerName        String?  @default("عميل كلينزو")
+  orderId             String   // Ref to Booking.id
+  discountType        String   // 'percentage' | 'fixed'
+  discountValue       Float
+  actualDiscountAmount Float
+  originalPrice       Float
+  finalPrice          Float
+  usedAt              DateTime @default(now())
+
+  coupon              Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user                User?    @relation(fields: [customerId], references: [id])
+
+  @@index([couponId])
+  @@index([couponCode])
+  @@index([customerPhone])
+  @@index([customerId])
+  @@index([couponId, customerPhone])
+  @@index([couponCode, customerPhone])
+  @@index([orderId])
+  @@map("coupon_usages")
+}
+
+// 10. Offer Model
+model Offer {
+  id                 String    @id
+  title              String
+  titleEn            String?   @default("")
+  description        String?   @default("")
+  descriptionEn      String?   @default("")
+  discountPercentage Float?    @default(0)
+  discountValue      Float?    @default(0)
+  originalPrice      Float?
+  finalPrice         Float?
+  badge              String?   @default("عرض خاص")
+  badgeEn            String?   @default("Special Offer")
+  code               String    @unique
+  promoCode          String?
+  active             Boolean   @default(true)
+  isArchived         Boolean   @default(false)
+  status             String?   @default("active")
+  startDate          String?
+  endDate            String?
+  expiresAt          String?
+  serviceId          String?
+  category           String?
+  image              String?   @default("")
+  usageLimit         Int?
+  usageCount         Int       @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([code])
+  @@index([active])
+  @@index([isArchived])
+  @@map("offers")
+}
+
+// 11. Technician Model
+model Technician {
+  id              String   @id // e.g. 'tech-1'
+  name            String
+  phone           String
+  email           String?
+  avatar          String   @default("/uploads/images/default-avatar.png")
+  rating          Float    @default(5.0)
+  specialty       String   @default("غسيل سيارات وتنظيف منازل")
+  specialtiesList String[] @default([])
+  status          String   @default("available") // available, busy, offline
+  active          Boolean  @default(true)
+  completedOrders Int      @default(0)
+  assignedOrders  Int      @default(0)
+  bio             String?  @default("")
+  nationalId      String?  @default("")
+  joinedDate      DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status])
+  @@index([active])
+  @@index([phone])
+  @@map("technicians")
+}
+
+// 12. Review Model
+model Review {
+  id             String   @id
+  customerName   String
+  customerNameEn String?  @default("")
+  avatar         String?  @default("")
+  image          String?  @default("")
+  rating         Float    @default(5.0)
+  date           String?  @default("مؤخراً")
+  service        String?  @default("")
+  serviceName    String?  @default("")
+  serviceEn      String?  @default("")
+  serviceNameEn  String?  @default("")
+  category       String   @default("car") // 'car' | 'home'
+  content        String?  @default("")
+  comment        String?  @default("")
+  contentEn      String?  @default("")
+  commentEn      String?  @default("")
+  verified       Boolean  @default(true)
+  visible        Boolean  @default(true)
+  order          Int      @default(0)
+  likes          Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([category])
+  @@index([visible])
+  @@index([order])
+  @@map("reviews")
+}
+
+// 13. Audit Log Model
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorId     String?  @default("system")
+  actorName   String?  @default("System")
+  actorRole   String?  @default("admin")
+  adminId     String?
+  adminName   String?
+  adminRole   String?
+  action      String
+  module      String
+  entityType  String?
+  entityId    String?
+  description String?  @default("")
+  status      String   @default("success") // success, warning, failed, critical
+  before      Json?
+  after       Json?
+  diff        Json?
+  metadata    Json?    @default("{}")
+  ip          String?
+  userAgent   String?
+  requestId   String?
+  target      String?
+  targetId    String?
+  details     String?
+  createdAt   DateTime @default(now())
+
+  @@index([actorId])
+  @@index([action])
+  @@index([module])
+  @@index([status])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// 14. System Settings Model
+model SystemSettings {
+  id               String   @id @default(uuid())
+  key              String   @unique @default("global_settings")
+  general          Json     @default("{}")
+  booking          Json     @default("{}")
+  appearance       Json     @default("{}")
+  social           Json     @default("{}")
+  branding         Json     @default("{}")
+  notifications    Json     @default("{}")
+  security         Json?    @default("{}")
+  mobileExperience Json?    @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+// 15. CMS Content Model
+model CMSContent {
+  id             String    @id @default(uuid())
+  status         String    @default("published")
+  version        Int       @default(1)
+  hero           Json      @default("{}")
+  about          Json      @default("{}")
+  contact        Json      @default("{}")
+  social         Json      @default("{}")
+  sections       Json      @default("{}")
+  lastPublishedAt DateTime?
+  updatedBy      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("cms_contents")
+}
+
+// 16. Media Library Model
+model Media {
+  id           String   @id
+  originalName String
+  fileName     String   @unique
+  type         String   // 'image' | 'video'
+  mimeType     String
+  size         Int
+  width        Int?
+  height       Int?
+  duration     Float?
+  source       String   @default("device") // 'device' | 'url'
+  sourceUrl    String?
+  storagePath  String
+  url          String
+  isArchived   Boolean  @default(false)
+  createdBy    String   @default("admin")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([fileName])
+  @@index([type])
+  @@index([isArchived])
+  @@map("media")
+}
+
+// 17. Backup Record Model
+model BackupRecord {
+  id               String   @id
+  filename         String
+  sizeBytes        Int      @default(0)
+  sizeFormatted    String   @default("0 KB")
+  status           String   @default("completed")
+  type             String   @default("manual") // 'manual' | 'automatic'
+  collectionsCount Int      @default(0)
+  documentsCount   Int      @default(0)
+  mediaCount       Int      @default(0)
+  checksum         String?
+  notes            String?
+  createdBy        String?
+  manifest         Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
+  @@map("backup_records")
+}
+
+// 18. Customer Address Model
+model CustomerAddress {
+  id                      String   @id @default(uuid())
+  customerId              String?
+  customerPhone           String
+  label                   String   @default("المنزل")
+  governorateId           String
+  governorateNameSnapshot String
+  cityId                  String
+  cityNameSnapshot        String
+  area                    String
+  building                String?
+  floor                   String?
+  apartment               String?
+  landmark                String?
+  notes                   String?
+  isDefault               Boolean  @default(false)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  user                    User?    @relation(fields: [customerId], references: [id])
+
+  @@index([customerId])
+  @@index([customerPhone])
+  @@index([governorateId])
+  @@index([cityId])
+  @@map("customer_addresses")
+}
+
+// 19. Encryption Log Model
+model EncryptionLog {
+  id                    String   @id
+  timestamp             DateTime @default(now())
+  status                String
+  algorithm             String   @default("AES-256-GCM")
+  totalRecordsEncrypted Int      @default(0)
+  breakdown             Json
+  initiatedBy           String   @default("System")
+  error                 String?
+
+  @@index([timestamp])
+  @@map("encryption_logs")
+}
+
+// 20. FAQ Model
+model FAQ {
+  id         String   @id
+  category   String   // 'car' | 'home' | 'general'
+  question   String
+  questionEn String
+  answer     String
+  answerEn   String
+  order      Int      @default(0)
+  visible    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([category])
+  @@index([visible])
+  @@map("faqs")
+}
+
+// 21. Portfolio Model
+model PortfolioItem {
+  id               String   @id
+  title            String
+  titleEn          String
+  category         String   // 'car' | 'home'
+  subCategory      String?  @default("")
+  image            String?  @default("")
+  beforeImage      String?
+  afterImage       String?
+  description      String?  @default("")
+  descriptionEn    String?  @default("")
+  displayMode      String   @default("before_after")
+  featured         Boolean  @default(false)
+  homepageFeatured Boolean  @default(false)
+  mobileFeatured   Boolean  @default(false)
+  sortOrder        Int      @default(0)
+  order            Int?     @default(0)
+  visible          Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([category])
+  @@index([visible])
+  @@map("portfolio_items")
+}
+
+// 22. About Content Model
+model AboutContent {
+  id         String   @id @default("active_about")
+  story      String?
+  mission    String?
+  vision     String?
+  values     Json     @default("[]")
+  stats      Json     @default("[]")
+  team       Json     @default("[]")
+  updatedAt  DateTime @updatedAt
+
+  @@map("about_contents")
+}
+
+// 23. Contact Message Model
+model ContactMessage {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String
+  email     String?
+  subject   String
+  message   String
+  status    String   @default("unread") // 'unread' | 'read' | 'resolved'
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([phone])
+  @@index([status])
+  @@map("contact_messages")
+}
+
+// 24. Notification Model
+model Notification {
+  id        String   @id @default(uuid())
+  target    String   // 'all' | 'admin' | 'customer'
+  userId    String?
+  title     String
+  titleEn   String?
+  message   String
+  messageEn String?
+  type      String   @default("info")
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([target])
+  @@index([userId])
+  @@index([read])
+  @@map("notifications")
+}
+
+
+// 26. Zo Page Config Model
+model ZoPageConfig {
+  id           String    @id @default(uuid())
+  pageId       String    @unique
+  pageNameAr   String    @default("")
+  pageNameEn   String    @default("")
+  pageCategory String    @default("main")
+  pathPattern  String    @default("/")
+  enabled      Boolean   @default(true)
+  isPublished  Boolean   @default(false)
+  publishedAt  DateTime?
+  character    Json      @default("{}")
+  desktop      Json      @default("{}")
+  tablet       Json      @default("{}")
+  mobile       Json      @default("{}")
+  message      Json      @default("{}")
+  behavior     Json      @default("{}")
+  triggers     Json      @default("[]")
+  draftConfig  Json?
+  config       Json?     @default("{}")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([pageId])
+  @@index([enabled])
+  @@index([isPublished])
+  @@map("zo_page_configs")
+}

@@ -1,0 +1,30 @@
+{
+  "exportedAt": "2026-09-22T17:20:22.065Z",
+  "collections": {
+    "zopageconfigs": 0,
+    "bookings": 17,
+    "users": 3,
+    "servicecategories": 0,
+    "auditlogs": 414,
+    "notifications": 0,
+    "systemsettings": 1,
+    "couponusages": 8,
+    "aboutcontents": 0,
+    "portfolioitems": 0,
+    "reviews": 4,
+    "adminusers": 4,
+    "faqs": 1,
+    "contactmessages": 0,
+    "encryptionlogs": 3,
+    "customeraddresses": 2,
+    "backuprecords": 11,
+    "locationgovernorates": 13,
+    "offers": 4,
+    "roles": 3,
+    "services": 24,
+    "coupons": 9,
+    "technicians": 14,
+    "cmscontents": 2,
+    "media": 8
+  }
+}

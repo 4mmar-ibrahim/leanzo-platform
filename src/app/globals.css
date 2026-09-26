@@ -1,0 +1,625 @@
+@import "tailwindcss" source(none);
+@source "../";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: var(--font-cairo), var(--font-inter), system-ui, -apple-system, sans-serif;
+
+  /* ========================================================
+     OFFICIAL CLEANZO BRAND DESIGN TOKENS
+     Source of Truth:
+     Cleanzo Navy: #07345C | Cleanzo Blue: #0866C6 | Cleanzo Red: #F0444C | White: #FFFFFF
+     ======================================================== */
+  --color-cleanzo-navy: var(--cleanzo-navy);
+  --color-cleanzo-navy-hover: var(--cleanzo-navy-hover);
+  --color-cleanzo-navy-dark: var(--cleanzo-navy-dark);
+  --color-cleanzo-navy-light: var(--cleanzo-navy-light);
+
+  --color-cleanzo-blue: var(--cleanzo-blue);
+  --color-cleanzo-blue-hover: var(--cleanzo-blue-hover);
+  --color-cleanzo-blue-active: var(--cleanzo-blue-active);
+  --color-cleanzo-blue-light: var(--cleanzo-blue-light);
+  --color-cleanzo-blue-soft: var(--cleanzo-blue-soft);
+
+  --color-cleanzo-red: var(--cleanzo-red);
+  --color-cleanzo-red-hover: var(--cleanzo-red-hover);
+  --color-cleanzo-red-soft: var(--cleanzo-red-soft);
+  --color-cleanzo-red-light: var(--cleanzo-red-light);
+
+  --color-cleanzo-white: #FFFFFF;
+  --color-cleanzo-cloud: #F5F8FC;
+  --color-cleanzo-ink: var(--cleanzo-navy);
+  --color-cleanzo-slate: #5E718D;
+  --color-cleanzo-mist: #E2E8F0;
+
+  /* Standard Design Token Aliases */
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--cleanzo-blue-hover);
+  --color-primary-active: var(--cleanzo-blue-active);
+  --color-primary-light: var(--cleanzo-blue-light);
+  --color-primary-soft: var(--cleanzo-blue-soft);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-hover: var(--cleanzo-navy-hover);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--cleanzo-red-hover);
+  --color-accent-soft: var(--cleanzo-red-soft);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+
+  --color-surface: var(--color-surface);
+  --color-surface-hover: var(--color-surface-hover);
+  --color-surface-elevated: var(--color-surface-elevated);
+
+  /* Unified Brand Scales: Harmonize legacy classes to Official Brand Palette */
+  --color-sky-50: #F0F6FC;
+  --color-sky-100: #E1EFFC;
+  --color-sky-200: #BADBFA;
+  --color-sky-300: #7CB5F0;
+  --color-sky-400: #2581DE;
+  --color-sky-500: #0866C6;
+  --color-sky-600: #06529E;
+  --color-sky-700: #054382;
+  --color-sky-800: #043364;
+  --color-sky-900: #072540;
+  --color-sky-950: #041728;
+
+  --color-rose-50: #FEECEE;
+  --color-rose-100: #FDD8DC;
+  --color-rose-200: #FBAFB7;
+  --color-rose-400: #F87176;
+  --color-rose-500: #F0444C;
+  --color-rose-600: #D9333B;
+  --color-rose-700: #B8242C;
+  --color-rose-800: #931920;
+  --color-rose-900: #661015;
+  --color-rose-950: #380C10;
+}
+
+:root {
+  /* ========================================================
+     CLEANZO OFFICIAL BRAND PRIMITIVES
+     ======================================================== */
+  --cleanzo-navy: #07345C;
+  --cleanzo-navy-hover: #052644;
+  --cleanzo-navy-dark: #041728;
+  --cleanzo-navy-light: #0B467B;
+
+  --cleanzo-blue: #0866C6;
+  --cleanzo-blue-hover: #06529E;
+  --cleanzo-blue-active: #054382;
+  --cleanzo-blue-light: #2581DE;
+  --cleanzo-blue-soft: #F0F6FC;
+
+  --cleanzo-red: #F0444C;
+  --cleanzo-red-hover: #D9333B;
+  --cleanzo-red-soft: #FFF1F2;
+  --cleanzo-red-light: #FB7185;
+
+  --cleanzo-white: #FFFFFF;
+  --cleanzo-cloud: #F5F8FC;
+  --cleanzo-slate: #5E718D;
+  --cleanzo-mist: #E2E8F0;
+
+  /* ========================================================
+     LIGHT MODE SEMANTIC SYSTEM
+     Multi-level surfaces, high contrast, WCAG AA/AAA compliant
+     PAGE BACKGROUND != CARDS (Prevents "everything white" wash)
+     ======================================================== */
+  --background: #F5F8FC;
+  --foreground: #0F172A;
+
+  --card: #FFFFFF;
+  --card-foreground: #0F172A;
+
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+
+  --primary: #0866C6;
+  --primary-foreground: #FFFFFF;
+
+  --secondary: #07345C;
+  --secondary-foreground: #FFFFFF;
+
+  --accent: #F0444C;
+  --accent-foreground: #FFFFFF;
+
+  --muted: #EDF2F7;
+  --muted-foreground: #64748B;
+
+  --border: #E2E8F0;
+  --ring: #0866C6;
+
+  --color-background: #F5F8FC;
+  --color-background-secondary: #EDF2F7;
+  --color-surface: #FFFFFF;
+  --color-surface-secondary: #F8FAFC;
+  --color-surface-elevated: #FFFFFF;
+  --color-surface-hover: #F0F6FC;
+
+  --color-text: #0F172A;
+  --color-text-secondary: #334155;
+  --color-text-muted: #64748B;
+  --color-heading: #07345C;
+  --color-border: #E2E8F0;
+  --color-divider: #E2E8F0;
+
+  --color-input-bg: #FFFFFF;
+  --color-input-border: #CBD5E1;
+  --color-input-focus: #0866C6;
+
+  /* Functional Statuses */
+  --color-success: #059669;
+  --color-warning: #D97706;
+  --color-error: #DC2626;
+  --color-info: #0866C6;
+}
+
+.dark {
+  /* ========================================================
+     DARK MODE SEMANTIC SYSTEM
+     Deep rich navy foundation derived from Cleanzo Navy (#07345C)
+     Never pure flat black #000000
+     ======================================================== */
+  --cleanzo-navy: #07345C;
+  --cleanzo-navy-hover: #0A3D6C;
+  --cleanzo-navy-dark: #031424;
+  --cleanzo-navy-light: #0E487C;
+
+  --cleanzo-blue: #38BDF8;
+  --cleanzo-blue-hover: #60A5FA;
+  --cleanzo-blue-active: #2581DE;
+  --cleanzo-blue-light: #7DD3FC;
+  --cleanzo-blue-soft: #0A223B;
+
+  --cleanzo-red: #FB7185;
+  --cleanzo-red-hover: #FDA4AF;
+  --cleanzo-red-soft: #380C10;
+  --cleanzo-red-light: #FECDD3;
+
+  --background: #041728;
+  --foreground: #F8FAFC;
+
+  --card: #072540;
+  --card-foreground: #F8FAFC;
+
+  --popover: #072540;
+  --popover-foreground: #F8FAFC;
+
+  --primary: #38BDF8;
+  --primary-foreground: #041728;
+
+  --secondary: #0A2E50;
+  --secondary-foreground: #F8FAFC;
+
+  --accent: #FB7185;
+  --accent-foreground: #041728;
+
+  --muted: #081D33;
+  --muted-foreground: #94A7BF;
+
+  --border: #133B61;
+  --ring: #38BDF8;
+
+  --color-background: #041728;
+  --color-background-secondary: #072540;
+  --color-surface: #072540;
+  --color-surface-secondary: #0A2E50;
+  --color-surface-elevated: #0C355C;
+  --color-surface-hover: #103E6B;
+
+  --color-text: #F8FAFC;
+  --color-text-secondary: #CBD5E1;
+  --color-text-muted: #94A3B8;
+  --color-heading: #F8FAFC;
+  --color-border: #133B61;
+  --color-divider: #133B61;
+
+  --color-input-bg: #072540;
+  --color-input-border: #133B61;
+  --color-input-focus: #38BDF8;
+
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #FB7185;
+  --color-info: #38BDF8;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+body {
+  font-family: var(--font-cairo), var(--font-inter), system-ui, -apple-system, sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  max-width: 100%;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  line-height: 1.6;
+}
+
+/* ========================================================
+   HEADINGS & TYPOGRAPHY HIERARCHY
+   Cleanzo Navy in Light Theme (#07345C), Soft White in Dark Theme (#FFFFFF)
+   ======================================================== */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--color-heading);
+  letter-spacing: -0.015em;
+  font-weight: 700;
+  font-family: var(--font-cairo), var(--font-inter), system-ui, sans-serif;
+}
+
+/* Explicit white text on deliberate dark banners / buttons */
+.text-white {
+  color: #FFFFFF;
+}
+
+/* ========================================================
+   LIGHT THEME CONTRAST & LEGIBILITY SAFEGUARDS
+   Properly scoped to html:not(.dark) so they NEVER leak into Dark Theme
+   ======================================================== */
+html:not(.dark) .bg-white h1:not(.text-white):not([class*="text-white"]),
+html:not(.dark) .bg-white h2:not(.text-white):not([class*="text-white"]),
+html:not(.dark) .bg-white h3:not(.text-white):not([class*="text-white"]),
+html:not(.dark) .bg-white h4:not(.text-white):not([class*="text-white"]),
+html:not(.dark) .bg-white h5:not(.text-white):not([class*="text-white"]),
+html:not(.dark) .bg-white h6:not(.text-white):not([class*="text-white"]),
+html:not(.dark) .bg-slate-50 h1:not(.text-white):not([class*="text-white"]),
+html:not(.dark) .bg-slate-50 h2:not(.text-white):not([class*="text-white"]),
+html:not(.dark) .bg-slate-50 h3:not(.text-white):not([class*="text-white"]),
+html:not(.dark) .bg-slate-50 h4:not(.text-white):not([class*="text-white"]),
+html:not(.dark) .bg-slate-50 h5:not(.text-white):not([class*="text-white"]),
+html:not(.dark) .bg-slate-50 h6:not(.text-white):not([class*="text-white"]) {
+  color: #07345C;
+}
+
+/* Safeguard: Headings on dark overlays / cards with text-white must always be pure white */
+html:not(.dark) .text-white h1,
+html:not(.dark) .text-white h2,
+html:not(.dark) .text-white h3,
+html:not(.dark) .text-white h4,
+html:not(.dark) .text-white h5,
+html:not(.dark) .text-white h6,
+html:not(.dark) h1.text-white,
+html:not(.dark) h2.text-white,
+html:not(.dark) h3.text-white,
+html:not(.dark) h4.text-white,
+html:not(.dark) h5.text-white,
+html:not(.dark) h6.text-white {
+  color: #FFFFFF !important;
+}
+
+html:not(.dark) .bg-white p,
+html:not(.dark) .bg-slate-50 p {
+  color: #334155;
+}
+
+html:not(.dark) .bg-white p.text-slate-600,
+html:not(.dark) .bg-slate-50 p.text-slate-600 {
+  color: #334155;
+}
+
+html:not(.dark) .bg-white p.text-slate-500,
+html:not(.dark) .bg-slate-50 p.text-slate-500 {
+  color: #475569;
+}
+
+/* ========================================================
+   GLOBAL DARK MODE CONTRAST & WCAG RULES
+   All text crisp white, light slate, and easily legible
+   ======================================================== */
+.dark {
+  color-scheme: dark;
+}
+
+.dark,
+.dark body {
+  color: #FFFFFF;
+}
+
+.dark h1,
+.dark h2,
+.dark h3,
+.dark h4,
+.dark h5,
+.dark h6 {
+  color: #FFFFFF !important;
+}
+
+.dark p:not([class*="text-"]):not([class*="dark:text-"]) {
+  color: #F8FAFC !important;
+}
+
+/* Dark mode text contrast upgrades: all dark/navy/slate text classes become white/light-slate */
+.dark [class*="text-[#07345C]"]:not([class*="dark:text-"]),
+.dark [class*="text-[#162638]"]:not([class*="dark:text-"]),
+.dark [class*="text-slate-900"]:not([class*="dark:text-"]),
+.dark [class*="text-slate-800"]:not([class*="dark:text-"]),
+.dark [class*="text-gray-900"]:not([class*="dark:text-"]),
+.dark [class*="text-gray-800"]:not([class*="dark:text-"]),
+.dark [class*="text-zinc-900"]:not([class*="dark:text-"]),
+.dark [class*="text-zinc-800"]:not([class*="dark:text-"]) {
+  color: #FFFFFF !important;
+}
+
+.dark [class*="text-slate-700"]:not([class*="dark:text-"]),
+.dark [class*="text-gray-700"]:not([class*="dark:text-"]),
+.dark [class*="text-zinc-700"]:not([class*="dark:text-"]) {
+  color: #F8FAFC !important;
+}
+
+.dark [class*="text-slate-600"]:not([class*="dark:text-"]),
+.dark [class*="text-gray-600"]:not([class*="dark:text-"]),
+.dark [class*="text-zinc-600"]:not([class*="dark:text-"]) {
+  color: #F1F5F9 !important;
+}
+
+.dark [class*="text-slate-500"]:not([class*="dark:text-"]),
+.dark [class*="text-gray-500"]:not([class*="dark:text-"]),
+.dark [class*="text-zinc-500"]:not([class*="dark:text-"]) {
+  color: #E2E8F0 !important;
+}
+
+.dark [class*="text-slate-400"]:not([class*="dark:text-"]),
+.dark [class*="text-gray-400"]:not([class*="dark:text-"]),
+.dark [class*="text-zinc-400"]:not([class*="dark:text-"]) {
+  color: #CBD5E1 !important;
+}
+
+/* Ensure classes with dark:text- also have vibrant high-contrast visibility */
+.dark [class*="dark:text-slate-200"],
+.dark [class*="dark:text-gray-200"],
+.dark [class*="dark:text-slate-100"],
+.dark [class*="dark:text-gray-100"] {
+  color: #FFFFFF !important;
+}
+
+.dark [class*="dark:text-slate-300"],
+.dark [class*="dark:text-gray-300"] {
+  color: #F1F5F9 !important;
+}
+
+.dark [class*="dark:text-slate-400"],
+.dark [class*="dark:text-gray-400"] {
+  color: #CBD5E1 !important;
+}
+
+.dark [class*="text-[#0866C6]"]:not([class*="dark:text-"]):not(button):not(a):not([class*="bg-"]) {
+  color: #38BDF8 !important;
+}
+
+/* ========================================================
+   ADMIN PANEL THEME ISOLATION (LIGHT & DARK MODES)
+   High contrast, clear typography, comfortable for eyes
+   100% Decoupled from public customer website theme
+   ======================================================== */
+#admin-root:not(.dark) {
+  background-color: #F5F8FC;
+  color: #0F172A;
+}
+
+#admin-root:not(.dark) h1,
+#admin-root:not(.dark) h2,
+#admin-root:not(.dark) h3,
+#admin-root:not(.dark) h4,
+#admin-root:not(.dark) h5,
+#admin-root:not(.dark) h6 {
+  color: #07345C;
+}
+
+#admin-root.dark,
+.dark #admin-root {
+  background-color: #041728 !important;
+  color: #F8FAFC !important;
+}
+
+#admin-root.dark .bg-slate-900,
+.dark #admin-root .bg-slate-900,
+#admin-root.dark .bg-slate-950,
+.dark #admin-root .bg-slate-950 {
+  background-color: #072540 !important;
+}
+
+#admin-root.dark .bg-slate-800,
+.dark #admin-root .bg-slate-800 {
+  background-color: #041728 !important;
+}
+
+#admin-root.dark .border-slate-800,
+.dark #admin-root .border-slate-800,
+#admin-root.dark .border-slate-700,
+.dark #admin-root .border-slate-700 {
+  border-color: #133B61 !important;
+}
+
+#admin-root.dark h1,
+#admin-root.dark h2,
+#admin-root.dark h3,
+#admin-root.dark h4,
+#admin-root.dark h5,
+#admin-root.dark h6,
+.dark #admin-root h1,
+.dark #admin-root h2,
+.dark #admin-root h3,
+.dark #admin-root h4,
+.dark #admin-root h5,
+.dark #admin-root h6 {
+  color: #F8FAFC !important;
+}
+
+#admin-root.dark .text-slate-900,
+.dark #admin-root .text-slate-900,
+#admin-root.dark .text-slate-800,
+.dark #admin-root .text-slate-800,
+#admin-root.dark .text-slate-700,
+.dark #admin-root .text-slate-700 {
+  color: #F8FAFC !important;
+}
+
+#admin-root.dark .text-slate-600,
+.dark #admin-root .text-slate-600,
+#admin-root.dark .text-slate-500,
+.dark #admin-root .text-slate-500,
+#admin-root.dark .text-slate-400,
+.dark #admin-root .text-slate-400 {
+  color: #94A3B8 !important;
+}
+
+#admin-root.dark input,
+#admin-root.dark select,
+#admin-root.dark textarea,
+.dark #admin-root input,
+.dark #admin-root select,
+.dark #admin-root textarea {
+  color: #F8FAFC !important;
+  background-color: #072540 !important;
+  border-color: #133B61 !important;
+}
+
+#admin-root.dark input::placeholder,
+#admin-root.dark textarea::placeholder,
+.dark #admin-root input::placeholder,
+.dark #admin-root textarea::placeholder {
+  color: #94A3B8 !important;
+}
+
+/* ========================================================
+   ADMIN BUTTON DESIGN SYSTEM (LIGHT & DARK THEMES)
+   User Requirement:
+   - Light Theme: Primary buttons should be dark (Cleanzo Navy #07345C) with white text.
+   - Dark Theme: Primary buttons should be a bright/light color (Cleanzo Luminous Cyan #38BDF8) with dark text (#041728) for maximum visibility and pop.
+   ======================================================== */
+#admin-root:not(.dark) .admin-btn-primary,
+#admin-root:not(.dark) button.bg-\[\#0866C6\],
+#admin-root:not(.dark) a.bg-\[\#0866C6\],
+#admin-root:not(.dark) button[type="submit"]:not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-emerald"]):not([class*="bg-green"]):not([class*="border"]):not([class*="text-slate"]) {
+  background-color: #07345C;
+  color: #FFFFFF !important;
+}
+
+#admin-root:not(.dark) .admin-btn-primary:hover,
+#admin-root:not(.dark) button.bg-\[\#0866C6\]:hover,
+#admin-root:not(.dark) a.bg-\[\#0866C6\]:hover,
+#admin-root:not(.dark) button[type="submit"]:not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-emerald"]):not([class*="bg-green"]):not([class*="border"]):not([class*="text-slate"]):hover {
+  background-color: #052644;
+}
+
+#admin-root.dark .admin-btn-primary,
+.dark #admin-root .admin-btn-primary,
+#admin-root.dark button.bg-\[\#0866C6\],
+.dark #admin-root button.bg-\[\#0866C6\],
+#admin-root.dark a.bg-\[\#0866C6\],
+.dark #admin-root a.bg-\[\#0866C6\],
+#admin-root.dark button[type="submit"]:not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-emerald"]):not([class*="bg-green"]):not([class*="border"]):not([class*="text-slate"]),
+.dark #admin-root button[type="submit"]:not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-emerald"]):not([class*="bg-green"]):not([class*="border"]):not([class*="text-slate"]) {
+  background-color: #38BDF8 !important;
+  color: #041728 !important;
+  font-weight: 800 !important;
+  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.25) !important;
+}
+
+#admin-root.dark .admin-btn-primary:hover,
+.dark #admin-root .admin-btn-primary:hover,
+#admin-root.dark button.bg-\[\#0866C6\]:hover,
+.dark #admin-root button.bg-\[\#0866C6\]:hover,
+#admin-root.dark a.bg-\[\#0866C6\]:hover,
+.dark #admin-root a.bg-\[\#0866C6\]:hover,
+#admin-root.dark button[type="submit"]:not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-emerald"]):not([class*="bg-green"]):not([class*="border"]):not([class*="text-slate"]):hover,
+.dark #admin-root button[type="submit"]:not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-emerald"]):not([class*="bg-green"]):not([class*="border"]):not([class*="text-slate"]):hover {
+  background-color: #7DD3FC !important;
+  color: #041728 !important;
+}
+
+/* Custom modern Cleanzo scrollbar */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(8, 102, 198, 0.25);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(8, 102, 198, 0.6);
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  @keyframes shimmer {
+    0% { transform: translateX(-150%) skewX(-12deg); }
+    100% { transform: translateX(250%) skewX(-12deg); }
+  }
+  @keyframes pulse-subtle {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.85; transform: scale(1.05); }
+  }
+  @keyframes bell-wiggle {
+    0%, 100% { transform: rotate(0deg); }
+    20% { transform: rotate(12deg); }
+    40% { transform: rotate(-10deg); }
+    60% { transform: rotate(6deg); }
+    80% { transform: rotate(-4deg); }
+  }
+  .animate-shimmer {
+    animation: shimmer 2.5s infinite;
+  }
+  .animate-pulse-subtle {
+    animation: pulse-subtle 2s ease-in-out infinite;
+  }
+  .animate-bell {
+    animation: bell-wiggle 1.5s ease-in-out infinite;
+  }
+}
+
+/* Print Rules */
+@media print {
+  body {
+    background: #FFFFFF !important;
+    color: #07345C !important;
+  }
+  header,
+  nav,
+  footer,
+  aside,
+  .no-print,
+  button,
+  input,
+  [role="dialog"],
+  .fixed,
+  .sticky {
+    display: none !important;
+  }
+}

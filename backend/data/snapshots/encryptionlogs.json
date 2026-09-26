@@ -1,0 +1,56 @@
+[
+  {
+    "_id": "6aacf53c397a5b12de4dcf07",
+    "id": "enc-log-1789719868413",
+    "timestamp": "2026-09-18T08:24:28.402Z",
+    "status": "success",
+    "algorithm": "aes-256-gcm",
+    "totalRecordsEncrypted": 4,
+    "breakdown": {
+      "customers": 3,
+      "orders": 1,
+      "messages": 0,
+      "addresses": 0
+    },
+    "initiatedBy": "Automated Test Runner",
+    "createdAt": "2026-09-18T08:24:28.414Z",
+    "updatedAt": "2026-09-18T08:24:28.414Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aacf581ac2fa14a656cbd57",
+    "id": "enc-log-1789719937728",
+    "timestamp": "2026-09-18T08:25:37.716Z",
+    "status": "success",
+    "algorithm": "aes-256-gcm",
+    "totalRecordsEncrypted": 5,
+    "breakdown": {
+      "customers": 4,
+      "orders": 1,
+      "messages": 0,
+      "addresses": 0
+    },
+    "initiatedBy": "Automated Test Runner",
+    "createdAt": "2026-09-18T08:25:37.729Z",
+    "updatedAt": "2026-09-18T08:25:37.729Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aacf97c47c819e02d588b9e",
+    "id": "enc-log-1789720956476",
+    "timestamp": "2026-09-18T08:42:36.466Z",
+    "status": "success",
+    "algorithm": "aes-256-gcm",
+    "totalRecordsEncrypted": 6,
+    "breakdown": {
+      "customers": 5,
+      "orders": 1,
+      "messages": 0,
+      "addresses": 0
+    },
+    "initiatedBy": "Automated Test Runner",
+    "createdAt": "2026-09-18T08:42:36.478Z",
+    "updatedAt": "2026-09-18T08:42:36.478Z",
+    "__v": 0
+  }
+]
