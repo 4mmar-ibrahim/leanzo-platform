@@ -24,6 +24,7 @@ import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { toast } from 'sonner';
+import { cleanzoApi } from '@/lib/api/cleanzoApi';
 
 export default function OrderDetailsPage() {
   const params = useParams();
@@ -51,7 +52,12 @@ export default function OrderDetailsPage() {
     );
   }
 
-  const handleConfirmCancel = () => {
+  const handleConfirmCancel = async () => {
+    try {
+      await cleanzoApi.bookings.cancel(order.id, 'إلغاء من قبل العميل', order.customerPhone);
+    } catch (err: any) {
+      console.warn('API cancel note:', err?.message);
+    }
     cancelOrder(order.id);
     setIsCancelModalOpen(false);
     toast.success(isAr ? 'تم إلغاء الحجز بنجاح' : 'Booking cancelled');

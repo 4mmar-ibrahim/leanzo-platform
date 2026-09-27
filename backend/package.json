@@ -12,7 +12,8 @@
     "test:auth": "tsx tests/adminSessionInfrastructureTest.ts",
     "test:coupons": "tsx tests/couponSystemTest.ts",
     "test:reports": "tsx tests/reportsAndAnalyticsAccuracyTest.ts",
-    "test:packages": "tsx tests/packagesAddonsSystemTest.ts"
+    "test:packages": "tsx tests/packagesAddonsSystemTest.ts",
+    "test:scheduling": "tsx tests/dynamicSchedulingTestSuite.ts"
   },
   "dependencies": {
     "@prisma/client": "6.4.1",

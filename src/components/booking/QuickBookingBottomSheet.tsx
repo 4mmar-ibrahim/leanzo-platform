@@ -122,7 +122,9 @@ export function QuickBookingBottomSheet({
       bookingSettings,
       selectedService?.id,
       selectedService?.title,
-      orders
+      orders,
+      selectedService?.serviceDurationMinutes || selectedService?.duration,
+      selectedService?.travelTimeMinutes
     );
   }, [selectedDate, bookingSettings, selectedService, orders]);
 
@@ -646,33 +648,41 @@ export function QuickBookingBottomSheet({
                   <Clock className="w-4 h-4 text-[#0866C6]" />
                   <span>اختر الموعد المناسب</span>
                 </label>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto p-1">
-                  {timeSlots.map((slot) => {
-                    const isSelected = selectedTime === slot.time;
-                    const isAvailable = slot.isAvailable;
-                    return (
-                      <button
-                        key={slot.time}
-                        type="button"
-                        disabled={!isAvailable}
-                        onClick={() => isAvailable && setSelectedTime(slot.time)}
-                        className={cn(
-                          'py-2 px-2 rounded-xl text-xs font-bold border transition-all text-center flex flex-col items-center justify-center gap-0.5',
-                          !isAvailable
-                            ? 'bg-slate-100/60 dark:bg-slate-900/40 border-slate-200/40 opacity-50 cursor-not-allowed text-slate-400'
-                            : isSelected
-                            ? 'bg-[#0866C6] text-white border-[#0866C6] shadow-md shadow-[#0866C6]/25 font-bold'
-                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-[#0866C6]'
-                        )}
-                      >
-                        <span>{isAr ? slot.label : slot.labelEn}</span>
-                        {!isAvailable && slot.reason && (
-                          <span className="text-[9px] text-rose-500 font-normal mt-0.5">{slot.reason}</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+                {timeSlots.length === 0 ? (
+                  <div className="p-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-center space-y-1">
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                      {isAr ? 'لا توجد مواعيد متاحة لهذا اليوم' : 'No available slots for this date'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1">
+                    {timeSlots.map((slot) => {
+                      const isSelected = selectedTime === slot.time;
+                      const isAvailable = slot.isAvailable;
+                      return (
+                        <button
+                          key={slot.time}
+                          type="button"
+                          disabled={!isAvailable}
+                          onClick={() => isAvailable && setSelectedTime(slot.time)}
+                          className={cn(
+                            'py-2 px-2 rounded-xl text-xs font-bold border transition-all text-center flex flex-col items-center justify-center gap-0.5',
+                            !isAvailable
+                              ? 'bg-slate-100/60 dark:bg-slate-900/40 border-slate-200/40 opacity-50 cursor-not-allowed text-slate-400'
+                              : isSelected
+                              ? 'bg-[#0866C6] text-white border-[#0866C6] shadow-md shadow-[#0866C6]/25 font-bold'
+                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-[#0866C6]'
+                          )}
+                        >
+                          <span className="font-mono">{isAr ? slot.label : slot.labelEn}</span>
+                          {!isAvailable && slot.reason && (
+                            <span className="text-[9px] text-rose-500 font-normal mt-0.5">{slot.reason}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}

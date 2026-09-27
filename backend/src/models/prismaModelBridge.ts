@@ -225,6 +225,17 @@ function attachDocHelpers(doc: any, delegate?: any) {
       }
     };
   }
+  if (doc.metadata && typeof doc.metadata === 'object') {
+    if (doc.metadata.cancelledAt && !doc.cancelledAt) {
+      doc.cancelledAt = new Date(doc.metadata.cancelledAt);
+    }
+    if (doc.metadata.cancellationSource && !doc.cancellationSource) {
+      doc.cancellationSource = doc.metadata.cancellationSource;
+    }
+    if (doc.metadata.cancellationReason && !doc.cancellationReason) {
+      doc.cancellationReason = doc.metadata.cancellationReason;
+    }
+  }
   if (!doc.save && delegate) {
     doc.save = async function () {
       const targetId = this.id || this._id;
@@ -242,6 +253,26 @@ function attachDocHelpers(doc: any, delegate?: any) {
         const salt = await bcrypt.genSalt(10);
         data.password = await bcrypt.hash(data.password, salt);
         this.password = data.password;
+      }
+      if (data.customerId !== undefined) {
+        if (data.customerId) {
+          data.user = { connect: { id: data.customerId } };
+        }
+        delete data.customerId;
+      }
+      if (data.service !== undefined) {
+        delete data.service;
+      }
+      if (data.cancelledAt || data.cancellationSource || data.cancellationReason) {
+        data.metadata = {
+          ...(data.metadata || {}),
+          ...(data.cancelledAt ? { cancelledAt: data.cancelledAt } : {}),
+          ...(data.cancellationSource ? { cancellationSource: data.cancellationSource } : {}),
+          ...(data.cancellationReason ? { cancellationReason: data.cancellationReason } : {}),
+        };
+        delete data.cancelledAt;
+        delete data.cancellationSource;
+        delete data.cancellationReason;
       }
       const updated = await delegate.update({
         where: { id: targetId },
@@ -402,6 +433,20 @@ export function createPrismaRepository(prismaDelegateName: keyof typeof prisma) 
 
       if (modelName === 'booking') {
         if (cleanData.service !== undefined) delete cleanData.service;
+        if (!cleanData.timeSlotStart) {
+          cleanData.timeSlotStart = cleanData.scheduledStart || cleanData.time || '09:00';
+        }
+        if (cleanData.cancelledAt || cleanData.cancellationSource || cleanData.cancellationReason) {
+          cleanData.metadata = {
+            ...(cleanData.metadata || {}),
+            ...(cleanData.cancelledAt ? { cancelledAt: cleanData.cancelledAt } : {}),
+            ...(cleanData.cancellationSource ? { cancellationSource: cleanData.cancellationSource } : {}),
+            ...(cleanData.cancellationReason ? { cancellationReason: cleanData.cancellationReason } : {}),
+          };
+          delete cleanData.cancelledAt;
+          delete cleanData.cancellationSource;
+          delete cleanData.cancellationReason;
+        }
       }
 
       if (modelName === 'serviceCategory') {
@@ -541,6 +586,29 @@ export function createPrismaRepository(prismaDelegateName: keyof typeof prisma) 
 
       if (prismaDelegateName === 'backupRecord' && data.createdBy && typeof data.createdBy === 'object') {
         data.createdBy = data.createdBy.name || data.createdBy.id || 'admin';
+      }
+
+      if (modelName === 'booking') {
+        if (data.customerId !== undefined) {
+          if (data.customerId) {
+            data.user = { connect: { id: data.customerId } };
+          }
+          delete data.customerId;
+        }
+        if (data.service !== undefined) {
+          delete data.service;
+        }
+        if (data.cancelledAt || data.cancellationSource || data.cancellationReason) {
+          data.metadata = {
+            ...(data.metadata || {}),
+            ...(data.cancelledAt ? { cancelledAt: data.cancelledAt } : {}),
+            ...(data.cancellationSource ? { cancellationSource: data.cancellationSource } : {}),
+            ...(data.cancellationReason ? { cancellationReason: data.cancellationReason } : {}),
+          };
+          delete data.cancelledAt;
+          delete data.cancellationSource;
+          delete data.cancellationReason;
+        }
       }
 
       if (modelName === 'serviceCategory') {

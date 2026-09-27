@@ -36,6 +36,13 @@ function timeStringToMinutes(timeStr: string): number {
   return hours * 60 + (isNaN(minutes) ? 0 : minutes);
 }
 
+function minutesTo24H(totalMinutes: number): string {
+  const normalized = Math.max(0, Math.min(1439, totalMinutes));
+  const hours = Math.floor(normalized / 60);
+  const mins = normalized % 60;
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+}
+
 function minutesToDisplayTime(totalMinutes: number): { time12Ar: string; time12En: string } {
   const normalized = Math.max(0, Math.min(1439, totalMinutes));
   const hours = Math.floor(normalized / 60);
@@ -122,7 +129,7 @@ export function getUpcomingBookingDates(
 
 /**
  * Checks if two time strings represent the exact same time of day.
- * Robust against leading zeros, 12h/24h, and language suffixes (e.g. "09:00 AM", "9:00 AM", "09:00").
+ * Robust against leading zeros, 12h/24h, interval ranges, and language suffixes.
  */
 export function isSameTime(timeA?: string, timeB?: string): boolean {
   if (!timeA || !timeB) return false;
@@ -131,9 +138,10 @@ export function isSameTime(timeA?: string, timeB?: string): boolean {
   if (tA === tB) return true;
 
   const toMinutes = (str: string): number => {
-    const isPM = str.includes('PM') || str.includes('مساء');
-    const isAM = str.includes('AM') || str.includes('صباح');
-    const clean = str.replace(/[^0-9:]/g, '').trim();
+    const firstPart = str.split(/[-–—]/)[0].trim();
+    const isPM = firstPart.includes('PM') || firstPart.includes('مساء');
+    const isAM = firstPart.includes('AM') || firstPart.includes('صباح');
+    const clean = firstPart.replace(/[^0-9:]/g, '').trim();
     const [hStr, mStr] = clean.split(':');
     let h = parseInt(hStr || '0', 10);
     const m = parseInt(mStr || '0', 10);
@@ -175,72 +183,113 @@ export function isSameService(
   return false;
 }
 
+/**
+ * Dynamic Continuous Sequential Availability Generator (Model A)
+ * TOTAL OCCUPANCY = SERVICE DURATION + TRAVEL/ARRIVAL DURATION
+ * Appointments are continuous sequential intervals: Next starts exactly when previous ends.
+ * No arbitrary 30-minute or 60-minute roundings.
+ */
 export function getTimeSlotsForDate(
   dateString: string,
   settings?: Partial<BookingSettings>,
   serviceId?: string,
   serviceTitle?: string,
-  existingOrders?: Order[]
+  existingOrders?: Order[],
+  serviceDuration?: number,
+  travelDuration?: number
 ): BookingSlot[] {
   const isBlocked = (settings?.blockedDates || []).includes(dateString);
   const holiday = (settings?.holidays || []).find((h) => h.date === dateString);
 
-  if (isBlocked) {
-    return [];
-  }
-  if (holiday) {
+  if (isBlocked || holiday) {
     return [];
   }
 
   const startStr = settings?.workingHoursStart || '09:00';
   const endStr = settings?.workingHoursEnd || '22:00';
-  const interval = Number(settings?.slotInterval) || 60;
-  const buffer = Number(settings?.bufferTime) || 15;
-
   const startMin = timeStringToMinutes(startStr);
   const endMin = timeStringToMinutes(endStr);
 
+  const durationMin = serviceDuration !== undefined && serviceDuration > 0 ? serviceDuration : 45;
+  const travelMin = travelDuration !== undefined ? travelDuration : (settings?.bufferTime !== undefined ? Number(settings.bufferTime) : 15);
+  const totalOccupancy = durationMin + travelMin;
+
+  if (totalOccupancy <= 0 || startMin + totalOccupancy > endMin) {
+    return [];
+  }
+
+  const breakStartMin = settings?.breakStart ? timeStringToMinutes(settings.breakStart) : null;
+  const breakEndMin = settings?.breakEnd ? timeStringToMinutes(settings.breakEnd) : null;
+
+  // Filter today's past times
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = String(today.getMonth() + 1).padStart(2, '0');
+  const d = String(today.getDate()).padStart(2, '0');
+  const todayStr = `${y}-${m}-${d}`;
+  const isToday = dateString === todayStr;
+  const currentMinutes = isToday ? today.getHours() * 60 + today.getMinutes() : -1;
+
   const slots: BookingSlot[] = [];
+  let cursor = startMin;
 
-  for (let m = startMin; m + buffer <= endMin; m += interval) {
-    const { time12Ar, time12En } = minutesToDisplayTime(m);
-    slots.push({
-      time: time12En,
-      label: time12Ar,
-      labelEn: time12En,
-      isAvailable: true,
-    });
-  }
+  while (cursor + totalOccupancy <= endMin) {
+    const slotStart = cursor;
+    const slotEnd = cursor + totalOccupancy;
 
-  // Fallback defaults if generation produced no slots due to invalid boundaries
-  if (slots.length === 0) {
-    slots.push(
-      { time: '09:00 AM', label: '09:00 صباحاً', labelEn: '09:00 AM', isAvailable: true },
-      { time: '11:00 AM', label: '11:00 صباحاً', labelEn: '11:00 AM', isAvailable: true },
-      { time: '01:00 PM', label: '01:00 ظهراً', labelEn: '01:00 PM', isAvailable: true },
-      { time: '03:00 PM', label: '03:00 عصراً', labelEn: '03:00 PM', isAvailable: true },
-      { time: '05:00 PM', label: '05:00 مساءً', labelEn: '05:00 PM', isAvailable: true },
-      { time: '07:00 PM', label: '07:00 مساءً', labelEn: '07:00 PM', isAvailable: true },
-      { time: '09:00 PM', label: '09:00 مساءً', labelEn: '09:00 PM', isAvailable: true }
-    );
-  }
+    // Check break overlap: if slot overlaps break, skip to end of break
+    if (
+      breakStartMin !== null &&
+      breakEndMin !== null &&
+      slotStart < breakEndMin &&
+      slotEnd > breakStartMin
+    ) {
+      cursor = breakEndMin;
+      continue;
+    }
 
-  // Enforce Per-Service Availability Rule:
-  // If an active order exists for the SAME service on this date and time, mark the slot as booked/unavailable!
-  if (existingOrders && existingOrders.length > 0 && (serviceId || serviceTitle)) {
-    for (const slot of slots) {
+    const start24 = minutesTo24H(slotStart);
+    const end24 = minutesTo24H(slotEnd);
+    const intervalLabel = `${start24} – ${end24}`;
+
+    // Filter past times for current day
+    if (isToday && slotStart <= currentMinutes) {
+      cursor += totalOccupancy;
+      continue;
+    }
+
+    let isAvailable = true;
+    let reason: string | undefined;
+
+    // Check overlap with active orders
+    if (existingOrders && existingOrders.length > 0) {
       const isBooked = existingOrders.some((o) => {
         if (o.status === 'cancelled') return false;
         if (o.date !== dateString) return false;
-        if (!isSameService(o, serviceId, serviceTitle)) return false;
-        return isSameTime(o.time, slot.time);
+        if (serviceId || serviceTitle) {
+          if (!isSameService(o, serviceId, serviceTitle)) return false;
+        }
+        const oStart = timeStringToMinutes(o.time);
+        const oDur = (o as any).totalOccupiedMinutes || (o.duration ? o.duration + 15 : totalOccupancy);
+        const oEnd = oStart + oDur;
+        return slotStart < oEnd && slotEnd > oStart;
       });
 
       if (isBooked) {
-        slot.isAvailable = false;
-        slot.reason = 'محجوز';
+        isAvailable = false;
+        reason = 'محجوز';
       }
     }
+
+    slots.push({
+      time: intervalLabel,
+      label: intervalLabel,
+      labelEn: intervalLabel,
+      isAvailable,
+      reason,
+    });
+
+    cursor += totalOccupancy;
   }
 
   return slots;

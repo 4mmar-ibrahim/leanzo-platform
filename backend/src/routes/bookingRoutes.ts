@@ -9,6 +9,7 @@ import {
   updateBookingStatus,
   assignTechnicianToBooking,
   deleteBookingAdmin,
+  cancelBookingCustomer,
 } from '../controllers/bookingController.js';
 import { authenticateCustomer, optionalCustomerAuth } from '../middleware/authMiddleware.js';
 import { authenticateAdmin, authorize } from '../middleware/adminAuthMiddleware.js';
@@ -23,6 +24,7 @@ router.post('/calculate-price', calculateBookingPriceHandler);
 router.post('/', optionalCustomerAuth, createBooking);
 router.get('/my', authenticateCustomer, getCustomerBookings);
 router.get('/track/:id', trackOrderPublic);
+router.post('/:id/cancel', optionalCustomerAuth, cancelBookingCustomer);
 
 // Admin Booking & Order management endpoints (Registered BEFORE /:id wildcard)
 router.get('/admin/all', authenticateAdmin, authorize('orders', 'view'), getAllBookingsAdmin);

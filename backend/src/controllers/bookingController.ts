@@ -9,7 +9,7 @@ import { Technician } from '../models/Technician.js';
 import { Notification } from '../models/Notification.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { auditService } from '../services/auditService.js';
-import { assertSlotAvailability, compressScheduleAfterCancellation, getCurrentCairoTimeString } from '../services/availabilityService.js';
+import { assertSlotAvailability, compressScheduleAfterCancellation, getCurrentCairoTimeString, withBookingLock } from '../services/availabilityService.js';
 import { calculateBookingPrice } from '../services/bookingPriceService.js';
 import { redeemCouponAtomically, rollbackCouponRedemption } from '../services/couponService.js';
 import { generateOrderNumber } from '../utils/orderNumber.js';
@@ -177,43 +177,6 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
       return;
     }
 
-    // 3.1 Authoritative Server-Side Availability Check
-    // Duration is calculated authoritatively from selected Package + Add-ons! Travel time added once.
-    let slotTiming: {
-      scheduledStart: string;
-      scheduledEnd: string;
-      serviceDurationMinutes: number;
-      travelTimeMinutes: number;
-      totalOccupiedMinutes: number;
-    };
-    try {
-      slotTiming = await assertSlotAvailability({
-        dateStr: date,
-        timeStr: time,
-        serviceId: service.id,
-        customDuration: pricing.totalServiceDuration,
-      });
-    } catch (availErr: any) {
-      sendError(res, availErr.message, 409, 'TIME_SLOT_UNAVAILABLE');
-      return;
-    }
-
-    // 3.2 Idempotency / Duplicate Booking Protection:
-    // If an identical active booking was created in the last 60 seconds (same phone, serviceId, date, time), return it.
-    const recentDuplicate = await Booking.findOne({
-      customerPhone: customerPhone.trim(),
-      serviceId: service.id,
-      date,
-      scheduledStart: slotTiming.scheduledStart,
-      status: { $nin: ['cancelled'] },
-      createdAt: { $gte: new Date(Date.now() - 60 * 1000) },
-    });
-
-    if (recentDuplicate) {
-      sendSuccess(res, recentDuplicate, 'تم استرجاع الحجز المؤكد مسبقاً لمنع التكرار', 200);
-      return;
-    }
-
     // 3.5 Authoritative Address & Location Validation (with IDOR protection)
     let finalGovId = address.governorateId || address.governorate;
     let finalCityId = address.cityId || address.city;
@@ -298,91 +261,146 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
       details: finalAddressNotes || '',
     };
 
-    // 5. Generate unique human-readable Order Number (collision-free)
-    let nextNum = 100 + (await Booking.countDocuments()) + 1;
-    let orderNumber = generateOrderNumber(nextNum);
-    while ((await Booking.exists({ id: orderNumber })) || (await CouponUsage.exists({ orderId: orderNumber }))) {
-      nextNum++;
-      orderNumber = generateOrderNumber(nextNum);
-    }
-
-    // 6. Race-condition safe atomic coupon redemption if a coupon is applied
-    let couponIdToRollback: any = null;
-    if (pricing.couponSnapshot) {
-      const redemption = await redeemCouponAtomically({
-        code: pricing.couponSnapshot.couponCode,
-        orderTotal: pricing.subtotal,
-        customerPhone: customerPhone.trim(),
-        orderId: orderNumber,
-        customerName,
-        customerId,
-      });
-      couponIdToRollback = redemption.coupon._id;
-    }
-
-    const initialTimeline: ITimelineEvent[] = [
-      {
-        status: 'pending',
-        label: 'تم استلام طلب الحجز',
-        labelEn: 'Booking Request Received',
-        timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
-        completed: true,
-        description: 'طلبك قيد المراجعة والتأكيد من فريق العمليات',
-        descriptionEn: 'Your booking is being reviewed by operations',
-        changedBy: 'system',
-      },
-    ];
-
-    // 7. Create Booking Record with immutable coupon, package, addons, and address snapshots
-    let newBooking;
+    // 4. Concurrency-Safe Authoritative Slot Assertion & Booking Creation
+    const lockKey = `${date}_${service.id}`;
+    let bookingResult: { isDuplicate: boolean; booking: any };
     try {
-      newBooking = await Booking.create({
-        id: orderNumber,
-        customerId,
-        customerName,
-        customerPhone: customerPhone.trim(),
-        serviceId: service.id,
-        serviceSnapshot: {
-          id: service.id,
-          title: service.title,
-          titleEn: service.titleEn,
-          category: service.category,
-          image: service.image,
-          price: service.price,
-          duration: service.duration,
-        },
-        packageId: pricing.packageId || null,
-        packageSnapshot: pricing.packageSnapshot || null,
-        addons: pricing.addons || [],
-        category: service.category,
-        date,
-        time,
-        timeSlotStart: time,
-        scheduledStart: slotTiming.scheduledStart,
-        scheduledEnd: slotTiming.scheduledEnd,
-        serviceDurationMinutes: slotTiming.serviceDurationMinutes,
-        travelTimeMinutes: slotTiming.travelTimeMinutes,
-        totalOccupiedMinutes: slotTiming.totalOccupiedMinutes,
-        duration: slotTiming.serviceDurationMinutes,
-        address: validatedAddressSnapshot,
-        basePrice: pricing.basePrice,
-        totalPrice: pricing.finalPrice,
-        discount: pricing.discount,
-        serviceFee: pricing.serviceFee,
-        finalPrice: pricing.finalPrice,
-        currency: 'ج.م',
-        promoCode: pricing.promoCode,
-        couponSnapshot: pricing.couponSnapshot,
-        status: 'pending',
-        timeline: initialTimeline,
-        notes,
+      bookingResult = await withBookingLock(lockKey, async () => {
+        // 4.1 Authoritative Server-Side Availability Check under serialized resource lock
+        const slotTiming = await assertSlotAvailability({
+          dateStr: date,
+          timeStr: time,
+          serviceId: service.id,
+          customDuration: pricing.totalServiceDuration,
+        });
+
+        // 4.2 Idempotency / Duplicate Booking Protection:
+        const recentDuplicate = await Booking.findOne({
+          customerPhone: customerPhone.trim(),
+          serviceId: service.id,
+          date,
+          scheduledStart: slotTiming.scheduledStart,
+          status: { $nin: ['cancelled'] },
+          createdAt: { $gte: new Date(Date.now() - 60 * 1000) },
+        });
+
+        if (recentDuplicate) {
+          return { isDuplicate: true, booking: recentDuplicate };
+        }
+
+        // 4.3 Generate unique human-readable Order Number (collision-free)
+        let nextNum = 100 + (await Booking.countDocuments()) + 1;
+        let orderNumber = generateOrderNumber(nextNum);
+        while ((await Booking.exists({ id: orderNumber })) || (await CouponUsage.exists({ orderId: orderNumber }))) {
+          nextNum++;
+          orderNumber = generateOrderNumber(nextNum);
+        }
+
+        // 4.4 Race-condition safe atomic coupon redemption if a coupon is applied
+        let couponIdToRollback: any = null;
+        if (pricing.couponSnapshot) {
+          const redemption = await redeemCouponAtomically({
+            code: pricing.couponSnapshot.couponCode,
+            orderTotal: pricing.subtotal,
+            customerPhone: customerPhone.trim(),
+            orderId: orderNumber,
+            customerName,
+            customerId,
+          });
+          couponIdToRollback = redemption.coupon._id;
+        }
+
+        const initialTimeline: ITimelineEvent[] = [
+          {
+            status: 'pending',
+            label: 'تم استلام طلب الحجز',
+            labelEn: 'Booking Request Received',
+            timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
+            completed: true,
+            description: 'طلبك قيد المراجعة والتأكيد من فريق العمليات',
+            descriptionEn: 'Your booking is being reviewed by operations',
+            changedBy: 'system',
+          },
+        ];
+
+        // 4.5 Create Booking Record with immutable snapshot
+        try {
+          const created = await Booking.create({
+            id: orderNumber,
+            customerId,
+            customerName,
+            customerPhone: customerPhone.trim(),
+            serviceId: service.id,
+            serviceSnapshot: {
+              id: service.id,
+              title: service.title,
+              titleEn: service.titleEn,
+              category: service.category,
+              image: service.image,
+              price: service.price,
+              duration: service.duration,
+            },
+            packageId: pricing.packageId || null,
+            packageSnapshot: pricing.packageSnapshot || null,
+            addons: pricing.addons || [],
+            category: service.category,
+            date,
+            time,
+            timeSlotStart: time,
+            scheduledStart: slotTiming.scheduledStart,
+            scheduledEnd: slotTiming.scheduledEnd,
+            serviceDurationMinutes: slotTiming.serviceDurationMinutes,
+            travelTimeMinutes: slotTiming.travelTimeMinutes,
+            totalOccupiedMinutes: slotTiming.totalOccupiedMinutes,
+            duration: slotTiming.serviceDurationMinutes,
+            address: validatedAddressSnapshot,
+            basePrice: pricing.basePrice,
+            totalPrice: pricing.finalPrice,
+            discount: pricing.discount,
+            serviceFee: pricing.serviceFee,
+            finalPrice: pricing.finalPrice,
+            currency: 'ج.م',
+            promoCode: pricing.promoCode,
+            couponSnapshot: pricing.couponSnapshot,
+            status: 'pending',
+            timeline: initialTimeline,
+            notes,
+          });
+          return { isDuplicate: false, booking: created };
+        } catch (bookingCreateErr: any) {
+          if (couponIdToRollback) {
+            await rollbackCouponRedemption(couponIdToRollback, orderNumber);
+          }
+          throw bookingCreateErr;
+        }
       });
-    } catch (bookingCreateErr: any) {
-      if (couponIdToRollback) {
-        await rollbackCouponRedemption(couponIdToRollback, orderNumber);
+    } catch (availOrLockErr: any) {
+      const isSlotConflict =
+        availOrLockErr.code === 'SLOT_UNAVAILABLE' ||
+        availOrLockErr.statusCode === 409 ||
+        availOrLockErr.message?.includes('غير متاح') ||
+        availOrLockErr.message?.includes('يتعارض') ||
+        availOrLockErr.message?.includes('محجوز') ||
+        availOrLockErr.message?.includes('خارج ساعات العمل');
+
+      if (isSlotConflict) {
+        sendError(
+          res,
+          'الموعد لم يعد متاحًا، يرجى اختيار موعد آخر.',
+          409,
+          'TIME_SLOT_UNAVAILABLE'
+        );
+        return;
       }
-      throw bookingCreateErr;
+      throw availOrLockErr;
     }
+
+    if (bookingResult.isDuplicate) {
+      sendSuccess(res, bookingResult.booking, 'تم استرجاع الحجز المؤكد مسبقاً لمنع التكرار', 200);
+      return;
+    }
+
+    const newBooking = bookingResult.booking;
 
     // Update customer stats
     if (customerId) {
@@ -1094,6 +1112,10 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
           }
         );
       }
+    } else if (statusKey === 'cancelled') {
+      booking.cancelledAt = new Date();
+      booking.cancellationSource = 'admin';
+      booking.cancellationReason = note || 'إلغاء بواسطة الإدارة';
     }
 
     await booking.save();
@@ -1331,4 +1353,97 @@ export async function deleteBookingAdmin(req: AuthenticatedAdminRequest, res: Re
     sendError(res, err.message, 500);
   }
 }
+
+export async function cancelBookingCustomer(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { id } = req.params;
+    const { reason, customerPhone } = req.body || {};
+
+    let booking = await Booking.findById(id);
+    if (!booking) {
+      booking = await Booking.findOne({ $or: [{ id }, { bookingNumber: id }] });
+    }
+
+    if (!booking) {
+      sendError(res, 'الطلب غير موجود', 404, 'BOOKING_NOT_FOUND');
+      return;
+    }
+
+    // IDOR Protection: Must be authenticated owner or provide verified matching phone
+    if (req.user) {
+      const isOwner =
+        booking.customerId?.toString() === req.user._id.toString() ||
+        booking.customerPhone === req.user.phone;
+      if (!isOwner) {
+        sendError(res, 'غير مصرح لك بإلغاء هذا الحجز', 403, 'FORBIDDEN_CANCEL');
+        return;
+      }
+    } else {
+      if (!customerPhone || String(customerPhone).trim() !== booking.customerPhone) {
+        sendError(res, 'يرجى تأكيد رقم الهاتف المرتبط بالحجز للمتابعة', 403, 'FORBIDDEN_CANCEL_PHONE_MISMATCH');
+        return;
+      }
+    }
+
+    // Safety checks according to Cleanzo business workflow:
+    // 1. Completed bookings cannot be cancelled
+    if (booking.status === 'completed') {
+      sendError(res, 'لا يمكن إلغاء حجز مكتمل بالفعل', 400, 'CANNOT_CANCEL_COMPLETED');
+      return;
+    }
+    // 2. Already cancelled bookings
+    if (booking.status === 'cancelled') {
+      sendError(res, 'الحجز ملغي بالفعل', 400, 'ALREADY_CANCELLED');
+      return;
+    }
+    // 3. In-progress bookings cannot release or be cancelled blindly while technician is working
+    if (booking.status === 'in_progress') {
+      sendError(res, 'لا يمكن إلغاء الحجز بعد بدء تقديم الخدمة فعلياً', 400, 'CANNOT_CANCEL_IN_PROGRESS');
+      return;
+    }
+
+    booking.status = 'cancelled';
+    booking.cancelledAt = new Date();
+    booking.cancellationSource = 'customer';
+    booking.cancellationReason = reason || 'إلغاء من قبل العميل';
+
+    booking.timeline.push({
+      status: 'cancelled',
+      label: 'تم إلغاء الطلب من قبل العميل',
+      labelEn: 'Cancelled by Customer',
+      timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
+      completed: true,
+      description: reason || 'تم إلغاء الطلب بناءً على رغبة العميل',
+      descriptionEn: 'Order cancelled upon customer request',
+      changedBy: req.user?.name || booking.customerName || 'customer',
+    });
+
+    await booking.save();
+
+    // Trigger dynamic schedule recalculation / compression
+    const nowCairo = getCurrentCairoTimeString();
+    await compressScheduleAfterCancellation(booking, nowCairo, req.user?.name || booking.customerName || 'Customer');
+
+    // Automatic Notification Dispatches
+    try {
+      await Notification.create({
+        target: 'admin',
+        title: `إلغاء حجز #${booking.id}`,
+        titleEn: `Booking Cancelled #${booking.id}`,
+        message: `قام العميل ${booking.customerName} بإلغاء الطلب #${booking.id}. السبب: ${booking.cancellationReason}`,
+        messageEn: `Customer ${booking.customerName} cancelled order #${booking.id}`,
+        type: 'order',
+        read: false,
+        link: `/admin/orders/${booking.id}`,
+      });
+    } catch (notifErr) {
+      console.warn('Non-critical: Cancellation notification error:', notifErr);
+    }
+
+    sendSuccess(res, booking, 'تم إلغاء الحجز بنجاح وإتاحة الموعد');
+  } catch (err: any) {
+    sendError(res, err.message, 500);
+  }
+}
+
 

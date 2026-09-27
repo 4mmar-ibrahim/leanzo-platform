@@ -4,8 +4,12 @@ import { SystemSettings } from '../models/SystemSettings.js';
 import { AuditLog } from '../models/AuditLog.js';
 
 export interface TimeSlotOption {
-  time: string; // e.g. "10:00 AM"
-  time24: string; // e.g. "10:00"
+  time: string; // e.g. "13:00 – 13:30"
+  time24: string; // e.g. "13:00"
+  label: string; // e.g. "13:00 – 13:30"
+  labelEn: string; // e.g. "13:00 – 13:30"
+  start: string; // "13:00"
+  end: string; // "13:30"
   available: boolean;
   reason?: string;
   serviceDurationMinutes?: number;
@@ -51,15 +55,54 @@ export function getCurrentCairoDateString(): string {
 }
 
 /**
- * Converts "10:00", "10:00 AM", "02:30 PM" to minutes from midnight (0..1439)
+ * Returns time string in Africa/Cairo timezone ("HH:mm") for a given Date
+ */
+export function getCairoTimeFromDate(date: Date): string {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Africa/Cairo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    return formatter.format(date);
+  } catch {
+    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+  }
+}
+
+/**
+ * Returns date string in Africa/Cairo timezone ("YYYY-MM-DD") for a given Date
+ */
+export function getCairoDateFromDate(date: Date): string {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Cairo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    return formatter.format(date);
+  } catch {
+    return date.toISOString().split('T')[0];
+  }
+}
+
+/**
+ * Converts "13:00", "13:00 – 13:30", "10:00 AM", "02:30 PM" to minutes from midnight (0..1439).
+ * If a range is provided (e.g. "13:00 – 13:30"), extracts the start time.
  */
 export function timeStringToMinutes(timeStr: string): number {
   if (!timeStr) return 0;
-  const clean = timeStr.trim().toUpperCase();
-  const isPM = clean.includes('PM');
-  const isAM = clean.includes('AM');
+  const raw = String(timeStr).trim();
+  // If it's a range like "13:00 – 13:30" or "13:00 - 13:30", extract the start portion
+  const firstPart = raw.split(/[-–—]/)[0].trim();
 
-  const timePart = clean.replace(/(AM|PM)/g, '').trim();
+  const clean = firstPart.toUpperCase();
+  const isPM = clean.includes('PM') || clean.includes('مساء');
+  const isAM = clean.includes('AM') || clean.includes('صباح');
+
+  const timePart = clean.replace(/(AM|PM|مساءً|صباحاً|مساء|صباح)/g, '').trim();
   const [hourStr, minuteStr] = timePart.split(':');
   let hours = parseInt(hourStr || '0', 10);
   const minutes = parseInt(minuteStr || '0', 10);
@@ -73,7 +116,12 @@ export function timeStringToMinutes(timeStr: string): number {
 /**
  * Converts minutes from midnight back to 12-hour and 24-hour formats
  */
-export function minutesToDisplayTime(totalMinutes: number): { time12: string; time24: string } {
+export function minutesToDisplayTime(totalMinutes: number): {
+  time12: string;
+  time24: string;
+  time12Ar: string;
+  time12En: string;
+} {
   const normalized = Math.max(0, Math.min(1439, totalMinutes));
   const hours = Math.floor(normalized / 60);
   const mins = normalized % 60;
@@ -82,11 +130,16 @@ export function minutesToDisplayTime(totalMinutes: number): { time12: string; ti
   const minsStr = mins.toString().padStart(2, '0');
   const time24 = `${hours24Str}:${minsStr}`;
 
-  const period = hours >= 12 ? 'PM' : 'AM';
+  const periodEn = hours >= 12 ? 'PM' : 'AM';
+  const periodAr = hours >= 12 ? (hours >= 17 ? 'مساءً' : 'ظهراً') : 'صباحاً';
   const hours12 = hours % 12 === 0 ? 12 : hours % 12;
-  const time12 = `${hours12.toString().padStart(2, '0')}:${minsStr} ${period}`;
+  const hours12Str = hours12.toString().padStart(2, '0');
 
-  return { time12, time24 };
+  const time12 = `${hours12Str}:${minsStr} ${periodEn}`;
+  const time12Ar = `${hours12Str}:${minsStr} ${periodAr}`;
+  const time12En = `${hours12Str}:${minsStr} ${periodEn}`;
+
+  return { time12, time24, time12Ar, time12En };
 }
 
 /**
@@ -121,7 +174,7 @@ export async function getEffectiveBookingSettings() {
     bufferTime: b.bufferTime !== undefined ? Number(b.bufferTime) : 15,
     maxBookingsPerSlot: Number(b.maxBookingsPerSlot) || 1,
     advanceBookingDays: Number(b.advanceBookingDays) || 14,
-    minNoticeHours: Number(b.minNoticeHours) || 1,
+    minNoticeHours: Number(b.minNoticeHours) || 0,
     sameDayBooking: b.sameDayBooking !== undefined ? Boolean(b.sameDayBooking) : true,
     blockedDates: Array.isArray(b.blockedDates) ? b.blockedDates : [],
     holidays: Array.isArray(b.holidays) ? b.holidays : [],
@@ -130,7 +183,8 @@ export async function getEffectiveBookingSettings() {
 
 /**
  * Resolves the service's duration, travel time, and total occupancy.
- * Formula: totalOccupancy = serviceDurationMinutes + travelTimeMinutes
+ * Formula: totalOccupiedMinutes = serviceDurationMinutes + travelTimeMinutes
+ * NO roundings to 30 or 60 minutes - minute-level precision is strictly preserved.
  */
 export async function resolveServiceTiming(
   serviceId?: string,
@@ -156,7 +210,7 @@ export async function resolveServiceTiming(
     }
   }
 
-  const duration = customDuration || 45;
+  const duration = customDuration !== undefined && customDuration > 0 ? customDuration : 45;
   return {
     serviceDurationMinutes: duration,
     travelTimeMinutes: fallbackTravel,
@@ -165,8 +219,37 @@ export async function resolveServiceTiming(
 }
 
 /**
- * Availability Engine: Generates real availability for any given date and service
- * Scopes conflict detection to the same serviceId (or same technician).
+ * In-memory concurrency lock to serialize simultaneous booking submissions per (date, serviceId)
+ */
+const bookingResourceLocks = new Map<string, Promise<void>>();
+
+export async function withBookingLock<T>(lockKey: string, task: () => Promise<T>): Promise<T> {
+  while (bookingResourceLocks.has(lockKey)) {
+    await bookingResourceLocks.get(lockKey);
+  }
+
+  let releaseLock: () => void;
+  const lockPromise = new Promise<void>((resolve) => {
+    releaseLock = resolve;
+  });
+  bookingResourceLocks.set(lockKey, lockPromise);
+
+  try {
+    return await task();
+  } finally {
+    bookingResourceLocks.delete(lockKey);
+    releaseLock!();
+  }
+}
+
+/**
+ * Availability Engine (Model A: Dynamic Continuous Sequential Scheduling)
+ * Generates continuous sequential appointments:
+ * - Next appointment starts exactly when previous ends.
+ * - Total duration = serviceDuration + travelDuration.
+ * - Active bookings block their exact occupied intervals.
+ * - Cancelled bookings release future remaining time.
+ * - In-progress and completed bookings cannot release time.
  */
 export async function getAvailableSlots(
   dateStr: string,
@@ -181,6 +264,20 @@ export async function getAvailableSlots(
 }> {
   const settings = await getEffectiveBookingSettings();
   const timing = await resolveServiceTiming(serviceId, customDuration, settings.defaultTravelTime);
+
+  // If service is specified, check if service exists and is active
+  if (serviceId) {
+    const srv = await Service.findOne({ id: serviceId });
+    if (!srv || srv.active === false || srv.available === false || srv.isArchived === true) {
+      return {
+        date: dateStr,
+        isDayAvailable: false,
+        dayReason: 'الخدمة المطلوبة غير متاحة حالياً للحجز',
+        serviceTiming: timing,
+        slots: [],
+      };
+    }
+  }
 
   // 1. Check if date is in blocked dates or holidays
   if (settings.blockedDates.includes(dateStr)) {
@@ -233,131 +330,174 @@ export async function getAvailableSlots(
 
   const currentCairoTimeStr = getCurrentCairoTimeString();
   const currentMinutesNow = timeStringToMinutes(currentCairoTimeStr);
-  const earliestAllowedMinutes = currentMinutesNow + settings.minNoticeHours * 60;
+  const earliestAllowedMinutes = isToday
+    ? currentMinutesNow + (settings.minNoticeHours || 0) * 60
+    : 0;
 
-  // 4. Fetch active bookings on this date for the SAME service (or assigned technician)
-  const bookingQuery: any = {
-    date: dateStr,
-    status: { $nin: ['cancelled'] },
-  };
-
+  // 4. Fetch all bookings on this date for this service (or all services if not scoped)
+  const bookingQuery: any = { date: dateStr };
   if (serviceId) {
     bookingQuery.serviceId = serviceId;
   }
 
-  const existingBookings = await Booking.find(bookingQuery).select(
-    'serviceId time timeSlotStart scheduledStart scheduledEnd duration serviceDurationMinutes travelTimeMinutes totalOccupiedMinutes assignedTechnicianId'
+  const allBookings = await Booking.find(bookingQuery).select(
+    'id status scheduledStart scheduledEnd timeSlotStart time duration serviceDurationMinutes travelTimeMinutes totalOccupiedMinutes cancelledAt timeline assignedTechnicianId metadata'
   );
 
-  // Map to minute intervals
-  const existingIntervals = existingBookings.map((b) => {
-    const startM = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
-    const durM = b.totalOccupiedMinutes || (b.duration || 45) + (b.travelTimeMinutes || 15);
-    return {
-      start: startM,
-      end: startM + durM,
-      serviceId: b.serviceId,
-      technicianId: b.assignedTechnicianId,
-    };
-  });
+  // 5. Build occupied intervals
+  // An interval is occupied if:
+  // - Status is in ['pending', 'confirmed', 'assigned', 'in_progress', 'completed']
+  // - OR status is 'cancelled' but service execution was already started (timeline had 'in_progress')
+  // - OR status is 'cancelled' during the slot window: the elapsed portion before cancellation is occupied
+  interface Interval {
+    start: number;
+    end: number;
+  }
+  const occupiedIntervals: Interval[] = [];
 
-  // 5. Generate Candidate Slots
+  for (const b of allBookings) {
+    const bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
+    const bDuration =
+      b.totalOccupiedMinutes ||
+      (b.serviceDurationMinutes ? b.serviceDurationMinutes + (b.travelTimeMinutes || 15) : (b.duration || 45) + (b.travelTimeMinutes || 15));
+    const bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + bDuration;
+
+    if (b.status !== 'cancelled') {
+      // Active booking: occupies [bStart, bEnd]
+      occupiedIntervals.push({ start: bStart, end: bEnd });
+    } else {
+      // Cancelled booking safety rules:
+      const wasStarted = Array.isArray(b.timeline) && b.timeline.some((e: any) => e.status === 'in_progress');
+      if (wasStarted) {
+        // Service execution was already in progress: elapsed/occupied time CANNOT be reopened
+        occupiedIntervals.push({ start: bStart, end: bEnd });
+      } else if (b.cancelledAt) {
+        const cancelDateStr = getCairoDateFromDate(new Date(b.cancelledAt));
+        if (isToday || cancelDateStr === dateStr) {
+          // If cancellation happened during the slot window:
+          const cancelTimeStr = getCairoTimeFromDate(new Date(b.cancelledAt));
+          const cancelMin = timeStringToMinutes(cancelTimeStr);
+          if (cancelMin > bStart && cancelMin < bEnd) {
+            // Time prior to cancellation is elapsed, remaining [cancelMin, bEnd] is released!
+            occupiedIntervals.push({ start: bStart, end: cancelMin });
+          }
+          // If cancelMin <= bStart, cancelled before start -> 0 minutes occupied, completely released!
+        }
+      }
+      // If cancelled prior to start time: completely released (not added to occupiedIntervals)
+    }
+  }
+
+  // Add working break time as occupied interval if configured
+  if (settings.breakStart && settings.breakEnd) {
+    const breakStart = timeStringToMinutes(settings.breakStart);
+    const breakEnd = timeStringToMinutes(settings.breakEnd);
+    if (breakEnd > breakStart) {
+      occupiedIntervals.push({ start: breakStart, end: breakEnd });
+    }
+  }
+
   const workStartMin = timeStringToMinutes(settings.workingHoursStart);
   const workEndMin = timeStringToMinutes(settings.workingHoursEnd);
-  const slots: TimeSlotOption[] = [];
 
-  for (
-    let slotMin = workStartMin;
-    slotMin + timing.totalOccupiedMinutes <= workEndMin;
-    slotMin += settings.slotInterval
-  ) {
-    const { time12, time24 } = minutesToDisplayTime(slotMin);
-    const candidateEnd = slotMin + timing.totalOccupiedMinutes;
-    const { time24: scheduledEnd24 } = minutesToDisplayTime(candidateEnd);
+  // Clamp and filter occupied intervals to working hours
+  const validOccupied = occupiedIntervals
+    .map((int) => ({
+      start: Math.max(workStartMin, int.start),
+      end: Math.min(workEndMin, int.end),
+    }))
+    .filter((int) => int.end > int.start)
+    .sort((a, b) => a.start - b.start);
 
-    // Check past time if today
-    if (isToday && slotMin < earliestAllowedMinutes) {
-      slots.push({
-        time: time12,
-        time24,
-        available: false,
-        reason: 'تجاوز وقت الحجز المسبق المطلوب',
-        serviceDurationMinutes: timing.serviceDurationMinutes,
-        travelTimeMinutes: timing.travelTimeMinutes,
-        totalOccupiedMinutes: timing.totalOccupiedMinutes,
-        scheduledStart: time24,
-        scheduledEnd: scheduledEnd24,
-      });
-      continue;
+  // Merge overlapping or abutting occupied intervals
+  const mergedOccupied: Interval[] = [];
+  for (const int of validOccupied) {
+    if (mergedOccupied.length === 0) {
+      mergedOccupied.push({ ...int });
+    } else {
+      const prev = mergedOccupied[mergedOccupied.length - 1];
+      if (int.start <= prev.end) {
+        prev.end = Math.max(prev.end, int.end);
+      } else {
+        mergedOccupied.push({ ...int });
+      }
     }
+  }
 
-    // Check break time
-    if (settings.breakStart && settings.breakEnd) {
-      const breakStartMin = timeStringToMinutes(settings.breakStart);
-      const breakEndMin = timeStringToMinutes(settings.breakEnd);
-      if (doIntervalsOverlap(slotMin, candidateEnd, breakStartMin, breakEndMin)) {
-        slots.push({
-          time: time12,
-          time24,
-          available: false,
-          reason: 'فترة استراحة العمل الرسمية',
-          serviceDurationMinutes: timing.serviceDurationMinutes,
-          travelTimeMinutes: timing.travelTimeMinutes,
-          totalOccupiedMinutes: timing.totalOccupiedMinutes,
-          scheduledStart: time24,
-          scheduledEnd: scheduledEnd24,
-        });
+  // 6. Compute Disjoint Free Blocks within working window
+  const freeBlocks: Interval[] = [];
+  let blockCursor = workStartMin;
+
+  for (const occ of mergedOccupied) {
+    if (occ.start > blockCursor) {
+      freeBlocks.push({ start: blockCursor, end: occ.start });
+    }
+    blockCursor = Math.max(blockCursor, occ.end);
+  }
+
+  if (blockCursor < workEndMin) {
+    freeBlocks.push({ start: blockCursor, end: workEndMin });
+  }
+
+  // 7. Continuous Sequential Generation (Model A)
+  // Inside each free block [blockStart, blockEnd]:
+  // First available appointment starts at blockStart.
+  // Next appointment starts exactly when previous ends.
+  const slots: TimeSlotOption[] = [];
+  const requiredDuration = timing.totalOccupiedMinutes;
+
+  for (const block of freeBlocks) {
+    let slotStart = block.start;
+
+    while (slotStart + requiredDuration <= block.end) {
+      const slotEnd = slotStart + requiredDuration;
+
+      // Current time filtering: past slots for today must not be offered
+      if (isToday && slotStart < earliestAllowedMinutes) {
+        slotStart = slotEnd;
         continue;
       }
-    }
 
-    // Check overlap with existing bookings of the SAME service
-    let overlapCount = 0;
-    for (const interval of existingIntervals) {
-      const isSameService = !serviceId || interval.serviceId === serviceId;
-      if (isSameService && doIntervalsOverlap(slotMin, candidateEnd, interval.start, interval.end)) {
-        overlapCount++;
-      }
-    }
+      const { time24: start24, time12Ar: start12Ar } = minutesToDisplayTime(slotStart);
+      const { time24: end24, time12Ar: end12Ar } = minutesToDisplayTime(slotEnd);
 
-    const maxAllowed = settings.maxBookingsPerSlot || 1;
-    if (overlapCount >= maxAllowed) {
+      const intervalLabel = `${start24} – ${end24}`;
+      const intervalLabelEn = `${start24} – ${end24}`;
+
       slots.push({
-        time: time12,
-        time24,
-        available: false,
-        reason: 'هذا الموعد مكتمل بالكامل لهذه الخدمة',
-        serviceDurationMinutes: timing.serviceDurationMinutes,
-        travelTimeMinutes: timing.travelTimeMinutes,
-        totalOccupiedMinutes: timing.totalOccupiedMinutes,
-        scheduledStart: time24,
-        scheduledEnd: scheduledEnd24,
-      });
-    } else {
-      slots.push({
-        time: time12,
-        time24,
+        time: intervalLabel,
+        time24: start24,
+        label: intervalLabel,
+        labelEn: intervalLabelEn,
+        start: start24,
+        end: end24,
         available: true,
         serviceDurationMinutes: timing.serviceDurationMinutes,
         travelTimeMinutes: timing.travelTimeMinutes,
         totalOccupiedMinutes: timing.totalOccupiedMinutes,
-        scheduledStart: time24,
-        scheduledEnd: scheduledEnd24,
+        scheduledStart: start24,
+        scheduledEnd: end24,
       });
+
+      // Next appointment starts exactly when previous appointment ends
+      slotStart = slotEnd;
     }
   }
 
   return {
     date: dateStr,
-    isDayAvailable: slots.some((s) => s.available),
+    isDayAvailable: slots.length > 0,
+    dayReason: slots.length === 0 ? 'لا توجد مواعيد متاحة لهذا اليوم' : undefined,
     serviceTiming: timing,
     slots,
   };
 }
 
 /**
- * Strict Authority: Server-side validation before saving any booking
- * Throws 409 Conflict if overlap detected for the same service.
+ * Strict Authority: Server-side validation before saving any booking.
+ * Calculates endTime = startTime + serviceDuration + travelDuration on backend.
+ * Checks boundary against working hours and validates zero collision with existing active bookings.
+ * Throws 409 Conflict if overlap detected.
  */
 export async function assertSlotAvailability(params: {
   dateStr: string;
@@ -374,10 +514,20 @@ export async function assertSlotAvailability(params: {
   totalOccupiedMinutes: number;
 }> {
   const { dateStr, timeStr, serviceId, customDuration, excludeBookingId, technicianId } = params;
-  const settings = await getEffectiveBookingSettings();
-  const timing = await resolveServiceTiming(serviceId, customDuration);
 
-  // 0. Blocked dates, holidays and working days validation
+  if (!serviceId) {
+    throw new Error('معرف الخدمة مطلوب للتحقق من الموعد');
+  }
+
+  const srv = await Service.findOne({ id: serviceId });
+  if (!srv || srv.active === false || srv.available === false || srv.isArchived === true) {
+    throw new Error('الخدمة المطلوبة غير متاحة حالياً');
+  }
+
+  const settings = await getEffectiveBookingSettings();
+  const timing = await resolveServiceTiming(serviceId, customDuration, settings.defaultTravelTime);
+
+  // 1. Blocked dates, holidays, working days validation
   if (settings.blockedDates.includes(dateStr)) {
     throw new Error('هذا اليوم مغلق بالكامل ومحجوب للصيانة');
   }
@@ -397,24 +547,35 @@ export async function assertSlotAvailability(params: {
   const workStartMin = timeStringToMinutes(settings.workingHoursStart);
   const workEndMin = timeStringToMinutes(settings.workingHoursEnd);
 
-  // 1. Working Hours & Day Boundary Check
+  // 2. Working Hours & Day Boundary Check
   if (slotStartMin < workStartMin || slotEndMin > workEndMin) {
     throw new Error('الوقت المحدد يقع خارج ساعات العمل الرسمية لسيارات الخدمة');
   }
 
-  // 2. Past time and same-day check if today
+  // 3. Break time check
+  if (settings.breakStart && settings.breakEnd) {
+    const breakStart = timeStringToMinutes(settings.breakStart);
+    const breakEnd = timeStringToMinutes(settings.breakEnd);
+    if (doIntervalsOverlap(slotStartMin, slotEndMin, breakStart, breakEnd)) {
+      throw new Error('الموعد يتعارض مع فترة الاستراحة الرسمية لسيارات الخدمة');
+    }
+  }
+
+  // 4. Past time and same-day check if today
   const todayStr = getCurrentCairoDateString();
-  if (dateStr === todayStr) {
+  const isToday = dateStr === todayStr;
+  if (isToday) {
     if (settings.sameDayBooking === false) {
       throw new Error('الحجز في نفس اليوم غير متاح حسب قواعد وسياسة الحجز');
     }
     const currentCairoMin = timeStringToMinutes(getCurrentCairoTimeString());
-    if (slotStartMin < currentCairoMin) {
+    const minAllowed = currentCairoMin + (settings.minNoticeHours || 0) * 60;
+    if (slotStartMin < minAllowed) {
       throw new Error('لا يمكن حجز موعد في وقت قد مضى');
     }
   }
 
-  // 3. Query active bookings on that date:
+  // 5. Query active bookings on that date for this service or technician
   const conflictOr: any[] = [{ serviceId }];
   if (technicianId) {
     conflictOr.push({ assignedTechnicianId: technicianId });
@@ -423,38 +584,53 @@ export async function assertSlotAvailability(params: {
   const query: any = {
     date: dateStr,
     $or: conflictOr,
-    status: { $nin: ['cancelled'] },
   };
   if (excludeBookingId) {
     query.id = { $ne: excludeBookingId };
   }
 
   const existingBookings = await Booking.find(query).select(
-    'id scheduledStart scheduledEnd timeSlotStart duration totalOccupiedMinutes travelTimeMinutes serviceId assignedTechnicianId'
+    'id status scheduledStart scheduledEnd timeSlotStart time duration totalOccupiedMinutes travelTimeMinutes serviceId assignedTechnicianId cancelledAt timeline'
   );
 
-  let overlapCount = 0;
   for (const b of existingBookings) {
-    if (technicianId) {
-      if (b.assignedTechnicianId && b.assignedTechnicianId !== technicianId) {
-        continue;
+    if (technicianId && b.assignedTechnicianId && b.assignedTechnicianId !== technicianId) {
+      continue;
+    }
+
+    const bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
+    const bDuration =
+      b.totalOccupiedMinutes ||
+      (b.serviceDurationMinutes ? b.serviceDurationMinutes + (b.travelTimeMinutes || 15) : (b.duration || 45) + (b.travelTimeMinutes || 15));
+    const bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + bDuration;
+
+    let isOccupied = false;
+    let occStart = bStart;
+    let occEnd = bEnd;
+
+    if (b.status !== 'cancelled') {
+      isOccupied = true;
+    } else {
+      // Cancelled booking check:
+      const wasStarted = Array.isArray(b.timeline) && b.timeline.some((e: any) => e.status === 'in_progress');
+      if (wasStarted) {
+        isOccupied = true;
+      } else if (isToday && b.cancelledAt) {
+        const cancelTimeStr = getCairoTimeFromDate(new Date(b.cancelledAt));
+        const cancelMin = timeStringToMinutes(cancelTimeStr);
+        if (cancelMin > bStart && cancelMin < bEnd) {
+          isOccupied = true;
+          occEnd = cancelMin;
+        }
       }
     }
 
-    const bStartMin = timeStringToMinutes(b.scheduledStart || b.timeSlotStart);
-    const bEndMin =
-      b.totalOccupiedMinutes !== undefined
-        ? bStartMin + b.totalOccupiedMinutes
-        : timeStringToMinutes(b.scheduledEnd) || bStartMin + (b.duration || 60);
-
-    if (doIntervalsOverlap(slotStartMin, slotEndMin, bStartMin, bEndMin)) {
-      overlapCount++;
+    if (isOccupied && doIntervalsOverlap(slotStartMin, slotEndMin, occStart, occEnd)) {
+      const conflictErr: any = new Error('الموعد لم يعد متاحًا، يرجى اختيار موعد آخر.');
+      conflictErr.statusCode = 409;
+      conflictErr.code = 'SLOT_UNAVAILABLE';
+      throw conflictErr;
     }
-  }
-
-  const maxAllowed = settings.maxBookingsPerSlot || 1;
-  if (overlapCount >= maxAllowed) {
-    throw new Error('هذا الموعد محجوز بالفعل لهذه الخدمة، يرجى اختيار موعد آخر.');
   }
 
   const { time24: scheduledStart } = minutesToDisplayTime(slotStartMin);
@@ -485,13 +661,12 @@ export async function compressScheduleAfterCancellation(
     const workEndMin = timeStringToMinutes(settings.workingHoursEnd);
 
     const scheduledStartMin = timeStringToMinutes(
-      cancelledBooking.scheduledStart || cancelledBooking.timeSlotStart
+      cancelledBooking.scheduledStart || cancelledBooking.timeSlotStart || cancelledBooking.time
     );
     const scheduledEndMin =
       timeStringToMinutes(cancelledBooking.scheduledEnd) ||
       scheduledStartMin + (cancelledBooking.totalOccupiedMinutes || 60);
 
-    // Determine the effective point from which the schedule is freed:
     let effectiveFreeStartMin = scheduledStartMin;
     if (cancellationTimeStr) {
       const cancelMin = timeStringToMinutes(cancellationTimeStr);
@@ -500,11 +675,10 @@ export async function compressScheduleAfterCancellation(
       }
     }
 
-    // Find subsequent active bookings for the same service on that day
     const subsequentBookings = await Booking.find({
       date: cancelledBooking.date,
       serviceId: cancelledBooking.serviceId,
-      status: { $in: ['pending', 'confirmed'] }, // Only pending or confirmed (NEVER completed, past, or cancelled)
+      status: { $in: ['pending', 'confirmed'] },
       _id: { $ne: cancelledBooking._id },
       id: { $ne: cancelledBooking.id },
     }).sort({ scheduledStart: 1, timeSlotStart: 1 });
@@ -512,10 +686,9 @@ export async function compressScheduleAfterCancellation(
     let currentAnchorMin = effectiveFreeStartMin;
 
     for (const b of subsequentBookings) {
-      const bStartMin = timeStringToMinutes(b.scheduledStart || b.timeSlotStart);
+      const bStartMin = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
       const bOccupiedMin = b.totalOccupiedMinutes || (b.duration || 45) + (b.travelTimeMinutes || 15);
 
-      // Only consider bookings scheduled AFTER our currentAnchorMin
       if (bStartMin <= currentAnchorMin) {
         continue;
       }
@@ -523,13 +696,10 @@ export async function compressScheduleAfterCancellation(
       const candidateNewStartMin = currentAnchorMin;
       const candidateNewEndMin = candidateNewStartMin + bOccupiedMin;
 
-      // Check safety: within working hours
       if (candidateNewEndMin > workEndMin) {
-        break; // Cannot fit
+        break;
       }
 
-      // Check safety: must not conflict with any other existing booking
-      // Exclude both self and the cancelled booking being vacated
       const otherBookings = await Booking.find({
         date: b.date,
         serviceId: b.serviceId,
@@ -540,7 +710,7 @@ export async function compressScheduleAfterCancellation(
 
       let hasCollision = false;
       for (const ob of otherBookings) {
-        const obStart = timeStringToMinutes(ob.scheduledStart || ob.timeSlotStart);
+        const obStart = timeStringToMinutes(ob.scheduledStart || ob.timeSlotStart || ob.time);
         const obEnd = obStart + (ob.totalOccupiedMinutes || 60);
         if (doIntervalsOverlap(candidateNewStartMin, candidateNewEndMin, obStart, obEnd)) {
           hasCollision = true;
@@ -549,7 +719,6 @@ export async function compressScheduleAfterCancellation(
       }
 
       if (!hasCollision) {
-        // Shift this booking forward!
         const { time12: newTime12, time24: newTime24 } = minutesToDisplayTime(candidateNewStartMin);
         const { time24: newEnd24 } = minutesToDisplayTime(candidateNewEndMin);
         const previousTime = b.time;
@@ -557,7 +726,7 @@ export async function compressScheduleAfterCancellation(
         b.scheduledStart = newTime24;
         b.scheduledEnd = newEnd24;
         b.timeSlotStart = newTime24;
-        b.time = newTime12;
+        b.time = `${newTime24} – ${newEnd24}`;
         b.rescheduledFrom = previousTime;
 
         b.timeline.push({
@@ -566,8 +735,8 @@ export async function compressScheduleAfterCancellation(
           labelEn: 'Dynamic Rescheduling',
           timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
           completed: true,
-          description: `تم تقديم موعد الحجز تلقائياً من (${previousTime}) إلى (${newTime12}) إثر إلغاء حجز سابق.`,
-          descriptionEn: `Appointment compressed earlier from ${previousTime} to ${newTime12} due to schedule gap.`,
+          description: `تم تقديم موعد الحجز تلقائياً من (${previousTime}) إلى (${newTime24} – ${newEnd24}) إثر إلغاء حجز سابق.`,
+          descriptionEn: `Appointment compressed earlier from ${previousTime} to ${newTime24} – ${newEnd24} due to schedule gap.`,
           changedBy,
         });
 
@@ -576,10 +745,9 @@ export async function compressScheduleAfterCancellation(
         shiftedBookings.push({
           orderId: b.id,
           previousStart: previousTime,
-          newStart: newTime12,
+          newStart: `${newTime24} – ${newEnd24}`,
         });
 
-        // Log to Audit Trail
         await AuditLog.create({
           adminId: 'system-scheduler',
           adminName: changedBy,
@@ -587,19 +755,17 @@ export async function compressScheduleAfterCancellation(
           action: 'إعادة جدولة وضغط تلقائي للمواعيد',
           module: 'bookings',
           target: b.id,
-          details: `تم تقديم موعد الطلب (${b.id}) من ${previousTime} إلى ${newTime12} بعد إلغاء الطلب (${cancelledBooking.id})`,
+          details: `تم تقديم موعد الطلب (${b.id}) من ${previousTime} إلى ${newTime24} – ${newEnd24} بعد إلغاء الطلب (${cancelledBooking.id})`,
           metadata: {
             orderId: b.id,
             cancelledOrderId: cancelledBooking.id,
             previousStart: previousTime,
-            newStart: newTime12,
+            newStart: `${newTime24} – ${newEnd24}`,
           },
         });
 
-        // Advance anchor to end of this newly shifted booking
         currentAnchorMin = candidateNewEndMin;
       } else {
-        // Stop sequential shifting if a collision or immovable booking is hit
         break;
       }
     }

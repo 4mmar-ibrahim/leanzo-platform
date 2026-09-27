@@ -44,15 +44,19 @@ export function StepDateTime() {
     cleanzoApi.availability
       .checkDate(selectedDate, selectedService?.id, duration)
       .then((res) => {
-        if (isMounted && res?.slots && res.slots.length > 0) {
-          const formattedSlots: BookingSlot[] = res.slots.map((slot: { time: string; available: boolean; reason?: string }) => ({
-            time: slot.time,
-            label: slot.time,
-            labelEn: slot.time,
-            isAvailable: slot.available,
-            reason: slot.reason,
-          }));
-          setLiveSlots(formattedSlots);
+        if (isMounted) {
+          if (res?.slots && Array.isArray(res.slots)) {
+            const formattedSlots: BookingSlot[] = res.slots.map((slot: any) => ({
+              time: slot.label || slot.time,
+              label: slot.label || slot.time,
+              labelEn: slot.labelEn || slot.time,
+              isAvailable: slot.available,
+              reason: slot.reason,
+            }));
+            setLiveSlots(formattedSlots);
+          } else {
+            setLiveSlots([]);
+          }
         }
       })
       .catch(() => {
@@ -69,7 +73,7 @@ export function StepDateTime() {
     if (!selectedDate) return [];
 
     let baseSlots: BookingSlot[] = [];
-    if (liveSlots && liveSlots.length > 0) {
+    if (liveSlots !== null) {
       baseSlots = [...liveSlots];
     } else {
       baseSlots = getTimeSlotsForDate(
@@ -77,7 +81,9 @@ export function StepDateTime() {
         bookingSettings,
         selectedService?.id,
         selectedService?.title,
-        orders
+        orders,
+        selectedService?.serviceDurationMinutes || selectedService?.duration,
+        selectedService?.travelTimeMinutes
       );
     }
 
@@ -175,43 +181,55 @@ export function StepDateTime() {
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {timeSlots.map((slot) => {
-            const isSelected = selectedTime === slot.time;
-            const isAvailable = slot.isAvailable;
+        {timeSlots.length === 0 ? (
+          <div className="p-8 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-center space-y-2">
+            <Ban className="w-8 h-8 text-amber-500 mx-auto opacity-70" />
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+              {isAr ? 'لا توجد مواعيد متاحة لهذا اليوم' : 'No available slots for this date'}
+            </p>
+            <p className="text-xs text-slate-400">
+              {isAr ? 'يرجى اختيار يوم آخر للمتابعة' : 'Please select another date to proceed'}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {timeSlots.map((slot) => {
+              const isSelected = selectedTime === slot.time;
+              const isAvailable = slot.isAvailable;
 
-            return (
-              <button
-                key={slot.time}
-                type="button"
-                disabled={!isAvailable}
-                onClick={() => isAvailable && setTime(slot.time)}
-                className={`p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-1 transition-all ${
-                  !isAvailable
-                    ? 'border-slate-200/50 dark:border-slate-800/40 bg-slate-100/50 dark:bg-slate-950/40 opacity-50 cursor-not-allowed text-slate-400'
-                    : isSelected
-                    ? 'border-[#0866C6] bg-blue-50 dark:bg-[#082845] text-[#0866C6] dark:text-white shadow-md ring-1 ring-[#0866C6]/50'
-                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <span className="text-sm font-bold">
-                  {isAr ? slot.label : slot.labelEn}
-                </span>
-                <span className="text-[10px] font-medium">
-                  {isAvailable ? (
-                    <span className="text-[#0866C6] dark:text-[#83AED0] font-semibold">
-                      {isAr ? 'متاح' : 'Available'}
-                    </span>
-                  ) : (
-                    <span className="text-[#F0444C] font-semibold">
-                      {slot.reason || (isAr ? 'غير متاح' : 'Unavailable')}
-                    </span>
-                  )}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+              return (
+                <button
+                  key={slot.time}
+                  type="button"
+                  disabled={!isAvailable}
+                  onClick={() => isAvailable && setTime(slot.time)}
+                  className={`p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-1 transition-all ${
+                    !isAvailable
+                      ? 'border-slate-200/50 dark:border-slate-800/40 bg-slate-100/50 dark:bg-slate-950/40 opacity-50 cursor-not-allowed text-slate-400'
+                      : isSelected
+                      ? 'border-[#0866C6] bg-blue-50 dark:bg-[#082845] text-[#0866C6] dark:text-white shadow-md ring-1 ring-[#0866C6]/50'
+                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <span className="text-sm font-bold font-mono">
+                    {isAr ? slot.label : slot.labelEn}
+                  </span>
+                  <span className="text-[10px] font-medium">
+                    {isAvailable ? (
+                      <span className="text-[#0866C6] dark:text-[#83AED0] font-semibold">
+                        {isAr ? 'متاح' : 'Available'}
+                      </span>
+                    ) : (
+                      <span className="text-[#F0444C] font-semibold">
+                        {slot.reason || (isAr ? 'غير متاح' : 'Unavailable')}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Notice info */}

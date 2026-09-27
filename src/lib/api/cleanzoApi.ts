@@ -202,7 +202,19 @@ export const cleanzoApi = {
         date: string;
         isDayAvailable: boolean;
         dayReason?: string;
-        slots: Array<{ time: string; time24: string; available: boolean; reason?: string }>;
+        slots: Array<{
+          time: string;
+          time24: string;
+          label?: string;
+          labelEn?: string;
+          start?: string;
+          end?: string;
+          available: boolean;
+          reason?: string;
+          serviceDurationMinutes?: number;
+          travelTimeMinutes?: number;
+          totalOccupiedMinutes?: number;
+        }>;
       }>(`/availability?${params.toString()}`);
     },
     validateSlot: (date: string, time: string, serviceId?: string, duration?: number) =>
@@ -235,6 +247,11 @@ export const cleanzoApi = {
     getBookingById: (id: string) => apiRequest<Order>(`/bookings/${id}`),
     trackOrder: (id: string, phone?: string) =>
       apiRequest<Order>(`/bookings/track/${id}${phone ? `?phone=${phone}` : ''}`),
+    cancel: (id: string, reason?: string, customerPhone?: string) =>
+      apiRequest<Order>(`/bookings/${id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason, customerPhone }),
+      }),
   },
 
   // Customer Addresses (Anti-IDOR)
