@@ -12,3 +12,5 @@ uploads/images/*
 uploads/videos/*
 !uploads/videos/.gitkeep
 *.log
+data/snapshots/
+backend/data/snapshots/
