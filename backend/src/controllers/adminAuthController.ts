@@ -77,83 +77,43 @@ export async function resolveEffectivePermissions(admin: IAdminUser): Promise<Re
 }
 
 /**
-/**
- * Automatically guarantees default platform owner credentials exist and are active (admin / 123456)
+ * Bootstraps initial platform owner if no admin users exist in the system.
+ * Uses ADMIN_BOOTSTRAP_USERNAME, ADMIN_BOOTSTRAP_EMAIL, ADMIN_BOOTSTRAP_PASSWORD, ADMIN_BOOTSTRAP_PHONE.
  */
 export async function ensureDefaultAdminUsers(): Promise<void> {
   try {
-    const salt = await bcrypt.genSalt(10);
-    const targetPasswordHash = await bcrypt.hash('123456', salt);
+    const existingAdmin = await AdminUser.findOne({});
+    if (existingAdmin) {
+      return;
+    }
 
-    // 1. Find existing admin by username 'admin' or update existing owner (e.g. ahmed.owner)
-    let admin = await AdminUser.findOne({
-      $or: [
-        { username: 'admin' },
-        { username: 'ahmed.owner' },
-        { email: 'admin@cleanzo.com' },
-        { email: 'ahmed.owner@cleanzo.com' },
-      ],
+    const username = process.env.ADMIN_BOOTSTRAP_USERNAME?.trim();
+    const email = process.env.ADMIN_BOOTSTRAP_EMAIL?.trim();
+    const password = process.env.ADMIN_BOOTSTRAP_PASSWORD;
+    const phone = process.env.ADMIN_BOOTSTRAP_PHONE?.trim();
+
+    if (!username || !email || !password || !phone) {
+      console.warn('⚠️ [AdminAuth] No admin users exist and ADMIN_BOOTSTRAP_* environment variables are missing. Skipping admin bootstrap.');
+      return;
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const targetPasswordHash = await bcrypt.hash(password, salt);
+
+    await AdminUser.create({
+      name: 'مدير النظام (Admin)',
+      username: username.toLowerCase(),
+      email: email.toLowerCase(),
+      phone,
+      password: targetPasswordHash,
+      role: 'owner',
+      userType: 'admin',
+      status: 'active',
+      permissions: {},
+      granularPermissions: ['*'],
     });
 
-    if (!admin) {
-      await AdminUser.create({
-        name: 'مدير النظام (Admin)',
-        username: 'admin',
-        email: 'admin@cleanzo.com',
-        phone: '01000000000',
-        password: targetPasswordHash,
-        role: 'owner',
-        userType: 'admin',
-        status: 'active',
-        permissions: {},
-        granularPermissions: ['*'],
-      });
-      console.log('✅ [AdminAuth] Default platform owner "admin" created successfully');
-    } else {
-      let updated = false;
-      if (admin.username !== 'admin') {
-        admin.username = 'admin';
-        updated = true;
-      }
-      if (admin.email !== 'admin@cleanzo.com') {
-        admin.email = 'admin@cleanzo.com';
-        updated = true;
-      }
-      if (admin.name !== 'مدير النظام (Admin)' && admin.name !== 'Admin') {
-        admin.name = 'مدير النظام (Admin)';
-        updated = true;
-      }
-      if (admin.status !== 'active') {
-        admin.status = 'active';
-        updated = true;
-      }
-      if (admin.role !== 'owner') {
-        admin.role = 'owner';
-        updated = true;
-      }
-      if (admin.userType !== 'admin') {
-        admin.userType = 'admin';
-        updated = true;
-      }
-      const matches = await admin.comparePassword('123456');
-      if (!matches) {
-        admin.password = targetPasswordHash;
-        updated = true;
-      }
-      if (updated) {
-        await admin.save();
-        console.log('✅ [AdminAuth] Platform owner "admin" updated to active with password 123456');
-      }
-    }
-
-    // 2. Remove any other leftover admin accounts so that ONLY 1 Admin account exists
-    const allAdmins = await AdminUser.find({});
-    for (const a of allAdmins) {
-      if (a.username !== 'admin') {
-        await AdminUser.deleteOne({ id: a.id });
-        console.log(`🧹 [AdminAuth] Removed extra admin account "${a.username}"`);
-      }
-    }
+    console.log(`✅ [AdminAuth] Platform owner "${username}" bootstrapped successfully`);
   } catch (err) {
     console.error('⚠️ [AdminAuth] Error in ensureDefaultAdminUsers:', err);
   }
@@ -161,8 +121,6 @@ export async function ensureDefaultAdminUsers(): Promise<void> {
 
 export async function loginAdmin(req: Request, res: Response): Promise<void> {
   try {
-    await ensureDefaultAdminUsers();
-
     const { username, password } = req.body;
 
     const clientIp =
