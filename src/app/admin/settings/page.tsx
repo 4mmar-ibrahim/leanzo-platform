@@ -182,7 +182,7 @@ export default function AdminSettingsHubPage() {
     },
     {
       title: 'الهوية والعلامة التجارية (Branding)',
-      desc: 'الشعار، ألوان المنصة، الشريط الإعلاني العلوي، وضع الصيانة، وصور الواجهة',
+      desc: 'الشعار، أيقونة المتصفح (Favicon)، ألوان المنصة، الشريط الإعلاني، ووضع الصيانة',
       href: '/admin/settings/branding',
       icon: Palette,
       color: 'text-purple-500 bg-purple-500/10',

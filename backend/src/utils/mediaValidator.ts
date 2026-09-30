@@ -134,6 +134,42 @@ export function validateMediaBuffer(buffer: Buffer, expectedType?: 'image' | 'vi
     };
   }
 
+  // 7. Check ICO (00 00 01 00)
+  if (
+    buffer[0] === 0x00 &&
+    buffer[1] === 0x00 &&
+    buffer[2] === 0x01 &&
+    buffer[3] === 0x00
+  ) {
+    const imageCount = buffer.readUInt16LE(4);
+    if (imageCount > 0 && imageCount <= 64) {
+      const width = buffer[6] === 0 ? 256 : buffer[6];
+      const height = buffer[7] === 0 ? 256 : buffer[7];
+      return {
+        isValid: true,
+        type: 'image',
+        mimeType: 'image/x-icon',
+        extension: 'ico',
+        width,
+        height,
+      };
+    }
+  }
+
+  // 8. Check SVG (XML text format)
+  const snippet = buffer.subarray(0, 1024).toString('utf8').trim().toLowerCase();
+  if (
+    (snippet.startsWith('<svg') || snippet.startsWith('<?xml') || snippet.startsWith('<!doctype svg')) &&
+    snippet.includes('<svg')
+  ) {
+    return {
+      isValid: true,
+      type: 'image',
+      mimeType: 'image/svg+xml',
+      extension: 'svg',
+    };
+  }
+
   // If we reach here, it's not a supported/safe format
   return {
     isValid: false,

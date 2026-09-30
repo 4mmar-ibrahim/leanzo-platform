@@ -89,9 +89,18 @@ export function ImageUploader({
       if (!file) return;
 
       // Validate MIME type
-      const validMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'];
-      if (!validMimes.includes(file.type) && !file.name.match(/\.(jpg|jpeg|png|webp|gif|svg)$/i)) {
-        toast.error('نوع الملف غير مدعوم. يرجى رفع صورة (JPG, PNG, WEBP, GIF, SVG)');
+      const validMimes = [
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'image/gif',
+        'image/svg+xml',
+        'image/x-icon',
+        'image/vnd.microsoft.icon',
+        'image/ico',
+      ];
+      if (!validMimes.includes(file.type) && !file.name.match(/\.(jpg|jpeg|png|webp|gif|svg|ico)$/i)) {
+        toast.error('نوع الملف غير مدعوم. يرجى رفع صورة (JPG, PNG, WEBP, GIF, SVG, ICO)');
         return;
       }
 
@@ -113,6 +122,9 @@ export function ImageUploader({
           fileName: file.name,
           mimeType: file.type,
         });
+        URL.revokeObjectURL(objectUrl);
+      };
+      img.onerror = () => {
         URL.revokeObjectURL(objectUrl);
       };
 
@@ -268,7 +280,7 @@ export function ImageUploader({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+        accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml,image/x-icon,image/vnd.microsoft.icon,.ico"
         onChange={(e) => {
           if (e.target.files && e.target.files[0]) {
             handleFile(e.target.files[0]);

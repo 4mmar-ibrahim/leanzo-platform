@@ -85,13 +85,17 @@ export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof document !== 'undefined') {
       const favUrl = normalizeMediaUrl(branding?.faviconUrl) || '/favicon.ico';
-      let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
-      if (!link) {
-        link = document.createElement('link');
-        link.rel = 'shortcut icon';
+      const existingIcons = document.querySelectorAll<HTMLLinkElement>("link[rel*='icon']");
+      if (existingIcons.length > 0) {
+        existingIcons.forEach((link) => {
+          link.href = favUrl;
+        });
+      } else {
+        const link = document.createElement('link');
+        link.rel = 'icon';
+        link.href = favUrl;
         document.head.appendChild(link);
       }
-      link.href = favUrl;
     }
   }, [branding?.faviconUrl]);
 

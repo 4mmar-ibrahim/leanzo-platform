@@ -8,6 +8,7 @@ import {
   Save,
   Palette,
   Image as ImageIcon,
+  Globe,
   Megaphone,
   AlertTriangle,
   RotateCcw,
@@ -156,6 +157,29 @@ export default function AdminBrandingSettingsPage() {
     updateBranding({ [key]: val } as any);
   };
 
+  const updateLiveFavicon = (url: string) => {
+    if (typeof document !== 'undefined') {
+      const favUrl = normalizeMediaUrl(url) || '/favicon.ico';
+      const existingIcons = document.querySelectorAll<HTMLLinkElement>("link[rel*='icon']");
+      if (existingIcons.length > 0) {
+        existingIcons.forEach((el) => {
+          el.href = favUrl;
+        });
+      } else {
+        const link = document.createElement('link');
+        link.rel = 'icon';
+        link.href = favUrl;
+        document.head.appendChild(link);
+      }
+    }
+  };
+
+  const handleFaviconChange = (newUrl: string) => {
+    const cleaned = normalizeMediaUrl(newUrl);
+    setForm((prev) => ({ ...prev, faviconUrl: cleaned }));
+    updateLiveFavicon(cleaned);
+  };
+
   const handleSave = async () => {
     setSaving(true);
     const cleanedLogo = normalizeMediaUrl(form.logoUrl);
@@ -255,6 +279,7 @@ export default function AdminBrandingSettingsPage() {
 
     setForm(defaults);
     applyLiveColors(defaults.primaryColor, defaults.secondaryColor, defaults.accentColor);
+    updateLiveFavicon('/favicon.ico');
     updateBranding(defaults as any);
     updateAppearance({
       primaryColor: defaults.primaryColor,
@@ -382,7 +407,95 @@ export default function AdminBrandingSettingsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Favicon Upload Zone */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-sky-500" />
+                    <span>أيقونة الموقع والمتصفح (Site Favicon)</span>
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    تظهر في لسان تبويب المتصفح، قائمة المفضلة، وإشعارات الموقع (يدعم ICO, PNG, SVG, WEBP بنسبة 1:1)
+                  </p>
+                </div>
+
+                {form.faviconUrl !== '/favicon.ico' && (
+                  <button
+                    type="button"
+                    onClick={() => handleFaviconChange('/favicon.ico')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 transition cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>استعادة الأيقونة الأصلية</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Realistic Mini Browser Tab Simulation */}
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden shadow-2xs">
+                {/* Browser Tab Header */}
+                <div className="px-3 py-2 bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700/60 flex items-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-400/80 inline-block" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400/80 inline-block" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400/80 inline-block" />
+                  </div>
+                  {/* Simulated Tab */}
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-t-lg bg-white dark:bg-slate-900 border-t border-x border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200 font-medium max-w-[280px] truncate shadow-2xs">
+                    <div className="w-4 h-4 rounded shrink-0 overflow-hidden flex items-center justify-center bg-slate-100 dark:bg-slate-800">
+                      {form.faviconUrl ? (
+                        <img
+                          src={normalizeMediaUrl(form.faviconUrl)}
+                          alt="Favicon"
+                          className="w-4 h-4 object-contain"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = '/favicon.ico';
+                          }}
+                        />
+                      ) : (
+                        <Globe className="w-3.5 h-3.5 text-slate-400" />
+                      )}
+                    </div>
+                    <span className="truncate text-[11px] font-bold">
+                      {form.logoText || 'CLEANZO'} — مساحات نظيفة، أيام أسعد
+                    </span>
+                    <span className="text-[10px] text-slate-400 mr-auto ml-1">✕</span>
+                  </div>
+                </div>
+
+                {/* Simulated URL bar */}
+                <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-900/60 flex items-center gap-2 text-[11px] text-slate-500 font-mono">
+                  <span className="text-emerald-500 text-xs">🔒</span>
+                  <span className="text-slate-400">https://cleanzo.app</span>
+                </div>
+              </div>
+
+              {/* Image Uploader for Favicon */}
+              <ImageUploader
+                value={form.faviconUrl}
+                onChange={(url) => handleFaviconChange(url)}
+                label="اختر أو ارفع أيقونة المتصفح (Favicon)"
+                description="ارفع ملف الأيقونة من جهازك أو اختر من مكتبة الوسائط — المقاس المفضل: 32×32 أو 64×64 أو 128×128 بكسل"
+                defaultFit="contain"
+                allowFitToggle={false}
+              />
+
+              <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <span className="text-[11px] font-bold text-slate-500 shrink-0">مسار أو رابط الأيقونة (Favicon):</span>
+                <input
+                  type="text"
+                  dir="ltr"
+                  value={form.faviconUrl}
+                  onChange={(e) => handleFaviconChange(e.target.value)}
+                  onBlur={(e) => handleFaviconChange(e.target.value)}
+                  placeholder="/favicon.ico"
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono text-slate-800 dark:text-slate-200"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300">اسم الشعار (Logo Text)</label>
                 <input
@@ -390,16 +503,6 @@ export default function AdminBrandingSettingsPage() {
                   value={form.logoText}
                   onChange={(e) => setForm({ ...form, logoText: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-sky-500 outline-hidden"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">رابط أيقونة الموقع (Favicon)</label>
-                <input
-                  type="text"
-                  value={form.faviconUrl}
-                  onChange={(e) => setForm({ ...form, faviconUrl: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-sky-500 outline-hidden"
                 />
               </div>
 
@@ -605,6 +708,28 @@ export default function AdminBrandingSettingsPage() {
             </h3>
 
             <div className="p-4 rounded-2xl bg-slate-950 text-white space-y-4">
+              {/* Simulated Browser Tab with Live Favicon */}
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-300">
+                <div className="w-3.5 h-3.5 rounded shrink-0 overflow-hidden flex items-center justify-center bg-slate-800">
+                  {form.faviconUrl ? (
+                    <img
+                      src={normalizeMediaUrl(form.faviconUrl)}
+                      alt="Favicon"
+                      className="w-3.5 h-3.5 object-contain"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = '/favicon.ico';
+                      }}
+                    />
+                  ) : (
+                    <Globe className="w-3 h-3 text-slate-400" />
+                  )}
+                </div>
+                <span className="truncate font-semibold text-[10px] text-slate-200">
+                  {form.logoText || 'CLEANZO'}
+                </span>
+                <span className="text-[9px] text-slate-500 mr-auto font-sans">الأيقونة المباشرة</span>
+              </div>
+
               {/* Fake Top Banner */}
               {form.topBanner.enabled && (
                 <div className="px-2.5 py-1.5 rounded-lg bg-sky-600 text-[10px] flex items-center justify-between gap-2">
