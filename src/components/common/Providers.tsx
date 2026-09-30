@@ -84,18 +84,24 @@ export function Providers({ children }: { children: React.ReactNode }) {
   // Dynamic Favicon synchronization
   useEffect(() => {
     if (typeof document !== 'undefined') {
-      const favUrl = normalizeMediaUrl(branding?.faviconUrl) || '/favicon.ico';
+      const favUrl = normalizeMediaUrl(branding?.faviconUrl) || '/brand/zo/cleanzo-logo.png';
+      
+      // Remove all existing icon links so browser drops cached tab icon
       const existingIcons = document.querySelectorAll<HTMLLinkElement>("link[rel*='icon']");
-      if (existingIcons.length > 0) {
-        existingIcons.forEach((link) => {
-          link.href = favUrl;
-        });
-      } else {
-        const link = document.createElement('link');
-        link.rel = 'icon';
-        link.href = favUrl;
-        document.head.appendChild(link);
-      }
+      existingIcons.forEach((el) => el.remove());
+
+      // Create fresh new icon links
+      const link = document.createElement('link');
+      link.id = 'dynamic-favicon';
+      link.rel = 'shortcut icon';
+      link.type = favUrl.endsWith('.png') ? 'image/png' : favUrl.endsWith('.svg') ? 'image/svg+xml' : 'image/x-icon';
+      link.href = favUrl;
+      document.head.appendChild(link);
+
+      const appleLink = document.createElement('link');
+      appleLink.rel = 'apple-touch-icon';
+      appleLink.href = favUrl;
+      document.head.appendChild(appleLink);
     }
   }, [branding?.faviconUrl]);
 

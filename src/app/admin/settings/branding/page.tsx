@@ -159,18 +159,21 @@ export default function AdminBrandingSettingsPage() {
 
   const updateLiveFavicon = (url: string) => {
     if (typeof document !== 'undefined') {
-      const favUrl = normalizeMediaUrl(url) || '/favicon.ico';
+      const favUrl = normalizeMediaUrl(url) || '/brand/zo/cleanzo-logo.png';
       const existingIcons = document.querySelectorAll<HTMLLinkElement>("link[rel*='icon']");
-      if (existingIcons.length > 0) {
-        existingIcons.forEach((el) => {
-          el.href = favUrl;
-        });
-      } else {
-        const link = document.createElement('link');
-        link.rel = 'icon';
-        link.href = favUrl;
-        document.head.appendChild(link);
-      }
+      existingIcons.forEach((el) => el.remove());
+
+      const link = document.createElement('link');
+      link.id = 'dynamic-favicon';
+      link.rel = 'shortcut icon';
+      link.type = favUrl.endsWith('.png') ? 'image/png' : favUrl.endsWith('.svg') ? 'image/svg+xml' : 'image/x-icon';
+      link.href = favUrl;
+      document.head.appendChild(link);
+
+      const appleLink = document.createElement('link');
+      appleLink.rel = 'apple-touch-icon';
+      appleLink.href = favUrl;
+      document.head.appendChild(appleLink);
     }
   };
 

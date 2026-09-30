@@ -36,6 +36,14 @@ export const metadata: Metadata = {
     locale: 'ar_EG',
     type: 'website',
   },
+  icons: {
+    icon: [
+      { url: '/brand/zo/cleanzo-logo.png', sizes: '32x32', type: 'image/png' },
+      { url: '/brand/zo/cleanzo-logo.png', sizes: '192x192', type: 'image/png' },
+    ],
+    shortcut: '/brand/zo/cleanzo-logo.png',
+    apple: '/brand/zo/cleanzo-logo.png',
+  },
 };
 
 import { CentralZoEngine } from '@/components/mascot/CentralZoEngine';

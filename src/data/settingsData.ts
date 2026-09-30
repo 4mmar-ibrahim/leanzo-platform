@@ -62,7 +62,7 @@ export const initialSystemSettings: SystemSettings = {
   branding: {
     logoText: 'CLEANZO',
     logoUrl: '/brand/zo/cleanzo-logo.png',
-    faviconUrl: '/favicon.ico',
+    faviconUrl: '/brand/zo/cleanzo-logo.png',
     primaryColor: '#0866C6',
     secondaryColor: '#07345C',
     accentColor: '#F0444C',
