@@ -68,8 +68,8 @@ export const initialSystemSettings: SystemSettings = {
     accentColor: '#F0444C',
     fontFamily: 'cairo',
     heroImages: {
-      car: 'https://images.unsplash.com/photo-1520340356584-f9917d1eea6f?auto=format&fit=crop&w=1600&q=80',
-      home: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1200&q=85',
+      car: '/brand/zo/cleanzo-van-hero.png',
+      home: '/brand/zo/cleanzo-van-hero.png',
     },
     ctaText: 'احجز خدمتك الآن',
     ctaTextEn: 'Book Your Service Now',

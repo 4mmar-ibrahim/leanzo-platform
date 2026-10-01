@@ -36,8 +36,10 @@ import {
   Info,
   Phone,
   HelpCircle,
-  Star,
   MessageSquareHeart,
+  Repeat,
+  RefreshCw,
+  Star,
 } from 'lucide-react';
 import { useOrderStore } from '@/store/useOrderStore';
 import { useNotificationStore } from '@/store/useNotificationStore';
@@ -84,12 +86,15 @@ export function AdminSidebar({
   const getUnreadCount = useNotificationStore((s) => s.getUnreadCount);
   const { currentAdmin, canView } = useAdminStore();
   const branding = useSettingsStore((s) => s.settings?.branding);
+  const isSettingsLoaded = useSettingsStore((s) => s.isLoaded);
+  const settingsVersion = useSettingsStore((s) => s.version);
 
   const pendingOrdersCount = mounted ? orders.filter((o) => o?.status === 'pending').length : 0;
   const unreadNotifsCount = mounted ? (getUnreadCount?.() ?? 0) : 0;
 
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({
     services: pathname.startsWith('/admin/services'),
+    subscriptions: pathname.startsWith('/admin/subscriptions'),
     content: pathname.startsWith('/admin/content'),
     settings: pathname.startsWith('/admin/settings'),
   });
@@ -106,6 +111,7 @@ export function AdminSidebar({
     if (href.startsWith('/admin/customers')) return 'customers';
     if (href.startsWith('/admin/technicians')) return 'technicians';
     if (href.startsWith('/admin/locations')) return 'locations';
+    if (href.startsWith('/admin/subscriptions')) return 'subscriptions';
     if (href.startsWith('/admin/services')) return 'services';
     if (href.startsWith('/admin/offers')) return 'offers';
     if (href.startsWith('/admin/coupons')) return 'coupons';
@@ -145,6 +151,23 @@ export function AdminSidebar({
         { title: 'سجل العملاء (CRM)', href: '/admin/customers', icon: Users },
         { title: 'فريق الفنيين', href: '/admin/technicians', icon: HardHat },
         { title: 'نطاق التغطية والمناطق', href: '/admin/locations', icon: MapPin },
+      ],
+    },
+    {
+      sectionTitle: isTechUser ? 'الاشتراكات' : 'الاشتراكات الشهرية',
+      items: [
+        {
+          title: 'إدارة الاشتراكات',
+          href: '/admin/subscriptions',
+          icon: Repeat,
+          children: [
+            { title: 'جميع الاشتراكات', href: '/admin/subscriptions', icon: Layers },
+            { title: 'باقات الاشتراكات', href: '/admin/subscriptions/plans', icon: Tag },
+            { title: 'زيارات ومواعيد الاشتراكات', href: '/admin/subscriptions/visits', icon: Calendar },
+            { title: 'تجديد الاشتراكات', href: '/admin/subscriptions/renewals', icon: RefreshCw },
+            { title: 'إعدادات الاشتراكات', href: '/admin/subscriptions/settings', icon: Sliders },
+          ],
+        },
       ],
     },
     {
@@ -263,9 +286,11 @@ export function AdminSidebar({
       <div className="h-16 px-4 flex items-center justify-between border-b border-slate-100 dark:border-[#133B61] bg-white dark:bg-[#072540] transition-colors duration-200">
         <Link href="/admin" aria-label="لوحة الإدارة" className="flex items-center overflow-hidden">
           <div className="h-10 w-10 shrink-0 flex items-center justify-center">
-            {branding?.logoUrl ? (
+            {!mounted || !isSettingsLoaded ? (
+              <div className="w-8 h-8 rounded-lg bg-slate-200/50 dark:bg-slate-800/50 animate-pulse" />
+            ) : branding?.logoUrl ? (
               <img
-                src={normalizeMediaUrl(branding.logoUrl)}
+                src={normalizeMediaUrl(branding.logoUrl, settingsVersion)}
                 alt="Logo"
                 className="max-h-10 w-auto max-w-[40px] object-contain"
                 onError={(e) => {

@@ -1,7 +1,6 @@
 'use client';
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import { Order, OrderStatus, Technician } from '@/types';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { useCustomerStore } from './useCustomerStore';
@@ -65,9 +64,7 @@ const statusLabels: Record<OrderStatus, { ar: string; en: string; descAr: string
   },
 };
 
-export const useOrderStore = create<OrderState>()(
-  persist(
-    (set, get) => ({
+export const useOrderStore = create<OrderState>((set, get) => ({
       orders: [],
       isLoading: false,
 
@@ -368,9 +365,5 @@ export const useOrderStore = create<OrderState>()(
         }
         return get().orders.filter((o) => o.status === status);
       },
-    }),
-    {
-      name: 'cleanzo-orders-storage',
-    }
-  )
+    })
 );

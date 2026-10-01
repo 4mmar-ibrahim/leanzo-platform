@@ -296,7 +296,7 @@ export function HeroSection() {
                   src={
                     activeCategory === 'car'
                       ? (normalizeMediaUrl(branding?.heroImages?.car) || heroContent.carImage || heroContent.image || '/brand/zo/cleanzo-van-hero.png')
-                      : (normalizeMediaUrl(branding?.heroImages?.home) || heroContent.homeImage || 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1200&q=85')
+                      : (normalizeMediaUrl(branding?.heroImages?.home) || heroContent.homeImage || heroContent.image || '/brand/zo/cleanzo-van-hero.png')
                   }
                   alt={activeCategory === 'car' ? 'Cleanzo Mobile Car Detailing' : 'Cleanzo Home Steam Cleaning'}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"

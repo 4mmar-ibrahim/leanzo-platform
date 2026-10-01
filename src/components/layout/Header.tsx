@@ -37,6 +37,8 @@ export function Header() {
   const { t, locale, direction } = useLocaleStore();
   const { user, isAuthenticated, logout } = useAuthStore();
   const branding = useSettingsStore((s) => s.settings.branding);
+  const isSettingsLoaded = useSettingsStore((s) => s.isLoaded);
+  const settingsVersion = useSettingsStore((s) => s.version);
   const isSectionVisible = useCMSStore((s) => s.isSectionVisible);
   const sections = useCMSStore((s) => s.sections);
   const fetchPublishedContent = useCMSStore((s) => s.fetchPublishedContent);
@@ -113,13 +115,19 @@ export function Header() {
       label: isAr ? 'العروض' : 'Offers',
       badge: isAr ? 'خصم' : 'Sale',
     },
+    {
+      key: 'subscriptions',
+      href: '/subscriptions',
+      label: isAr ? 'الاشتراكات' : 'Subscriptions',
+      badge: isAr ? 'باقات دورية' : 'Plans',
+    },
     { key: 'gallery', href: '/gallery', label: isAr ? 'أعمالنا' : 'Our Work' },
     { key: 'reviews', href: '/reviews', label: isAr ? 'آراء العملاء' : 'Reviews' },
   ];
 
   const primaryNavLinks = React.useMemo(() => {
     if (!mounted) return allPrimaryNavLinks;
-    return allPrimaryNavLinks.filter((item) => isSectionVisible(item.key));
+    return allPrimaryNavLinks.filter((item) => item.key === 'subscriptions' || isSectionVisible(item.key));
   }, [allPrimaryNavLinks, mounted, sections, isSectionVisible]);
 
   const allMoreLinks = [
@@ -156,9 +164,11 @@ export function Header() {
             className="group flex items-center justify-center px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-2xl bg-white/70 dark:bg-[#072540]/60 backdrop-blur-md border border-slate-200/80 dark:border-[#133B61] shadow-2xs hover:shadow-sm hover:border-[#0866C6]/40 dark:hover:border-[#0866C6]/60 transition-all duration-300 shrink-0 select-none"
           >
             <div className="relative h-9 sm:h-10 w-auto flex items-center justify-center shrink-0">
-              {branding?.logoUrl ? (
+              {!mounted || !isSettingsLoaded ? (
+                <div className="h-7 w-20 rounded-lg bg-slate-200/40 dark:bg-slate-800/40 animate-pulse" />
+              ) : branding?.logoUrl ? (
                 <img
-                  src={normalizeMediaUrl(branding.logoUrl)}
+                  src={normalizeMediaUrl(branding.logoUrl, settingsVersion)}
                   alt={logoText}
                   className="h-full w-auto max-h-9 sm:max-h-10 object-contain transition-transform duration-200 group-hover:scale-105"
                   onError={(e) => {

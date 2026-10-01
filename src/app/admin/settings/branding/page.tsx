@@ -161,19 +161,21 @@ export default function AdminBrandingSettingsPage() {
     if (typeof document !== 'undefined') {
       const favUrl = normalizeMediaUrl(url) || '/brand/zo/cleanzo-logo.png';
       const existingIcons = document.querySelectorAll<HTMLLinkElement>("link[rel*='icon']");
-      existingIcons.forEach((el) => el.remove());
-
-      const link = document.createElement('link');
-      link.id = 'dynamic-favicon';
-      link.rel = 'shortcut icon';
-      link.type = favUrl.endsWith('.png') ? 'image/png' : favUrl.endsWith('.svg') ? 'image/svg+xml' : 'image/x-icon';
-      link.href = favUrl;
-      document.head.appendChild(link);
-
-      const appleLink = document.createElement('link');
-      appleLink.rel = 'apple-touch-icon';
-      appleLink.href = favUrl;
-      document.head.appendChild(appleLink);
+      if (existingIcons.length > 0) {
+        existingIcons.forEach((el) => {
+          el.href = favUrl;
+        });
+      } else {
+        let link = document.getElementById('dynamic-favicon') as HTMLLinkElement | null;
+        if (!link) {
+          link = document.createElement('link');
+          link.id = 'dynamic-favicon';
+          link.rel = 'shortcut icon';
+          document.head.appendChild(link);
+        }
+        link.type = favUrl.endsWith('.png') ? 'image/png' : favUrl.endsWith('.svg') ? 'image/svg+xml' : 'image/x-icon';
+        link.href = favUrl;
+      }
     }
   };
 

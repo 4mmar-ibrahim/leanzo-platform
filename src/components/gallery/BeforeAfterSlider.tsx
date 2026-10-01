@@ -14,13 +14,16 @@ interface BeforeAfterSliderProps {
 }
 
 export function BeforeAfterSlider({
-  beforeImage = 'https://images.unsplash.com/photo-1601362840469-51e4d8d58785?auto=format&fit=crop&q=80&w=1200',
-  afterImage = 'https://images.unsplash.com/photo-1520340356584-f9917d1eea6f?auto=format&fit=crop&q=80&w=1200',
+  beforeImage,
+  afterImage,
   beforeLabel = 'قبل التنظيف',
   afterLabel = 'بعد كلينزو ✨',
   title,
   className,
 }: BeforeAfterSliderProps) {
+  if (!beforeImage || !afterImage) {
+    return null;
+  }
   const [sliderPos, setSliderPos] = useState(50); // percentage 0-100
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);

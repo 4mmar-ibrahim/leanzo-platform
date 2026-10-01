@@ -1,7 +1,6 @@
 'use client';
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import { AppearanceSettings, BookingSettings, SystemSettings, ZoSettings } from '@/types';
 import { initialSystemSettings } from '@/data/settingsData';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
@@ -13,6 +12,8 @@ interface SettingsState {
   isLoading: boolean;
   isSaving: boolean;
   hasUnsavedChanges: boolean;
+  isLoaded: boolean;
+  version: number | null;
 
   fetchPublicSettings: () => Promise<void>;
   fetchAdminSettings: () => Promise<void>;
@@ -32,42 +33,42 @@ interface SettingsState {
   createBackupRecord: (notes?: string) => string;
 }
 
-export const useSettingsStore = create<SettingsState>()(
-  persist(
-    (set, get) => ({
-      settings: initialSystemSettings,
-      backupHistory: [
-        { id: 'bak-1', date: '2026-09-01 03:00', size: '1.4 MB', notes: 'نسخة احتياطية آلية أولية' },
-        { id: 'bak-2', date: '2026-09-07 18:30', size: '1.6 MB', notes: 'تحديث بيانات الخدمات والأسعار' },
-      ],
-      isLoading: false,
-      isSaving: false,
-      hasUnsavedChanges: false,
+export const useSettingsStore = create<SettingsState>((set, get) => ({
+  settings: initialSystemSettings,
+  backupHistory: [],
+  isLoading: false,
+  isSaving: false,
+  hasUnsavedChanges: false,
+  isLoaded: false,
+  version: null,
 
-      fetchPublicSettings: async () => {
-        try {
-          const res = await cleanzoApi.settings.getPublic();
-          if (res) {
-            set((state) => ({
-              settings: {
-                ...state.settings,
-                general: res.general ? { ...state.settings.general, ...res.general } : state.settings.general,
-                appearance: res.appearance ? { ...state.settings.appearance, ...res.appearance } : state.settings.appearance,
-                branding: res.branding ? { ...state.settings.branding, ...res.branding } : state.settings.branding,
-                mobileExperience: res.mobileExperience ? { ...state.settings.mobileExperience, ...res.mobileExperience } : state.settings.mobileExperience,
-                social: res.social ? { ...state.settings.social, ...res.social } : state.settings.social,
-                booking: res.booking ? { ...state.settings.booking, ...res.booking } : state.settings.booking,
-                notifications: res.notifications ? { ...state.settings.notifications, ...res.notifications } : state.settings.notifications,
-              },
-            }));
-          }
-        } catch (err) {
-          console.warn('Could not fetch public settings from server, using local defaults:', err);
-        }
-      },
+  fetchPublicSettings: async () => {
+    try {
+      const res = await cleanzoApi.settings.getPublic();
+      if (res) {
+        set((state) => ({
+          settings: {
+            ...state.settings,
+            general: res.general ? { ...state.settings.general, ...res.general } : state.settings.general,
+            appearance: res.appearance ? { ...state.settings.appearance, ...res.appearance } : state.settings.appearance,
+            branding: res.branding ? { ...state.settings.branding, ...res.branding } : state.settings.branding,
+            mobileExperience: res.mobileExperience ? { ...state.settings.mobileExperience, ...res.mobileExperience } : state.settings.mobileExperience,
+            social: res.social ? { ...state.settings.social, ...res.social } : state.settings.social,
+            booking: res.booking ? { ...state.settings.booking, ...res.booking } : state.settings.booking,
+            notifications: res.notifications ? { ...state.settings.notifications, ...res.notifications } : state.settings.notifications,
+          },
+          isLoaded: true,
+          version: res.version || (res.updatedAt ? new Date(res.updatedAt).getTime() : Date.now()),
+        }));
+      }
+    } catch (err) {
+      console.warn('Could not fetch public settings from server:', err);
+      set({ isLoaded: true });
+    }
+  },
 
-      fetchAdminSettings: async () => {
-        set({ isLoading: true });
+  fetchAdminSettings: async () => {
+    set({ isLoading: true });
         try {
           const res = await cleanzoApi.settings.getAllAdmin();
           if (res) {
@@ -281,9 +282,5 @@ export const useSettingsStore = create<SettingsState>()(
 
         return id;
       },
-    }),
-    {
-      name: 'cleanzo-settings-storage',
-    }
-  )
+    })
 );

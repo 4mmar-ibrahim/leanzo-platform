@@ -21,6 +21,7 @@ import {
   RefreshCw,
   Car,
   Home,
+  RotateCcw,
 } from 'lucide-react';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { ClearStatsButton } from '@/components/admin/ClearStatsButton';
@@ -87,6 +88,8 @@ export default function AdminAnalyticsPage() {
   const efficiency = analyticsData?.efficiency || {};
   const categoryShare = analyticsData?.categoryShare || {};
   const peakHours = analyticsData?.peakHours || [];
+  const subComparisons = comparisons.subscriptions || {};
+  const subAnalytics = analyticsData?.subscriptionsAnalytics || {};
 
   const growthBadge = (growth: number | undefined) => {
     const val = growth || 0;
@@ -436,6 +439,252 @@ export default function AdminAnalyticsPage() {
               <strong className="text-slate-800 dark:text-slate-200">
                 {peakHours.filter((p: any) => p.isPeak).map((p: any) => p.hour).join('، ') || 'معدل الطلب متوازن وموزع على كافة الفترات'}
               </strong>
+            </div>
+          </div>
+
+          {/* SUBSCRIPTIONS ANALYTICS & GROWTH KPIs */}
+          <div className="space-y-4 pt-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <RotateCcw className="w-5 h-5 text-indigo-500" />
+                  <span>تحليلات ومؤشرات أداء الاشتراكات الدورية (Subscription KPI Analytics)</span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  رصد معدلات النمو التعاقدي، تجديد الباقات، توزيع الخدمات، وعوائد الاشتراكات الحية من PostgreSQL
+                </p>
+              </div>
+
+              <Link
+                href="/admin/reports"
+                className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline shrink-0"
+              >
+                <span>الانتقال لمركز تقارير الاشتراكات وطباعة الفواتير</span>
+                <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+              </Link>
+            </div>
+
+            {/* 4 Subscription Growth Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Subscriptions Volume Growth */}
+              <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-400 font-semibold">حجم الاشتراكات والنمو</span>
+                  {growthBadge(subComparisons.count?.growthPercent)}
+                </div>
+                <div className="text-2xl font-black text-slate-900 dark:text-white">
+                  {subComparisons.count?.current || 0} اشتراك
+                </div>
+                <div className="text-[11px] text-slate-400 flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <span>الفترة السابقة:</span>
+                  <span className="font-bold text-slate-600 dark:text-slate-300 font-mono">
+                    {subComparisons.count?.previous || 0} اشتراك
+                  </span>
+                </div>
+              </div>
+
+              {/* Subscriptions Revenue Growth */}
+              <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-400 font-semibold">نمو إيرادات الاشتراكات</span>
+                  {growthBadge(subComparisons.revenue?.growthPercent)}
+                </div>
+                <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                  {(subComparisons.revenue?.current || 0).toLocaleString()} ج.م
+                </div>
+                <div className="text-[11px] text-slate-400 flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <span>الفترة السابقة:</span>
+                  <span className="font-bold text-slate-600 dark:text-slate-300 font-mono">
+                    {(subComparisons.revenue?.previous || 0).toLocaleString()} ج.م
+                  </span>
+                </div>
+              </div>
+
+              {/* Active Subscriptions & Value */}
+              <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-400 font-semibold">الاشتراكات النشطة والقيمة</span>
+                  {growthBadge(subComparisons.activeSubscriptions?.growthPercent)}
+                </div>
+                <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+                  {subComparisons.activeSubscriptions?.current || 0} نشط
+                </div>
+                <div className="text-[11px] text-slate-400 flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <span>القيمة التعاقدية:</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                    {(subAnalytics.activeValue || 0).toLocaleString()} ج.م
+                  </span>
+                </div>
+              </div>
+
+              {/* Renewal Rate & Customer Retention */}
+              <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-400 font-semibold">معدل التجديد الدوري</span>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                    {subAnalytics.renewedCount || 0} تم تجديدها
+                  </span>
+                </div>
+                <div className="text-2xl font-black text-purple-600 dark:text-purple-400 font-mono">
+                  {subAnalytics.renewalRate || 0}%
+                </div>
+                <div className="text-[11px] text-slate-400 flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <span>المشتركون في الفترة:</span>
+                  <span className="font-bold text-slate-600 dark:text-slate-300 font-mono">
+                    {subComparisons.subscribers?.current || 0} عميل
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Subscription Operational Efficiency & Demand Distribution */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Visits Execution */}
+              <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-4">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  مؤشرات تنفيذ زيارات الاشتراكات
+                </h3>
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-slate-600 dark:text-slate-300 font-semibold">الزيارات المنجزة</span>
+                      <span className="font-bold text-emerald-500 font-mono">
+                        {subAnalytics.completedVisits || 0} من {subAnalytics.totalVisits || 0} زيارة
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full"
+                        style={{
+                          width: `${
+                            subAnalytics.totalVisits > 0
+                              ? Math.round((subAnalytics.completedVisits / subAnalytics.totalVisits) * 100)
+                              : 0
+                          }%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-slate-600 dark:text-slate-300 font-semibold">الزيارات المعاد جدولتها</span>
+                      <span className="font-bold text-amber-500 font-mono">{subAnalytics.rescheduledVisits || 0} زيارة</span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-amber-500 rounded-full"
+                        style={{
+                          width: `${
+                            subAnalytics.totalVisits > 0
+                              ? Math.round((subAnalytics.rescheduledVisits / subAnalytics.totalVisits) * 100)
+                              : 0
+                          }%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-slate-600 dark:text-slate-300 font-semibold">الزيارات الملغاة</span>
+                      <span className="font-bold text-rose-500 font-mono">{subAnalytics.cancelledVisits || 0} زيارة</span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-rose-500 rounded-full"
+                        style={{
+                          width: `${
+                            subAnalytics.totalVisits > 0
+                              ? Math.round((subAnalytics.cancelledVisits / subAnalytics.totalVisits) * 100)
+                              : 0
+                          }%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Subscriptions Category Share */}
+              <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-4">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  توزيع الاشتراكات حسب القطاع
+                </h3>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div className="p-4 rounded-2xl bg-sky-50 dark:bg-sky-950/20 border border-sky-100 dark:border-sky-900/30 text-center space-y-1">
+                    <Car className="w-6 h-6 text-sky-500 mx-auto" />
+                    <span className="text-xs text-slate-500 block">اشتراكات السيارات</span>
+                    <span className="text-xl font-black text-sky-600 dark:text-sky-400">
+                      {subAnalytics.carPercentage || 0}%
+                    </span>
+                    <span className="text-[10px] text-slate-400 block font-mono">
+                      ({subAnalytics.carSubscriptions || 0} اشتراك)
+                    </span>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 text-center space-y-1">
+                    <Home className="w-6 h-6 text-amber-500 mx-auto" />
+                    <span className="text-xs text-slate-500 block">اشتراكات المنازل</span>
+                    <span className="text-xl font-black text-amber-600 dark:text-amber-400">
+                      {subAnalytics.homePercentage || 0}%
+                    </span>
+                    <span className="text-[10px] text-slate-400 block font-mono">
+                      ({subAnalytics.homeSubscriptions || 0} اشتراك)
+                    </span>
+                  </div>
+                </div>
+
+                <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
+                  <div className="h-full bg-sky-500" style={{ width: `${subAnalytics.carPercentage || 0}%` }} />
+                  <div className="h-full bg-amber-500" style={{ width: `${subAnalytics.homePercentage || 0}%` }} />
+                </div>
+              </div>
+
+              {/* Cashback Performance & Top Plans */}
+              <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    <span>كفاءة الكاش باك والباقات</span>
+                  </h3>
+                  <span className="text-[11px] font-mono font-bold text-amber-600 dark:text-amber-400">
+                    رصيد: {Math.max(0, (subAnalytics.cashbackGenerated || 0) - (subAnalytics.cashbackUsed || 0))} ج.م
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                  <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30">
+                    <span className="text-[10px] text-slate-500 block">كاش باك ناتج</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                      +{(subAnalytics.cashbackGenerated || 0).toLocaleString()} ج.م
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/20 border border-purple-100 dark:border-purple-900/30">
+                    <span className="text-[10px] text-slate-500 block">كاش باك مستخدم</span>
+                    <span className="font-bold text-purple-600 dark:text-purple-400 font-mono">
+                      -{(subAnalytics.cashbackUsed || 0).toLocaleString()} ج.م
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[11px] font-bold text-slate-500 block">أفضل الباقات أداءً:</span>
+                  {(subAnalytics.topPlans || []).slice(0, 2).map((plan: any) => (
+                    <div key={plan.id} className="flex items-center justify-between text-xs p-1.5 rounded-lg bg-slate-50 dark:bg-slate-800">
+                      <span className="font-semibold text-slate-700 dark:text-slate-300 truncate max-w-[140px]">
+                        {plan.name}
+                      </span>
+                      <span className="font-mono font-bold text-sky-600 dark:text-sky-400">
+                        {plan.count} اشتراك ({(plan.revenue || 0).toLocaleString()} ج.م)
+                      </span>
+                    </div>
+                  ))}
+                  {(!subAnalytics.topPlans || subAnalytics.topPlans.length === 0) && (
+                    <span className="text-[10px] text-slate-400 block text-center py-1">لا توجد بيانات مسجلة للباقات</span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </>

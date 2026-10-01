@@ -1,7 +1,6 @@
 'use client';
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import { AdminNotificationItem } from '@/types';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 
@@ -18,52 +17,7 @@ interface NotificationState {
   getUnreadCount: () => number;
 }
 
-export const initialNotifications: AdminNotificationItem[] = [
-  {
-    id: 'notif-1',
-    title: 'طلب حجز جديد',
-    titleEn: 'New Booking Created',
-    message: 'قام محمد خالد بحجز غسيل وتلميع واكس VIP متكامل لموعد 2026-09-08 11:00 AM.',
-    messageEn: 'New booking #CLZ-2026-000124 created.',
-    type: 'order',
-    timestamp: 'منذ 10 دقائق',
-    read: false,
-    link: '/admin/orders',
-  },
-  {
-    id: 'notif-2',
-    title: 'تنبيه جدولة فني',
-    titleEn: 'Technician Schedule Alert',
-    message: 'كابتن محمود رزق لديه حجز قريب خلال أقل من ساعتين.',
-    messageEn: 'Captain Mahmoud Rezq has an upcoming job.',
-    type: 'technician',
-    timestamp: 'منذ 45 دقيقة',
-    read: false,
-    link: '/admin/technicians',
-  },
-  {
-    id: 'notif-3',
-    title: 'عميل جديد مسجل',
-    titleEn: 'New Customer Registered',
-    message: 'سجل عميل جديد في المنيا الجديدة: د. ياسمين عادل منصور.',
-    messageEn: 'New customer registered: Dr. Yasmine Adel.',
-    type: 'customer',
-    timestamp: 'اليوم، 09:15 ص',
-    read: true,
-    link: '/admin/customers',
-  },
-  {
-    id: 'notif-4',
-    title: 'تحديث أمان واستقرار النظام',
-    titleEn: 'System Health Check',
-    message: 'تم حفظ نسخة احتياطية محلية لقاعدة البيانات بنجاح والنظام بحالة ممتازة.',
-    messageEn: 'Local backup completed successfully.',
-    type: 'system',
-    timestamp: 'أمس، 11:00 م',
-    read: true,
-    link: '/admin/settings',
-  },
-];
+export const initialNotifications: AdminNotificationItem[] = [];
 
 function formatTimeAgo(dateStr?: string | Date): string {
   if (!dateStr) return 'الآن';
@@ -85,43 +39,38 @@ function formatTimeAgo(dateStr?: string | Date): string {
   }
 }
 
-export const useNotificationStore = create<NotificationState>()(
-  persist(
-    (set, get) => ({
-      notifications: initialNotifications,
-      isLoading: false,
+export const useNotificationStore = create<NotificationState>((set, get) => ({
+  notifications: [],
+  isLoading: false,
 
-      fetchNotifications: async () => {
-        set({ isLoading: true });
-        try {
-          const remoteList = await cleanzoApi.notifications.getAdmin();
-          if (Array.isArray(remoteList) && remoteList.length > 0) {
-            const mapped: AdminNotificationItem[] = remoteList.map((item: any) => ({
-              id: item.id || item._id?.toString() || `notif-${Date.now()}`,
-              title: item.title,
-              titleEn: item.titleEn || item.title,
-              message: item.message,
-              messageEn: item.messageEn || item.message,
-              type: ['order', 'customer', 'technician', 'system'].includes(item.type)
-                ? item.type
-                : 'system',
-              timestamp: formatTimeAgo(item.createdAt),
-              read: Boolean(item.read),
-              link: item.link,
-            }));
+  fetchNotifications: async () => {
+    set({ isLoading: true });
+    try {
+      const remoteList = await cleanzoApi.notifications.getAdmin();
+      if (Array.isArray(remoteList)) {
+        const mapped: AdminNotificationItem[] = remoteList.map((item: any) => ({
+          id: item.id || item._id?.toString() || `notif-${Date.now()}`,
+          title: item.title,
+          titleEn: item.titleEn || item.title,
+          message: item.message,
+          messageEn: item.messageEn || item.message,
+          type: ['order', 'customer', 'technician', 'system'].includes(item.type)
+            ? item.type
+            : 'system',
+          timestamp: formatTimeAgo(item.createdAt),
+          read: Boolean(item.read),
+          link: item.link,
+        }));
 
-            // Merge with local-only items if any
-            const existingIds = new Set(mapped.map((m) => m.id));
-            const localOnly = get().notifications.filter((n) => !existingIds.has(n.id));
-            set({ notifications: [...mapped, ...localOnly], isLoading: false });
-            return;
-          }
-        } catch {
-          // If remote fails or admin not authenticated, keep local store
-        } finally {
-          set({ isLoading: false });
-        }
-      },
+        set({ notifications: mapped, isLoading: false });
+        return;
+      }
+    } catch {
+      // Keep state clean on error
+    } finally {
+      set({ isLoading: false });
+    }
+  },
 
       addNotification: (item) => {
         const newNotif: AdminNotificationItem = {
@@ -189,9 +138,5 @@ export const useNotificationStore = create<NotificationState>()(
       getUnreadCount: () => {
         return get().notifications.filter((n) => !n.read).length;
       },
-    }),
-    {
-      name: 'cleanzo-notifications-storage',
-    }
-  )
+    })
 );

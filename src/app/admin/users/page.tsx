@@ -1256,7 +1256,7 @@ export default function AdminUsersPage() {
                             username: e.target.value.toLowerCase().replace(/\s+/g, '.'),
                           })
                         }
-                        placeholder="ammar.tech"
+                        placeholder="cleanzo.admin"
                         className="w-full h-8.5 px-3 text-xs rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0866C6] disabled:opacity-60 font-mono transition-colors"
                       />
                     </div>

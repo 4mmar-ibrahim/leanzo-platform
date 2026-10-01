@@ -1,4 +1,5 @@
 import { Booking, IBooking } from '../models/Booking.js';
+import { SubscriptionVisit } from '../models/SubscriptionVisit.js';
 import { Service } from '../models/Service.js';
 import { SystemSettings } from '../models/SystemSettings.js';
 import { AuditLog } from '../models/AuditLog.js';
@@ -388,6 +389,41 @@ export async function getAvailableSlots(
     }
   }
 
+  // 4.1 Fetch all confirmed/active subscription visits on this date
+  const visitQuery: any = { date: dateStr };
+  if (serviceId) {
+    visitQuery.serviceId = serviceId;
+  }
+  const allVisits = await SubscriptionVisit.find(visitQuery).select(
+    'id status scheduledStart scheduledEnd timeSlotStart time duration serviceDurationMinutes travelTimeMinutes totalOccupiedMinutes cancelledAt timeline assignedTechnicianId metadata'
+  );
+
+  for (const v of allVisits) {
+    const vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart || v.time);
+    const vDuration =
+      v.totalOccupiedMinutes ||
+      (v.serviceDurationMinutes ? v.serviceDurationMinutes + (v.travelTimeMinutes || 15) : (v.duration || 45) + (v.travelTimeMinutes || 15));
+    const vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + vDuration;
+
+    if (v.status !== 'cancelled') {
+      occupiedIntervals.push({ start: vStart, end: vEnd });
+    } else {
+      const wasStarted = Array.isArray(v.timeline) && v.timeline.some((e: any) => e.status === 'in_progress');
+      if (wasStarted) {
+        occupiedIntervals.push({ start: vStart, end: vEnd });
+      } else if (v.cancelledAt) {
+        const cancelDateStr = getCairoDateFromDate(new Date(v.cancelledAt));
+        if (isToday || cancelDateStr === dateStr) {
+          const cancelTimeStr = getCairoTimeFromDate(new Date(v.cancelledAt));
+          const cancelMin = timeStringToMinutes(cancelTimeStr);
+          if (cancelMin > vStart && cancelMin < vEnd) {
+            occupiedIntervals.push({ start: vStart, end: cancelMin });
+          }
+        }
+      }
+    }
+  }
+
   // Add working break time as occupied interval if configured
   if (settings.breakStart && settings.breakEnd) {
     const breakStart = timeStringToMinutes(settings.breakStart);
@@ -505,6 +541,7 @@ export async function assertSlotAvailability(params: {
   serviceId: string;
   customDuration?: number;
   excludeBookingId?: string;
+  excludeVisitId?: string;
   technicianId?: string;
 }): Promise<{
   scheduledStart: string;
@@ -513,7 +550,7 @@ export async function assertSlotAvailability(params: {
   travelTimeMinutes: number;
   totalOccupiedMinutes: number;
 }> {
-  const { dateStr, timeStr, serviceId, customDuration, excludeBookingId, technicianId } = params;
+  const { dateStr, timeStr, serviceId, customDuration, excludeBookingId, excludeVisitId, technicianId } = params;
 
   if (!serviceId) {
     throw new Error('معرف الخدمة مطلوب للتحقق من الموعد');
@@ -619,6 +656,58 @@ export async function assertSlotAvailability(params: {
         const cancelTimeStr = getCairoTimeFromDate(new Date(b.cancelledAt));
         const cancelMin = timeStringToMinutes(cancelTimeStr);
         if (cancelMin > bStart && cancelMin < bEnd) {
+          isOccupied = true;
+          occEnd = cancelMin;
+        }
+      }
+    }
+
+    if (isOccupied && doIntervalsOverlap(slotStartMin, slotEndMin, occStart, occEnd)) {
+      const conflictErr: any = new Error('الموعد لم يعد متاحًا، يرجى اختيار موعد آخر.');
+      conflictErr.statusCode = 409;
+      conflictErr.code = 'SLOT_UNAVAILABLE';
+      throw conflictErr;
+    }
+  }
+
+  // 6. Query active subscription visits on that date for this service or technician
+  const subVisitQuery: any = {
+    date: dateStr,
+    $or: conflictOr,
+  };
+  if (excludeVisitId) {
+    subVisitQuery.id = { $ne: excludeVisitId };
+  }
+
+  const existingVisits = await SubscriptionVisit.find(subVisitQuery).select(
+    'id status scheduledStart scheduledEnd timeSlotStart time duration totalOccupiedMinutes travelTimeMinutes serviceId assignedTechnicianId cancelledAt timeline'
+  );
+
+  for (const v of existingVisits) {
+    if (technicianId && v.assignedTechnicianId && v.assignedTechnicianId !== technicianId) {
+      continue;
+    }
+
+    const vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart || v.time);
+    const vDuration =
+      v.totalOccupiedMinutes ||
+      (v.serviceDurationMinutes ? v.serviceDurationMinutes + (v.travelTimeMinutes || 15) : (v.duration || 45) + (v.travelTimeMinutes || 15));
+    const vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + vDuration;
+
+    let isOccupied = false;
+    let occStart = vStart;
+    let occEnd = vEnd;
+
+    if (v.status !== 'cancelled') {
+      isOccupied = true;
+    } else {
+      const wasStarted = Array.isArray(v.timeline) && v.timeline.some((e: any) => e.status === 'in_progress');
+      if (wasStarted) {
+        isOccupied = true;
+      } else if (isToday && v.cancelledAt) {
+        const cancelTimeStr = getCairoTimeFromDate(new Date(v.cancelledAt));
+        const cancelMin = timeStringToMinutes(cancelTimeStr);
+        if (cancelMin > vStart && cancelMin < vEnd) {
           isOccupied = true;
           occEnd = cancelMin;
         }

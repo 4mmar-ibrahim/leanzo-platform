@@ -58,6 +58,19 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
     ],
   },
   {
+    id: 'subscriptions',
+    nameAr: 'الاشتراكات الشهرية',
+    descriptionAr: 'إدارة باقات وزيارات واشتراكات العملاء والتجديدات',
+    actions: [
+      { id: 'view', token: 'subscriptions.view', nameAr: 'عرض الاشتراكات والزيارات' },
+      { id: 'create', token: 'subscriptions.create', nameAr: 'إنشاء اشتراك جديد' },
+      { id: 'edit', token: 'subscriptions.edit', nameAr: 'إدارة وتعديل الاشتراكات والباقات' },
+      { id: 'delete', token: 'subscriptions.delete', nameAr: 'حذف أو أرشفة باقة' },
+      { id: 'cancel', token: 'subscriptions.cancel', nameAr: 'إلغاء موعد زيارة' },
+      { id: 'reschedule', token: 'subscriptions.reschedule', nameAr: 'إعادة جدولة موعد زيارة' },
+    ],
+  },
+  {
     id: 'coupons',
     nameAr: 'كوبونات الخصم',
     descriptionAr: 'أكواد الخصم والترويج ونسب التخفيض',
@@ -274,6 +287,7 @@ export function getRequiredPermissionForRoute(pathname: string): string {
   if (pathname === '/admin' || pathname === '/admin/') return 'dashboard.view';
   if (pathname.startsWith('/admin/calendar')) return 'dashboard.view';
   if (pathname.startsWith('/admin/orders')) return 'orders.view';
+  if (pathname.startsWith('/admin/subscriptions')) return 'subscriptions.view';
   if (pathname.startsWith('/admin/customers')) return 'customers.view';
   if (pathname.startsWith('/admin/technicians')) return 'users.view';
   if (pathname.startsWith('/admin/locations')) return 'settings.view';
@@ -332,6 +346,7 @@ export function getFirstAllowedRoute(admin: AdminUser | null | undefined): strin
   const candidateRoutes = [
     { path: '/admin', token: 'dashboard.view' },
     { path: '/admin/orders', token: 'orders.view' },
+    { path: '/admin/subscriptions', token: 'subscriptions.view' },
     { path: '/admin/customers', token: 'customers.view' },
     { path: '/admin/services', token: 'services.view' },
     { path: '/admin/reports', token: 'reports.view' },

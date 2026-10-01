@@ -38,6 +38,7 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
   const navItems = [
     { href: '/account', label: t.account.dashboard, icon: LayoutDashboard },
     { href: '/account/orders', label: t.account.ordersTitle, icon: Calendar },
+    { href: '/account/subscriptions', label: isAr ? 'اشتراكاتي' : 'My Subscriptions', icon: Sparkles },
     { href: '/account/profile', label: t.account.profile, icon: User },
     { href: '/account/addresses', label: t.account.savedAddresses, icon: MapPin },
     { href: '/account/settings', label: t.account.settings, icon: Settings },

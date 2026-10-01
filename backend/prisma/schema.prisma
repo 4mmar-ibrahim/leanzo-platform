@@ -34,6 +34,7 @@ model User {
   bookings       Booking[]
   couponUsages   CouponUsage[]
   savedAddresses CustomerAddress[]
+  subscriptions  Subscription[]
 
   @@index([phone])
   @@index([status])
@@ -123,6 +124,9 @@ model Service {
 
   packages               ServicePackage[]
   addons                 ServiceAddon[]
+  subscriptionPlans      SubscriptionPlan[]
+  subscriptions          Subscription[]
+  subscriptionVisits     SubscriptionVisit[]
 
   @@index([category])
   @@index([available])
@@ -464,6 +468,7 @@ model SystemSettings {
   notifications    Json     @default("{}")
   security         Json?    @default("{}")
   mobileExperience Json?    @default("{}")
+  subscriptions    Json?    @default("{}")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -708,4 +713,190 @@ model ZoPageConfig {
   @@index([enabled])
   @@index([isPublished])
   @@map("zo_page_configs")
+}
+
+// 27. Subscription Plan Model
+model SubscriptionPlan {
+  id                      String         @id @default(uuid())
+  name                    String
+  nameEn                  String?        @default("")
+  description             String?        @default("")
+  descriptionEn           String?        @default("")
+  image                   String?        @default("")
+  serviceId               String
+  visitCount              Int
+  price                   Float
+  durationDays            Int            @default(30)
+  status                  String         @default("active") // 'active' | 'inactive' | 'archived'
+  allowRenewal            Boolean        @default(true)
+  allowCancellation       Boolean        @default(true)
+  allowRescheduling       Boolean        @default(true)
+  cancellationNoticeHours Int            @default(12)
+  rescheduleNoticeHours   Int            @default(12)
+  cashbackPercentage      Float?         @default(0)
+  cashbackAmount          Float?         @default(0)
+  terms                   String?        @default("")
+  termsEn                 String?        @default("")
+  features                String[]       @default([])
+  featuresEn              String[]       @default([])
+  order                   Int            @default(0)
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+
+  service                 Service        @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  subscriptions           Subscription[]
+
+  @@index([serviceId])
+  @@index([status])
+  @@index([order])
+  @@map("subscription_plans")
+}
+
+// 28. Subscription Model
+model Subscription {
+  id              String                 @id // e.g. 'SUB-2026-000001'
+  customerId      String?
+  customerName    String
+  customerPhone   String
+  planId          String
+  serviceId       String
+  serviceSnapshot Json                   // { id, title, titleEn, category, image, duration, travelTime }
+  planSnapshot    Json                   // { id, name, visitCount, price, durationDays, cancellationNoticeHours, rescheduleNoticeHours }
+  vehicleId       String?
+  vehicleDetails  Json?                  // { make, model, plateNumber, color, year }
+  address         Json                   // IBookingAddress snapshot
+  category        String                 @default("car") // 'car' | 'home'
+  status          String                 @default("active") // 'active' | 'completed' | 'expired' | 'cancelled' | 'paused'
+  totalVisits     Int
+  usedVisits      Int                    @default(0)
+  remainingVisits Int
+  price           Float
+  startDate       DateTime
+  endDate         DateTime
+  autoRenew       Boolean                @default(false)
+  renewalCycle    Int                    @default(1)
+  renewedFromId   String?
+  renewedToId     String?
+  notes           String?
+  metadata        Json?                  @default("{}")
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  user            User?                  @relation(fields: [customerId], references: [id])
+  plan            SubscriptionPlan       @relation(fields: [planId], references: [id], onDelete: Restrict)
+  service         Service                @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  visits          SubscriptionVisit[]
+  renewals        SubscriptionRenewal[]
+  cashbacks       SubscriptionCashback[]
+
+  @@index([customerId])
+  @@index([customerPhone])
+  @@index([serviceId])
+  @@index([planId])
+  @@index([status])
+  @@index([startDate])
+  @@index([endDate])
+  @@map("subscriptions")
+}
+
+// 29. Subscription Visit Model
+model SubscriptionVisit {
+  id                     String                 @id // e.g. 'VIS-2026-000001'
+  subscriptionId         String
+  customerId             String?
+  customerName           String
+  customerPhone          String
+  serviceId              String
+  visitIndex             Int                    // 1, 2, 3, 4
+  date                   String                 // YYYY-MM-DD
+  time                   String                 // "10:00 – 10:45"
+  timeSlotStart          String                 // "10:00"
+  scheduledStart         String                 // "10:00"
+  scheduledEnd           String                 // "10:45"
+  duration               Int                    @default(45)
+  serviceDurationMinutes Int                    @default(45)
+  travelTimeMinutes      Int                    @default(15)
+  totalOccupiedMinutes   Int                    @default(60)
+  serviceSnapshot        Json
+  packageSnapshot        Json?
+  addons                 Json                   @default("[]")
+  vehicleDetails         Json?
+  address                Json
+  status                 String                 @default("pending") // 'pending' | 'confirmed' | 'assigned' | 'in_progress' | 'completed' | 'cancelled'
+  assignedTechnicianId   String?
+  technician             Json?
+  rescheduledFrom        String?
+  rescheduledAt          DateTime?
+  cancellationReason     String?
+  cancelledAt            DateTime?
+  cancellationSource     String?                // 'customer' | 'admin'
+  completedAt            DateTime?
+  completedBy            Json?
+  cashbackAwarded        Float                  @default(0)
+  cashbackAwardedAt      DateTime?
+  timeline               Json                   @default("[]")
+  notes                  String?
+  metadata               Json                   @default("{}")
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+
+  subscription           Subscription           @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  service                Service                @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  cashbacks              SubscriptionCashback[]
+
+  @@index([subscriptionId])
+  @@index([customerId])
+  @@index([customerPhone])
+  @@index([serviceId])
+  @@index([date])
+  @@index([status])
+  @@index([date, status])
+  @@index([assignedTechnicianId])
+  @@map("subscription_visits")
+}
+
+// 30. Subscription Renewal Model
+model SubscriptionRenewal {
+  id                 String       @id @default(uuid())
+  subscriptionId     String
+  customerId         String?
+  customerPhone      String
+  oldPlanId          String
+  newPlanId          String
+  newSubscriptionId  String?
+  renewalCycle       Int
+  renewalPrice       Float
+  status             String       @default("completed") // 'pending' | 'completed' | 'failed'
+  renewedAt          DateTime     @default(now())
+  notes              String?
+  metadata           Json?        @default("{}")
+
+  subscription       Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+  @@index([customerId])
+  @@index([newSubscriptionId])
+  @@map("subscription_renewals")
+}
+
+// 31. Subscription Cashback Model
+model SubscriptionCashback {
+  id             String             @id @default(uuid())
+  subscriptionId String
+  visitId        String?
+  customerId     String?
+  customerPhone  String
+  amount         Float
+  type           String             @default("credit") // 'credit' | 'debit'
+  description    String?
+  createdAt      DateTime           @default(now())
+
+  subscription   Subscription       @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  visit          SubscriptionVisit? @relation(fields: [visitId], references: [id], onDelete: SetNull)
+
+  @@index([subscriptionId])
+  @@index([visitId])
+  @@index([customerId])
+  @@index([customerPhone])
+  @@map("subscription_cashbacks")
 }

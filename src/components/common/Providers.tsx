@@ -23,6 +23,32 @@ if (typeof window !== 'undefined') {
     }
     origError.apply(console, args);
   };
+
+  // Defensive guard against React DOM reconciliation "Cannot read properties of null (reading 'removeChild')"
+  // caused by external DOM mutations, browser extensions, or head element reconciliation
+  if (typeof Node !== 'undefined' && Node.prototype) {
+    const origRemoveChild = Node.prototype.removeChild;
+    Node.prototype.removeChild = function <T extends Node>(child: T): T {
+      if (!child || child.parentNode !== this) {
+        if (child && child.parentNode) {
+          return child.parentNode.removeChild(child);
+        }
+        return child;
+      }
+      return origRemoveChild.call(this, child) as T;
+    };
+
+    const origInsertBefore = Node.prototype.insertBefore;
+    Node.prototype.insertBefore = function <T extends Node>(newNode: T, referenceNode: Node | null): T {
+      if (referenceNode && referenceNode.parentNode !== this) {
+        if (referenceNode.parentNode) {
+          return referenceNode.parentNode.insertBefore(newNode, referenceNode);
+        }
+        return this.appendChild(newNode);
+      }
+      return origInsertBefore.call(this, newNode, referenceNode) as T;
+    };
+  }
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -59,6 +85,27 @@ export function Providers({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, user?.phone, customers, logout, locale, pathname, router]);
 
   useEffect(() => {
+    // Purge any stale client-side business caches while strictly preserving auth, theme & preferences
+    try {
+      const STALE_BUSINESS_KEYS = [
+        'cleanzo-orders-storage',
+        'cleanzo-customers-storage',
+        'cleanzo-customer-notifications',
+        'cleanzo-notifications-storage',
+        'cleanzo-booking-draft',
+        'cleanzo-cms-storage-v2',
+        'cleanzo-cms-storage',
+        'cleanzo_settings',
+        'cleanzo-settings-storage',
+        'cleanzo-addresses-storage',
+        'cleanzo-addresses-storage-v2',
+      ];
+      STALE_BUSINESS_KEYS.forEach((k) => {
+        localStorage.removeItem(k);
+        sessionStorage.removeItem(k);
+      });
+    } catch {}
+
     // Silently restore persistent customer session via HttpOnly cookie/token
     useAuthStore.getState().initAuth();
 
@@ -86,22 +133,23 @@ export function Providers({ children }: { children: React.ReactNode }) {
     if (typeof document !== 'undefined') {
       const favUrl = normalizeMediaUrl(branding?.faviconUrl) || '/brand/zo/cleanzo-logo.png';
       
-      // Remove all existing icon links so browser drops cached tab icon
+      // Update existing icon links in-place to avoid detaching React-managed nodes
       const existingIcons = document.querySelectorAll<HTMLLinkElement>("link[rel*='icon']");
-      existingIcons.forEach((el) => el.remove());
-
-      // Create fresh new icon links
-      const link = document.createElement('link');
-      link.id = 'dynamic-favicon';
-      link.rel = 'shortcut icon';
-      link.type = favUrl.endsWith('.png') ? 'image/png' : favUrl.endsWith('.svg') ? 'image/svg+xml' : 'image/x-icon';
-      link.href = favUrl;
-      document.head.appendChild(link);
-
-      const appleLink = document.createElement('link');
-      appleLink.rel = 'apple-touch-icon';
-      appleLink.href = favUrl;
-      document.head.appendChild(appleLink);
+      if (existingIcons.length > 0) {
+        existingIcons.forEach((el) => {
+          el.href = favUrl;
+        });
+      } else {
+        let link = document.getElementById('dynamic-favicon') as HTMLLinkElement | null;
+        if (!link) {
+          link = document.createElement('link');
+          link.id = 'dynamic-favicon';
+          link.rel = 'shortcut icon';
+          document.head.appendChild(link);
+        }
+        link.type = favUrl.endsWith('.png') ? 'image/png' : favUrl.endsWith('.svg') ? 'image/svg+xml' : 'image/x-icon';
+        link.href = favUrl;
+      }
     }
   }, [branding?.faviconUrl]);
 

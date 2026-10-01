@@ -31,28 +31,9 @@ export default function OffersPage() {
 
   // Dynamic Hero Banners (Promo Banners configured by Admin)
   const heroBanners = useMemo<OfferExtended[]>(() => {
-    const custom = (storeOffers || []).filter(
+    return (storeOffers || []).filter(
       (o: any) => o.active !== false && !o.isArchived && o.promoCode === 'HERO_BANNER'
     );
-    if (custom.length > 0) return custom;
-    // Default fallback banner if none are created yet in admin
-    return [
-      {
-        id: 'default-zo-banner',
-        title: 'خصم 20% فوري على كل خدمات البخار',
-        titleEn: 'Instant 20% Off All Steam Services',
-        badge: 'عرض حصري من زو التميمة',
-        badgeEn: 'Exclusive Mascot Offer',
-        description: 'اغتنم كود الترحيب الخاص من زو صالح لجميع حجوزات غسيل السيارات والعناية بالمنزل حتى نهاية الشهر.',
-        descriptionEn: 'Claim Zo special welcome discount code valid on all mobile car detailing & home steam bookings.',
-        code: 'CLEANZO20',
-        discountPercentage: 20,
-        usageLimit: null,
-        usageCount: 0,
-        expiresAt: '2026-12-31',
-        image: '',
-      },
-    ];
   }, [storeOffers]);
 
   // Regular service offers
@@ -124,6 +105,7 @@ export default function OffersPage() {
         />
 
         {/* ================= VIP PROMO HERO BANNERS (SIDE-BY-SIDE ON MOBILE) ================= */}
+        {heroBanners.length > 0 && (
         <div className="relative">
           {/* Navigation Arrows for multi-banner */}
           {heroBanners.length > 1 && (
@@ -267,6 +249,7 @@ export default function OffersPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* Offers Grid */}
         {regularOffersList.length > 0 ? (

@@ -63,7 +63,31 @@ export default function OrderDetailsPage() {
     toast.success(isAr ? 'تم إلغاء الحجز بنجاح' : 'Booking cancelled');
   };
 
+  const isNoticeValidFor6Hours = (dateStr: string, timeStr?: string) => {
+    try {
+      const rawTime = (timeStr || '12:00').trim();
+      const timeMatch = rawTime.match(/(\d{1,2}):(\d{2})/);
+      let hours = 12;
+      let minutes = 0;
+      if (timeMatch) {
+        hours = parseInt(timeMatch[1], 10);
+        minutes = parseInt(timeMatch[2], 10);
+        if (/pm|مساء/i.test(rawTime) && hours < 12) hours += 12;
+        if (/am|صباح/i.test(rawTime) && hours === 12) hours = 0;
+      }
+      const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+      const target = new Date(cleanDate);
+      target.setHours(hours, minutes, 0, 0);
+      const diffHours = (target.getTime() - Date.now()) / (1000 * 60 * 60);
+      return diffHours >= 6;
+    } catch {
+      return false;
+    }
+  };
+
   const isCancellable = ['pending', 'confirmed', 'assigned'].includes(order.status);
+  const canSelfCancel = isCancellable && isNoticeValidFor6Hours(order.date, order.time);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
 
   return (
     <div className="space-y-8 text-start">
@@ -93,14 +117,25 @@ export default function OrderDetailsPage() {
         <div className="flex items-center gap-3">
           <StatusBadge status={order.status} />
           {isCancellable && (
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => setIsCancelModalOpen(true)}
-              className="text-xs"
-            >
-              {isAr ? 'إلغاء الحجز' : 'Cancel'}
-            </Button>
+            canSelfCancel ? (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setIsCancelModalOpen(true)}
+                className="text-xs"
+              >
+                {isAr ? 'إلغاء الحجز' : 'Cancel'}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsSupportModalOpen(true)}
+                className="text-xs text-rose-500 border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/20"
+              >
+                {isAr ? 'تواصل مع الدعم للإلغاء' : 'Contact Support'}
+              </Button>
+            )
           )}
         </div>
       </div>
@@ -317,6 +352,40 @@ export default function OrderDetailsPage() {
           <Button variant="danger" size="sm" onClick={handleConfirmCancel}>
             {isAr ? 'نعم، إلغاء الحجز' : 'Yes, Cancel Booking'}
           </Button>
+        </div>
+      </Dialog>
+
+      {/* 6-Hour Policy Support Dialog */}
+      <Dialog
+        isOpen={isSupportModalOpen}
+        onClose={() => setIsSupportModalOpen(false)}
+        title={isAr ? 'سياسة إلغاء وتعديل المواعيد' : 'Cancellation & Reschedule Policy'}
+        description={
+          isAr
+            ? 'لا يمكن إلغاء أو تغيير الحجز قبل الموعد بأقل من 6 ساعات. يُرجى التواصل مع الدعم للمساعدة.'
+            : 'Bookings cannot be cancelled or rescheduled less than 6 hours before the appointment. Please contact support for assistance.'
+        }
+        maxWidth="sm"
+      >
+        <div className="space-y-4 pt-2">
+          <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
+            {isAr
+              ? 'فريق الدعم الفني وخدمة العملاء جاهز لمساعدتك في الحالات الطارئة عبر واتساب أو الهاتف.'
+              : 'Our customer support team is available to assist you via WhatsApp or phone.'}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" size="sm" onClick={() => setIsSupportModalOpen(false)}>
+              {isAr ? 'إغلاق' : 'Close'}
+            </Button>
+            <a
+              href="https://wa.me/201012345678"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition"
+            >
+              {isAr ? 'تواصل مع الدعم عبر واتساب' : 'Contact Support'}
+            </a>
+          </div>
         </div>
       </Dialog>
     </div>

@@ -2,6 +2,7 @@ import { app } from './app.js';
 import { connectDB, disconnectDB } from './config/db.js';
 import { ENV } from './config/env.js';
 import { ensureDefaultAdminUsers } from './controllers/adminAuthController.js';
+import { startSubscriptionScheduler, stopSubscriptionScheduler } from './services/subscriptionSchedulerService.js';
 
 async function startServer() {
   try {
@@ -9,7 +10,10 @@ async function startServer() {
     await connectDB();
     await ensureDefaultAdminUsers();
 
-    // 2. Start HTTP Server
+    // 2. Start Subscription Notification & Auto-Renewal Scheduler
+    startSubscriptionScheduler(5 * 60 * 1000);
+
+    // 3. Start HTTP Server
     const server = app.listen(ENV.PORT, () => {
       console.log('====================================================');
       console.log(`🚀 Cleanzo Backend Server running on port ${ENV.PORT}`);
@@ -22,6 +26,7 @@ async function startServer() {
     // Graceful Shutdown
     const shutdown = async (signal: string) => {
       console.log(`\n[Server] Received ${signal}. Shutting down gracefully...`);
+      stopSubscriptionScheduler();
       server.close(async () => {
         await disconnectDB();
         console.log('[Server] Cleanup complete. Process exiting.');

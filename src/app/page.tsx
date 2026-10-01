@@ -133,7 +133,7 @@ export default function HomePage() {
         {checkSectionVisible('hero') && <HeroSection />}
 
       {/* ======================= SECTION TRANSITION: SERVICES FOCUS ======================= */}
-      {checkSectionVisible('services') && (
+      {checkSectionVisible('services') && activeCategories.length > 0 && (
       <section id="services-selection" className="py-20 bg-white dark:bg-[#082845] border-y border-slate-200/80 dark:border-[#133B61]/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
           <SectionHeader
@@ -157,12 +157,8 @@ export default function HomePage() {
                 const isHome = cat.slug === 'home';
                 const imageSrc =
                   cat.image ||
-                  (isCar
-                    ? '/brand/zo/cleanzo-van-hero.png'
-                    : isHome
-                    ? branding?.heroImages?.home ||
-                      'https://images.unsplash.com/photo-1527515637462-cff94eecc1ac?auto=format&fit=crop&w=1000&q=85'
-                    : '/brand/zo/cleanzo-van-hero.png');
+                  branding?.heroImages?.[cat.slug as 'car' | 'home'] ||
+                  (isCar ? '/brand/zo/cleanzo-van-hero.png' : '');
 
                 const linkHref = isCar ? '/services/car' : isHome ? '/services/home' : `/services?category=${cat.slug}`;
 
@@ -194,19 +190,8 @@ export default function HomePage() {
 
                 const titleText = isAr ? cat.name : cat.nameEn || cat.name;
 
-                const descText = isAr
-                  ? cat.description ||
-                    (isCar
-                      ? 'ديتيلينج كامل، غسيل رغوي مزدوج، تلميع وتصحيح طلاء، تنظيف صالون بالبخار وإزالة البقع، وتطبيق عوازل النانو سيراميك.'
-                      : isHome
-                      ? 'غسيل واستخلاص بقع الكنب والسجاد بالبخار الفوري، تطهير المطابخ والحمامات، وتلميع الأرضيات بمواد آمنة على الأطفال والحيوانات الأليفة.'
-                      : 'باقات عناية احترافية متكاملة بأحدث معدات التعقيم والتنظيف المعتمدة.')
-                  : cat.descriptionEn ||
-                    (isCar
-                      ? 'Complete detailing, foam wash, 3-stage paint correction, interior hot steam extraction, and ceramic protection.'
-                      : isHome
-                      ? 'Deep upholstery steam extraction, kitchen degreasing, bathroom disinfection, and eco-friendly sanitized surfaces.'
-                      : 'Comprehensive care packages with state-of-the-art certified equipment.');
+                const descText = (isAr ? cat.description : cat.descriptionEn || cat.description) ||
+                  (isAr ? 'باقات عناية واحترافية متكاملة بأحدث التقنيات.' : 'Comprehensive professional care packages.');
 
                 const btnText = isAr
                   ? isCar
@@ -268,107 +253,14 @@ export default function HomePage() {
                   </div>
                 );
               })
-            ) : (
-              <>
-                {/* Fallback CAR SERVICES CARD */}
-                <div className="group relative rounded-[36px] lg:rounded-[44px] overflow-hidden border-2 border-[#0866C6]/30 dark:border-[#0866C6]/40 bg-white dark:bg-[#082845] shadow-lg hover:shadow-2xl hover:border-[#0866C6] transition-all duration-300 flex flex-col justify-between">
-                  {/* Clean Circular Category Image Presentation — No Overlays */}
-                  <div className="pt-8 pb-3 px-6 flex items-center justify-center">
-                    <div className="relative w-44 h-44 sm:w-52 sm:h-52 rounded-full overflow-hidden border-4 border-slate-100 dark:border-[#133B61] shadow-xl bg-slate-100 dark:bg-slate-900 shrink-0">
-                      <CleanzoImage
-                        src="/brand/zo/cleanzo-van-hero.png"
-                        alt="Car Services"
-                        fit="cover"
-                        position="center"
-                        className="w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-700"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Title & Category Label Outside Image */}
-                  <div className="px-6 text-center space-y-1">
-                    <span className="text-xs font-black uppercase tracking-wider text-[#0866C6] dark:text-[#3894ec]">
-                      {isAr ? '🚗 خدمات السيارات' : '🚗 Car Services'}
-                    </span>
-                    <h3 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-                      {isAr ? 'غسيل وتلميع وحماية السيارات' : 'Car Detailing & Protection'}
-                    </h3>
-                  </div>
-
-                  <div className="p-6 sm:p-8 space-y-6 flex-1 flex flex-col justify-between text-start">
-                    <p className="text-sm sm:text-base text-slate-700 dark:text-slate-100 leading-relaxed font-normal">
-                      {isAr
-                        ? 'ديتيلينج كامل، غسيل رغوي مزدوج، تلميع وتصحيح طلاء، تنظيف صالون بالبخار وإزالة البقع، وتطبيق عوازل النانو سيراميك.'
-                        : 'Complete detailing, foam wash, 3-stage paint correction, interior hot steam extraction, and ceramic protection.'}
-                    </p>
-
-                    <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800">
-                      <Link href="/services/car">
-                        <Button variant="primary" size="lg" className="w-full justify-center rounded-full font-black shadow-md py-3.5">
-                          <span>{isAr ? 'استكشف باقات السيارات' : 'Explore Car Packages'}</span>
-                          <ArrowIcon className="w-4 h-4" />
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Fallback HOME SERVICES CARD */}
-                <div className="group relative rounded-[36px] lg:rounded-[44px] overflow-hidden border-2 border-slate-200/90 dark:border-[#133B61] bg-white dark:bg-[#082845] shadow-lg hover:shadow-2xl hover:border-[#0866C6] transition-all duration-300 flex flex-col justify-between">
-                  {/* Clean Circular Category Image Presentation — No Overlays */}
-                  <div className="pt-8 pb-3 px-6 flex items-center justify-center">
-                    <div className="relative w-44 h-44 sm:w-52 sm:h-52 rounded-full overflow-hidden border-4 border-slate-100 dark:border-[#133B61] shadow-xl bg-slate-100 dark:bg-slate-900 shrink-0">
-                      <CleanzoImage
-                        src={branding?.heroImages?.home || "https://images.unsplash.com/photo-1527515637462-cff94eecc1ac?auto=format&fit=crop&w=1000&q=85"}
-                        alt="Home Services"
-                        fit="cover"
-                        position="center"
-                        className="w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-700"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Title & Category Label Outside Image */}
-                  <div className="px-6 text-center space-y-1">
-                    <span className="text-xs font-black uppercase tracking-wider text-[#0866C6] dark:text-[#3894ec]">
-                      {isAr ? '🏠 خدمات المنازل' : '🏠 Home Services'}
-                    </span>
-                    <h3 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-                      {isAr ? 'العناية بالمنزل والتعقيم بالبخار' : 'Home Deep Steam Care'}
-                    </h3>
-                  </div>
-
-                  <div className="p-6 sm:p-8 space-y-6 flex-1 flex flex-col justify-between text-start">
-                    <p className="text-sm sm:text-base text-slate-700 dark:text-slate-100 leading-relaxed font-normal">
-                      {isAr
-                        ? 'غسيل واستخلاص بقع الكنب والسجاد بالبخار الفوري، تطهير المطابخ والحمامات، وتلميع الأرضيات بمواد آمنة على الأطفال والحيوانات الأليفة.'
-                        : 'Deep upholstery steam extraction, kitchen degreasing, bathroom disinfection, and eco-friendly sanitized surfaces.'}
-                    </p>
-
-                    <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800">
-                      <Link href="/services/home">
-                        <Button
-                          variant="outline"
-                          size="lg"
-                          className="w-full justify-center rounded-full font-black transition-colors py-3.5"
-                          style={{ borderColor: 'var(--cleanzo-blue)', color: 'var(--cleanzo-blue)' }}
-                        >
-                          <span>{isAr ? 'استكشف باقات المنازل' : 'Explore Home Packages'}</span>
-                          <ArrowIcon className="w-4 h-4" />
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
+            ) : null}
           </div>
         </div>
       </section>
       )}
 
       {/* ======================= POPULAR SERVICES SECTION ======================= */}
-      {checkSectionVisible('services') && (
+      {checkSectionVisible('services') && popularServices.length > 0 && (
       <section className="py-20 bg-slate-50 dark:bg-[#0B1120]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
           <div className="flex flex-col md:flex-row items-start md:items-end justify-between gap-4">

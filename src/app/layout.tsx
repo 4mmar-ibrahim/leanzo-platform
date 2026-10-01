@@ -55,7 +55,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning className={`${cairo.variable} ${inter.variable} overflow-x-hidden max-w-full`}>
-      <body className="font-sans antialiased min-h-screen flex flex-col overflow-x-hidden max-w-full w-full bg-[#F5F8FC] dark:bg-[#041728] text-[#0F172A] dark:text-[#F8FAFC] selection:bg-[#0866C6] selection:text-white">
+      <body suppressHydrationWarning className="font-sans antialiased min-h-screen flex flex-col overflow-x-hidden max-w-full w-full bg-[#F5F8FC] dark:bg-[#041728] text-[#0F172A] dark:text-[#F8FAFC] selection:bg-[#0866C6] selection:text-white">
         <Providers>
           <TopAnnouncementBanner />
           <Header />

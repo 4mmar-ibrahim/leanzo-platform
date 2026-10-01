@@ -1,7 +1,6 @@
 'use client';
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import { Service, ServicePackage, ServiceAddon, ServiceCategory, Address, CouponDiscountType } from '@/types';
 import { useServiceStore } from '@/store/useServiceStore';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
@@ -64,9 +63,7 @@ interface BookingState {
   getFinalPrice: () => number;
 }
 
-export const useBookingStore = create<BookingState>()(
-  persist(
-    (set, get) => ({
+export const useBookingStore = create<BookingState>((set, get) => ({
       category: 'car',
       selectedService: null,
       selectedPackage: null,
@@ -296,9 +293,5 @@ export const useBookingStore = create<BookingState>()(
         const fee = get().getServiceFee();
         return Math.max(0, base - discount + fee);
       },
-    }),
-    {
-      name: 'cleanzo-booking-draft',
-    }
-  )
+    })
 );

@@ -9,8 +9,23 @@ import {
   getCouponsReport,
   getBookingsReport,
   getDashboardKPIs,
+  getSubscriptionsReport,
 } from '../services/reportsService.js';
 import { sendSuccess, sendError } from '../utils/responseHandler.js';
+
+export async function getSubscriptionsReportController(req: Request, res: Response): Promise<void> {
+  try {
+    const { period, startDate, endDate } = req.query;
+    const data = await getSubscriptionsReport({
+      period: period as string,
+      startDate: startDate as string,
+      endDate: endDate as string,
+    });
+    sendSuccess(res, data);
+  } catch (err: any) {
+    sendError(res, err.message, 500);
+  }
+}
 
 export async function getOverviewController(req: Request, res: Response): Promise<void> {
   try {

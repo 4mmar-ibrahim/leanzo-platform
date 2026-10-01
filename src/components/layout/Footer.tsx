@@ -15,6 +15,7 @@ import { useLocaleStore } from '@/store/useLocaleStore';
 import { useCMSStore } from '@/store/useCMSStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { usePathname } from 'next/navigation';
+import { normalizeMediaUrl } from '@/lib/utils';
 
 export function Footer() {
   const { t, locale } = useLocaleStore();
@@ -24,6 +25,8 @@ export function Footer() {
   const social = useCMSStore((s) => s.social);
   const fetchPublishedContent = useCMSStore((s) => s.fetchPublishedContent);
   const branding = useSettingsStore((s) => s.settings.branding);
+  const isSettingsLoaded = useSettingsStore((s) => s.isLoaded);
+  const settingsVersion = useSettingsStore((s) => s.version);
   const logoText = branding?.logoText || 'CLEANZO';
   const footerText = isAr ? (branding?.footerText || `جميع الحقوق محفوظة © ${logoText}`) : (branding?.footerTextEn || `All rights reserved © ${logoText}`);
 
@@ -43,14 +46,18 @@ export function Footer() {
           <div className="lg:col-span-2 space-y-5">
             <Link href="/" aria-label={logoText} className="inline-flex items-center">
               <div className="relative h-11 w-auto flex items-center justify-center shrink-0">
-                <img
-                  src={branding?.logoUrl || '/brand/zo/cleanzo-logo.png'}
-                  alt={logoText}
-                  className="h-full w-auto max-h-11 object-contain transition-transform duration-200 group-hover:scale-105"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = '/brand/zo/cleanzo-logo.png';
-                  }}
-                />
+                {!isSettingsLoaded ? (
+                  <div className="h-8 w-28 rounded-lg bg-slate-800/60 animate-pulse" />
+                ) : (
+                  <img
+                    src={normalizeMediaUrl(branding?.logoUrl || '/brand/zo/cleanzo-logo.png', settingsVersion)}
+                    alt={logoText}
+                    className="h-full w-auto max-h-11 object-contain transition-transform duration-200 group-hover:scale-105"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = '/brand/zo/cleanzo-logo.png';
+                    }}
+                  />
+                )}
               </div>
             </Link>
 
@@ -243,31 +250,6 @@ export function Footer() {
         <div className="mt-12 pt-8 border-t border-slate-800/80 flex flex-col md:flex-row items-center justify-between gap-5 text-xs text-slate-500">
           <p className="order-2 md:order-1 text-center md:text-start">© {new Date().getFullYear()} {footerText}</p>
 
-          {/* Developer Terminal Signature */}
-          <div
-            dir="ltr"
-            className="order-1 md:order-2 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#03172c]/90 border border-slate-800/90 hover:border-sky-500/40 hover:shadow-[0_0_18px_rgba(56,189,248,0.12)] transition-all duration-300 font-mono group/sig select-none"
-          >
-            <span className="text-slate-500 text-[11px] sm:text-xs font-medium select-none group-hover/sig:text-sky-400/80 transition-colors duration-250">
-              //
-            </span>
-            <span className="text-slate-400 text-[11px] sm:text-xs tracking-tight font-normal select-none">
-              crafted by
-            </span>
-            <a
-              href="https://wa.me/201009771898"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Ammar Ibrahim"
-              className="group/name relative inline-flex items-center text-[12px] sm:text-[13px] font-semibold text-slate-100 hover:text-cyan-300 transition-colors duration-250 cursor-pointer hover:drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]"
-            >
-              <span>Ammar Ibrahim</span>
-              <span className="absolute -bottom-0.5 inset-x-0 h-[1.5px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent scale-x-0 group-hover/name:scale-x-100 transition-transform duration-250 ease-out origin-center" />
-            </a>
-            <span className="text-cyan-400/80 text-[10px] sm:text-[11px] font-bold tracking-tighter select-none transition-all duration-250 group-hover/sig:text-cyan-300 group-hover/sig:drop-shadow-[0_0_6px_rgba(34,211,238,0.7)] group-hover/sig:translate-x-0.5 inline-block">
-              &lt;/&gt;
-            </span>
-          </div>
 
           <div className="order-3 flex items-center gap-4">
             <Link href="/about" className="hover:text-slate-300 transition-colors">

@@ -1,7 +1,6 @@
 'use client';
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import {
   CMSAboutSection,
   CMSContactSection,
@@ -97,9 +96,7 @@ export const deduplicateReviews = (list: Review[]): Review[] => {
   });
 };
 
-export const useCMSStore = create<CMSState>()(
-  persist(
-    (set, get) => ({
+export const useCMSStore = create<CMSState>((set, get) => ({
       hero: initialHeroContent,
       about: initialAboutContent,
       contact: initialContactContent,
@@ -639,17 +636,4 @@ export const useCMSStore = create<CMSState>()(
       return false;
     }
   },
-}),
-    {
-      name: 'cleanzo-cms-storage-v2',
-      partialize: (state) => ({
-        hero: state.hero,
-        about: state.about,
-        contact: state.contact,
-        social: state.social,
-        sections: state.sections,
-        lastPublishedAt: state.lastPublishedAt,
-      }),
-    }
-  )
-);
+}));

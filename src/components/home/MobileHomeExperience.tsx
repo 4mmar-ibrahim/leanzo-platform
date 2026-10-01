@@ -34,6 +34,7 @@ import { QuickBookingBottomSheet } from '@/components/booking/QuickBookingBottom
 import { FloatingBookingButton } from './FloatingBookingButton';
 import { FAQAccordion } from '@/components/faq/FAQAccordion';
 import { BeforeAfterSlider } from '@/components/gallery/BeforeAfterSlider';
+import { useGalleryStore } from '@/store/useGalleryStore';
 import { ServiceCategory } from '@/types';
 import { useZoStore } from '@/store/useZoStore';
 import { resolveActionButtonUrl } from '@/lib/actionButtonUtils';
@@ -122,9 +123,12 @@ export function MobileHomeExperience() {
   const fetchReviews = useCMSStore((s) => s.fetchReviews);
   const fetchPublishedContent = useCMSStore((s) => s.fetchPublishedContent);
   const isSectionVisible = useCMSStore((s) => s.isSectionVisible);
+  const services = useServiceStore((s) => s.services);
   const fetchServices = useServiceStore((s) => s.fetchServices);
   const categories = useServiceStore((s) => s.categories);
   const fetchCategories = useServiceStore((s) => s.fetchCategories);
+  const galleryItems = useGalleryStore((s) => s.items);
+  const fetchGallery = useGalleryStore((s) => s.fetchGallery);
 
   const [bookingSheetOpen, setBookingSheetOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<ServiceCategory>('car');
@@ -140,11 +144,16 @@ export function MobileHomeExperience() {
     fetchServices();
     fetchCategories();
     fetchReviews();
-  }, [fetchOffers, fetchPublishedContent, fetchServices, fetchCategories, fetchReviews]);
+    fetchGallery();
+  }, [fetchOffers, fetchPublishedContent, fetchServices, fetchCategories, fetchReviews, fetchGallery]);
 
   const activeCategories = useMemo(() => {
     return (categories || []).filter((c) => c.active !== false);
   }, [categories]);
+
+  const featuredBeforeAfter = useMemo(() => {
+    return (galleryItems || []).find((item) => item.beforeImage && item.afterImage && item.visible !== false);
+  }, [galleryItems]);
 
   const displayReviews = useMemo(() => {
     const seen = new Set<string>();
@@ -181,9 +190,9 @@ export function MobileHomeExperience() {
   }
 
   const showWelcome = mobileSettings?.showWelcomeCard !== false && isSectionVisible('hero');
-  const showServices = mobileSettings?.showServices !== false && isSectionVisible('services');
+  const showServices = mobileSettings?.showServices !== false && isSectionVisible('services') && activeCategories.length > 0;
   const showOffers = isSectionVisible('offers') && mobileSettings?.showOffers !== false && activeOffers.length > 0;
-  const showGallery = isSectionVisible('gallery') && mobileSettings?.showGallery !== false;
+  const showGallery = isSectionVisible('gallery') && mobileSettings?.showGallery !== false && !!featuredBeforeAfter;
   const showFAQ = isSectionVisible('faq') && mobileSettings?.showFAQ !== false && previewFaqs.length > 0;
   const showContact = mobileSettings?.showContact !== false;
   const showReviews = mobileSettings?.showReviews !== false && isSectionVisible('reviews') && displayReviews.length > 0;
@@ -305,12 +314,8 @@ export function MobileHomeExperience() {
                 const isHome = cat.slug === 'home';
                 const imageSrc =
                   cat.image ||
-                  (isCar
-                    ? '/brand/zo/cleanzo-van-hero.png'
-                    : isHome
-                    ? branding?.heroImages?.home ||
-                      'https://images.unsplash.com/photo-1527515637462-cff94eecc1ac?auto=format&fit=crop&w=1000&q=85'
-                    : '/brand/zo/cleanzo-van-hero.png');
+                  branding?.heroImages?.[cat.slug as 'car' | 'home'] ||
+                  (isCar ? '/brand/zo/cleanzo-van-hero.png' : '');
 
                 const linkHref = isCar ? '/services/car' : isHome ? '/services/home' : `/services?category=${cat.slug}`;
 
@@ -329,21 +334,9 @@ export function MobileHomeExperience() {
                 const badgeBg = isCar ? 'bg-[#F0444C]' : isHome ? 'bg-[#0866C6]' : 'bg-emerald-600';
 
                 const titleText = isAr ? cat.name : cat.nameEn || cat.name;
-                const subtitleText = isAr
-                  ? isCar
-                    ? 'غسيل وتلميع متنقل'
-                    : isHome
-                    ? 'تعقيم وتنظيف شامل'
-                    : cat.description
-                    ? cat.description.slice(0, 35)
-                    : 'عناية احترافية متكاملة'
-                  : isCar
-                  ? 'Mobile Detailing'
-                  : isHome
-                  ? 'Deep Sanitization'
-                  : cat.descriptionEn
-                  ? cat.descriptionEn.slice(0, 35)
-                  : 'Complete Care';
+                const subtitleText = (isAr ? cat.description : cat.descriptionEn || cat.description) || '';
+
+                const catServices = (services || []).filter((s) => s.category === cat.slug && s.available !== false).slice(0, 2);
 
                 return (
                   <div
@@ -352,14 +345,20 @@ export function MobileHomeExperience() {
                   >
                     {/* Clean Circular Image Presentation — No Overlays, No Text on Image */}
                     <div className="pt-4 pb-2 px-3 flex items-center justify-center">
-                      <div className="relative w-28 h-28 sm:w-36 sm:h-36 rounded-full overflow-hidden border-4 border-slate-100 dark:border-[#133B61] shadow-md bg-slate-100 dark:bg-slate-900 shrink-0">
-                        <CleanzoImage
-                          src={imageSrc}
-                          alt={titleText}
-                          fit="cover"
-                          position="center"
-                          className="w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-500"
-                        />
+                      <div className="relative w-28 h-28 sm:w-36 sm:h-36 rounded-full overflow-hidden border-4 border-slate-100 dark:border-[#133B61] shadow-md bg-slate-100 dark:bg-slate-900 shrink-0 flex items-center justify-center">
+                        {imageSrc ? (
+                          <CleanzoImage
+                            src={imageSrc}
+                            alt={titleText}
+                            fit="cover"
+                            position="center"
+                            className="w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-500"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-tr from-[#0866C6]/20 to-[#3894ec]/20 text-[#0866C6] dark:text-[#3894ec]">
+                            {isCar ? <Car className="w-10 h-10" /> : isHome ? <Home className="w-10 h-10" /> : <Sparkles className="w-10 h-10" />}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -375,42 +374,20 @@ export function MobileHomeExperience() {
                       )}
                     </div>
 
-                    {/* Actions & Features */}
+                    {/* Actions & Dynamic Services */}
                     <div className="p-2.5 sm:p-3 space-y-2 text-start flex-1 flex flex-col justify-between">
-                      <div className="flex flex-col gap-1.5">
-                        <div className="px-2.5 py-1 rounded-full bg-slate-50 dark:bg-[#041728] border border-slate-100 dark:border-[#133B61] text-start flex items-center gap-1.5">
-                          <span className="text-[11px]">{isCar ? '🫧' : isHome ? '🛋️' : '✨'}</span>
-                          <span className="text-[10px] sm:text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate">
-                            {isCar
-                              ? isAr
-                                ? 'غسيل بخار'
-                                : 'Steam Wash'
-                              : isHome
-                              ? isAr
-                                ? 'كنب ومجالس'
-                                : 'Sofas & Carpet'
-                              : isAr
-                              ? 'أعلى جودة'
-                              : 'Top Quality'}
-                          </span>
+                      {catServices.length > 0 && (
+                        <div className="flex flex-col gap-1.5">
+                          {catServices.map((svc) => (
+                            <div key={svc.id} className="px-2.5 py-1 rounded-full bg-slate-50 dark:bg-[#041728] border border-slate-100 dark:border-[#133B61] text-start flex items-center gap-1.5">
+                              <span className="text-[11px]">✨</span>
+                              <span className="text-[10px] sm:text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate">
+                                {isAr ? svc.title : svc.titleEn || svc.title}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                        <div className="px-2.5 py-1 rounded-full bg-slate-50 dark:bg-[#041728] border border-slate-100 dark:border-[#133B61] text-start flex items-center gap-1.5">
-                          <span className="text-[11px]">{isCar ? '✨' : isHome ? '🧼' : '🛡️'}</span>
-                          <span className="text-[10px] sm:text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate">
-                            {isCar
-                              ? isAr
-                                ? 'تلميع ونانو'
-                                : 'Polish & Nano'
-                              : isHome
-                              ? isAr
-                                ? 'سجاد ومراتب'
-                                : 'Mattresses'
-                              : isAr
-                              ? 'ضمان الخدمة'
-                              : 'Guaranteed'}
-                          </span>
-                        </div>
-                      </div>
+                      )}
 
                       <div className="flex flex-col gap-1.5 pt-1">
                         <button
@@ -434,133 +411,7 @@ export function MobileHomeExperience() {
                   </div>
                 );
               })
-            ) : (
-              <>
-                {/* 🚗 Fallback CAR SERVICES CARD */}
-                <div className="rounded-[26px] sm:rounded-[32px] overflow-hidden border border-slate-200/90 dark:border-[#133B61] bg-white dark:bg-[#082845] shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between group">
-                  {/* Clean Circular Image Presentation — No Overlays, No Text on Image */}
-                  <div className="pt-4 pb-2 px-3 flex items-center justify-center">
-                    <div className="relative w-28 h-28 sm:w-36 sm:h-36 rounded-full overflow-hidden border-4 border-slate-100 dark:border-[#133B61] shadow-md bg-slate-100 dark:bg-slate-900 shrink-0">
-                      <CleanzoImage
-                        src="/brand/zo/cleanzo-van-hero.png"
-                        alt="Car Services Detailing"
-                        fit="cover"
-                        position="center"
-                        className="w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-500"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Clean Title Outside the Image */}
-                  <div className="text-center px-2.5 pb-1">
-                    <h3 className="text-xs sm:text-base font-black text-slate-900 dark:text-white leading-tight">
-                      {isAr ? 'خدمات السيارات' : 'Car Services'}
-                    </h3>
-                    <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 font-medium line-clamp-1 mt-0.5">
-                      {isAr ? 'غسيل وتلميع وحماية' : 'Mobile Detailing'}
-                    </p>
-                  </div>
-
-                  <div className="p-2.5 sm:p-3 space-y-2 text-start flex-1 flex flex-col justify-between">
-                    <div className="flex flex-col gap-1.5">
-                      <div className="px-2.5 py-1 rounded-full bg-slate-50 dark:bg-[#041728] border border-slate-100 dark:border-[#133B61] text-start flex items-center gap-1.5">
-                        <span className="text-[11px]">🫧</span>
-                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate">
-                          {isAr ? 'غسيل بخار' : 'Steam Wash'}
-                        </span>
-                      </div>
-                      <div className="px-2.5 py-1 rounded-full bg-slate-50 dark:bg-[#041728] border border-slate-100 dark:border-[#133B61] text-start flex items-center gap-1.5">
-                        <span className="text-[11px]">✨</span>
-                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate">
-                          {isAr ? 'تلميع ونانو' : 'Polish & Nano'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-1.5 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => openBookingForCategory('car')}
-                        style={{ backgroundColor: 'var(--cleanzo-blue)' }}
-                        className="w-full py-2 px-3 rounded-full text-white font-black text-[11px] sm:text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition-transform"
-                      >
-                        <span>{isAr ? 'احجز موعدك 🚗' : 'Book 🚗'}</span>
-                        <ArrowIcon className="w-3 h-3" />
-                      </button>
-
-                      <Link
-                        href="/services/car"
-                        className="w-full py-1 px-2 rounded-full border border-slate-200 dark:border-[#133B61] text-slate-700 dark:text-slate-200 font-bold text-[10px] sm:text-[11px] hover:border-[#0866C6] transition-colors text-center block"
-                      >
-                        {isAr ? 'التفاصيل' : 'Details'}
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 🏠 Fallback HOME SERVICES CARD */}
-                <div className="rounded-[26px] sm:rounded-[32px] overflow-hidden border border-slate-200/90 dark:border-[#133B61] bg-white dark:bg-[#082845] shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between group">
-                  {/* Clean Circular Image Presentation — No Overlays, No Text on Image */}
-                  <div className="pt-4 pb-2 px-3 flex items-center justify-center">
-                    <div className="relative w-28 h-28 sm:w-36 sm:h-36 rounded-full overflow-hidden border-4 border-slate-100 dark:border-[#133B61] shadow-md bg-slate-100 dark:bg-slate-900 shrink-0">
-                      <CleanzoImage
-                        src={branding?.heroImages?.home || "https://images.unsplash.com/photo-1527515637462-cff94eecc1ac?auto=format&fit=crop&w=1000&q=85"}
-                        alt="Home Cleaning Steam Care"
-                        fit="cover"
-                        position="center"
-                        className="w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-500"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Clean Title Outside the Image */}
-                  <div className="text-center px-2.5 pb-1">
-                    <h3 className="text-xs sm:text-base font-black text-slate-900 dark:text-white leading-tight">
-                      {isAr ? 'خدمات المنازل' : 'Home Services'}
-                    </h3>
-                    <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 font-medium line-clamp-1 mt-0.5">
-                      {isAr ? 'تعقيم وتنظيف شامل' : 'Deep Sanitization'}
-                    </p>
-                  </div>
-
-                  <div className="p-2.5 sm:p-3 space-y-2 text-start flex-1 flex flex-col justify-between">
-                    <div className="flex flex-col gap-1.5">
-                      <div className="px-2.5 py-1 rounded-full bg-slate-50 dark:bg-[#041728] border border-slate-100 dark:border-[#133B61] text-start flex items-center gap-1.5">
-                        <span className="text-[11px]">🛋️</span>
-                        <span className="text-[10px] sm:text-[11px] font-bold text-[#162638] dark:text-slate-200 truncate">
-                          {isAr ? 'كنب ومجالس' : 'Sofas & Carpet'}
-                        </span>
-                      </div>
-                      <div className="px-2.5 py-1 rounded-full bg-slate-50 dark:bg-[#041728] border border-slate-100 dark:border-[#133B61] text-start flex items-center gap-1.5">
-                        <span className="text-[11px]">🧼</span>
-                        <span className="text-[10px] sm:text-[11px] font-bold text-[#162638] dark:text-slate-200 truncate">
-                          {isAr ? 'سجاد ومراتب' : 'Mattresses'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-1.5 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => openBookingForCategory('home')}
-                        style={{ backgroundColor: 'var(--cleanzo-blue)' }}
-                        className="w-full py-2 px-3 rounded-full text-white font-black text-[11px] sm:text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition-transform"
-                      >
-                        <span>{isAr ? 'احجز موعدك 🏠' : 'Book 🏠'}</span>
-                        <ArrowIcon className="w-3 h-3" />
-                      </button>
-
-                      <Link
-                        href="/services/home"
-                        className="w-full py-1 px-2 rounded-full border border-slate-200 dark:border-[#133B61] text-slate-700 dark:text-slate-200 font-bold text-[10px] sm:text-[11px] hover:border-[#0866C6] transition-colors text-center block"
-                      >
-                        {isAr ? 'التفاصيل' : 'Details'}
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
+            ) : null}
           </div>
         </section>
       )}
@@ -609,7 +460,7 @@ export function MobileHomeExperience() {
       )}
 
       {/* ======================= RECENT WORKS (BEFORE & AFTER) ======================= */}
-      {showGallery && (
+      {showGallery && featuredBeforeAfter && (
         <section className="space-y-3 text-start">
           <MobileSectionDivider
             icon={Sparkles}
@@ -619,7 +470,11 @@ export function MobileHomeExperience() {
           />
 
           <div className="rounded-2xl overflow-hidden shadow-xs border border-slate-200 dark:border-slate-800">
-            <BeforeAfterSlider />
+            <BeforeAfterSlider
+              beforeImage={featuredBeforeAfter.beforeImage}
+              afterImage={featuredBeforeAfter.afterImage}
+              title={isAr ? featuredBeforeAfter.title : featuredBeforeAfter.titleEn}
+            />
           </div>
         </section>
       )}

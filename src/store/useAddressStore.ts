@@ -1,7 +1,6 @@
 'use client';
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import { Address } from '@/types';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 
@@ -18,9 +17,7 @@ interface AddressState {
   clearAddresses: () => void;
 }
 
-export const useAddressStore = create<AddressState>()(
-  persist(
-    (set, get) => ({
+export const useAddressStore = create<AddressState>((set, get) => ({
       // Real first-time customers start with NO addresses (clean slate)
       addresses: [],
       isLoading: false,
@@ -136,9 +133,5 @@ export const useAddressStore = create<AddressState>()(
       clearAddresses: () => {
         set({ addresses: [], error: null, isLoading: false });
       },
-    }),
-    {
-      name: 'cleanzo-addresses-storage-v2', // bumped to invalidate old mock cache
-    }
-  )
+    })
 );

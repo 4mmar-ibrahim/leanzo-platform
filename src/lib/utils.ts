@@ -33,7 +33,7 @@ export function generateOrderId(): string {
   return `CLZ-${year}-${randomNum}`;
 }
 
-export function normalizeMediaUrl(url?: string | null): string {
+export function normalizeMediaUrl(url?: string | null, version?: number | string | null): string {
   if (!url) return '';
   let cleaned = String(url).trim();
   if (!cleaned) return '';
@@ -55,6 +55,12 @@ export function normalizeMediaUrl(url?: string | null): string {
     !cleaned.startsWith('/')
   ) {
     cleaned = '/' + cleaned;
+  }
+
+  // If a specific version timestamp is provided and url isn't data URL, append stable query
+  if (version && !cleaned.startsWith('data:') && !cleaned.includes('v=')) {
+    const separator = cleaned.includes('?') ? '&' : '?';
+    cleaned = `${cleaned}${separator}v=${version}`;
   }
 
   return cleaned;

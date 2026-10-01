@@ -33,6 +33,7 @@ import cmsRoutes from './routes/cmsRoutes.js';
 import backupRoutes from './routes/backupRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
 import technicianRoutes from './routes/technicianRoutes.js';
+import subscriptionRoutes from './routes/subscriptionRoutes.js';
 import path from 'path';
 
 export const app = express();
@@ -112,6 +113,14 @@ if (ENV.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
 
+// Anti-Stale-Cache: Disallow HTTP caching on dynamic business API endpoints
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 // Global Rate Limiting
 app.use('/api', generalLimiter);
 
@@ -161,6 +170,7 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/technicians', technicianRoutes);
 app.use('/api/admin/backups', backupRoutes);
 app.use('/api/backups', backupRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
 
 // 404 Handler for undefined routes
 

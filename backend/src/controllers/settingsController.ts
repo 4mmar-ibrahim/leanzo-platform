@@ -10,6 +10,7 @@ export async function getPublicSettings(req: Request, res: Response): Promise<vo
       settings = await SystemSettings.create({ key: 'global_settings' });
     }
 
+    const version = (settings as any).updatedAt ? new Date((settings as any).updatedAt).getTime() : Date.now();
     // Return public-safe settings (appearance, branding, working hours info, social, mobileExperience)
     sendSuccess(res, {
       general: settings.general,
@@ -19,6 +20,8 @@ export async function getPublicSettings(req: Request, res: Response): Promise<vo
       social: settings.social,
       booking: settings.booking,
       notifications: settings.notifications,
+      updatedAt: (settings as any).updatedAt,
+      version,
       bookingHours: {
         workingDays: settings.booking?.workingDays,
         workingHoursStart: settings.booking?.workingHoursStart,

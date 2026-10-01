@@ -26,6 +26,9 @@ import { useOrderStore } from '@/store/useOrderStore';
 import { useTechnicianStore } from '@/store/useTechnicianStore';
 import { generateOfficialInvoiceHtml, printHtmlDocument } from '@/lib/printUtils';
 import { OrderStatus, ServiceCategory } from '@/types';
+import { Sparkles, ShoppingBag } from 'lucide-react';
+import { apiGet } from '@/lib/api';
+import { SubscriptionVisitDetailsModal } from '@/components/admin/orders/SubscriptionVisitDetailsModal';
 import GlobalFilterEngine, {
   GlobalFilterValues,
   DynamicFilterField,
@@ -100,6 +103,20 @@ export default function AdminOrdersPage() {
     sortOrder: 'desc',
   });
 
+  const [orderType, setOrderType] = useState<'all' | 'normal' | 'subscription'>('all');
+  const [subscriptionVisits, setSubscriptionVisits] = useState<any[]>([]);
+  const [selectedVisitForModal, setSelectedVisitForModal] = useState<any | null>(null);
+
+  const fetchSubscriptionVisits = useCallback(async () => {
+    try {
+      const res = await apiGet('/subscriptions/admin/visits/all?limit=200');
+      const list = Array.isArray(res.data) ? res.data : (res.data as any)?.visits || [];
+      setSubscriptionVisits(list);
+    } catch (e) {
+      console.warn('Failed to load subscription visits:', e);
+    }
+  }, []);
+
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const itemsPerPage = 10;
@@ -147,7 +164,8 @@ export default function AdminOrdersPage() {
   useEffect(() => {
     loadOrders();
     fetchTechnicians();
-  }, [loadOrders, fetchTechnicians]);
+    fetchSubscriptionVisits();
+  }, [loadOrders, fetchTechnicians, fetchSubscriptionVisits]);
 
   const handleFilterChange = useCallback((newValues: GlobalFilterValues) => {
     setFilterValues(newValues);
@@ -176,8 +194,76 @@ export default function AdminOrdersPage() {
     return matchStatus && matchCategory && matchSearch && matchPrice;
   });
 
-  const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1;
-  const paginatedOrders = filtered.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+  // Filter Subscription Visits (TASK 05)
+  const filteredVisits = subscriptionVisits.filter((v: any) => {
+    const matchStatus = filterValues.status === 'all' || v.status === filterValues.status;
+    const cat = filterValues.dynamicFilters.category;
+    const matchCategory = !cat || cat === 'all' || v.category === cat || v.service?.category === cat;
+    const q = filterValues.search.trim().toLowerCase();
+    const matchSearch =
+      !q ||
+      v.id.toLowerCase().includes(q) ||
+      (v.subscriptionId && v.subscriptionId.toLowerCase().includes(q)) ||
+      (v.customerName && v.customerName.toLowerCase().includes(q)) ||
+      (v.customerPhone && v.customerPhone.includes(q)) ||
+      (v.service?.title && v.service.title.toLowerCase().includes(q));
+
+    return matchStatus && matchCategory && matchSearch;
+  });
+
+  // Unified items list
+  const combinedItems: Array<{
+    id: string;
+    itemType: 'normal' | 'subscription';
+    serviceTitle: string;
+    category: string;
+    date: string;
+    time: string;
+    area: string;
+    price: number;
+    status: OrderStatus;
+    technicianName: string;
+    raw: any;
+  }> = [];
+
+  if (orderType === 'all' || orderType === 'normal') {
+    filtered.forEach((o) => {
+      combinedItems.push({
+        id: o.id,
+        itemType: 'normal',
+        serviceTitle: o.service?.title || (o as any).serviceSnapshot?.title || 'خدمة كلينزو',
+        category: o.category || 'car',
+        date: o.date,
+        time: o.time,
+        area: o.address?.area || 'المنطقة',
+        price: Number(o.finalPrice) || 0,
+        status: o.status,
+        technicianName: o.technician?.name || 'لم يُعيّن فني',
+        raw: o,
+      });
+    });
+  }
+
+  if (orderType === 'all' || orderType === 'subscription') {
+    filteredVisits.forEach((v) => {
+      combinedItems.push({
+        id: v.id,
+        itemType: 'subscription',
+        serviceTitle: `${v.service?.title || 'خدمة كلينزو'} (${v.subscription?.plan?.name || (v.subscription?.planSnapshot as any)?.name || 'باقة اشتراك'})`,
+        category: v.category || v.service?.category || 'car',
+        date: v.date,
+        time: v.time,
+        area: (v.address as any)?.area || (v.subscription?.address as any)?.area || 'المنطقة',
+        price: Math.round((v.subscription?.price || 0) / (v.subscription?.totalVisits || 1)),
+        status: v.status as OrderStatus,
+        technicianName: (v.technician as any)?.name || 'لم يُعيّن فني',
+        raw: v,
+      });
+    });
+  }
+
+  const totalPages = Math.ceil(combinedItems.length / itemsPerPage) || 1;
+  const paginatedOrders = combinedItems.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
   const toggleSelectAll = () => {
     if (selectedOrderIds.length === paginatedOrders.length) {
@@ -313,9 +399,68 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
+      {/* Order Type Tabs (TASK 05 & 06) */}
+      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-100 dark:bg-slate-800/60 w-fit">
+        <button
+          type="button"
+          onClick={() => {
+            setOrderType('all');
+            setPage(1);
+          }}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all',
+            orderType === 'all'
+              ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          )}
+        >
+          <span>الكل</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-200 dark:bg-slate-800">
+            {orders.length + subscriptionVisits.length}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setOrderType('normal');
+            setPage(1);
+          }}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all',
+            orderType === 'normal'
+              ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          )}
+        >
+          <span>الطلبات العادية</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-200 dark:bg-slate-800">
+            {orders.length}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setOrderType('subscription');
+            setPage(1);
+          }}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all',
+            orderType === 'subscription'
+              ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          )}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>زيارات الاشتراكات</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400">
+            {subscriptionVisits.length}
+          </span>
+        </button>
+      </div>
+
       {/* Global Filter Engine */}
       <GlobalFilterEngine
-        searchPlaceholder="بحث برقم الطلب، اسم الخدمة، العنوان، أو الملاحظات..."
+        searchPlaceholder="بحث برقم الطلب أو الزيارة، اسم العميل، الهاتف، أو الخدمة..."
         statusOptions={ORDER_STATUS_OPTIONS}
         dynamicFields={ORDER_DYNAMIC_FIELDS}
         sortOptions={ORDER_SORT_OPTIONS}
@@ -351,14 +496,16 @@ export default function AdminOrdersPage() {
         <div className="block md:hidden divide-y divide-slate-100 dark:divide-slate-800">
           {paginatedOrders.length === 0 ? (
             <div className="p-8 text-center text-xs text-slate-400">
-              لا توجد طلبات مطابقة لمعايير البحث الحالية.
+              لا توجد طلبات أو زيارات مطابقة لمعايير البحث الحالية.
             </div>
           ) : (
             paginatedOrders.map((order) => {
               const isSelected = selectedOrderIds.includes(order.id);
+              const isSub = order.itemType === 'subscription';
+
               return (
                 <div
-                  key={order.id}
+                  key={`${order.itemType}-${order.id}`}
                   className={cn(
                     'p-4 space-y-3 transition-colors',
                     isSelected ? 'bg-sky-50/50 dark:bg-sky-950/20' : ''
@@ -366,74 +513,94 @@ export default function AdminOrdersPage() {
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleSelectOrder(order.id)}
-                        className="rounded-sm border-slate-400"
-                      />
+                      {!isSub && (
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectOrder(order.id)}
+                          className="rounded-sm border-slate-400"
+                        />
+                      )}
                       <span className="font-bold text-slate-900 dark:text-white font-mono text-xs">
-                        #{order.id}
+                        #{String(order.id).slice(-6)}
                       </span>
+                      {isSub && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                          زيارة اشتراك
+                        </span>
+                      )}
                     </div>
                     <div>{statusBadge(order.status)}</div>
                   </div>
 
                   <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                    {order.service?.title || (order as any).serviceSnapshot?.title || 'خدمة كلينزو'}
+                    {order.serviceTitle}
                   </div>
 
                   <div className="flex items-center justify-between text-[11px] text-slate-500">
                     <span>
-                      {order.date} — {order.time}
+                      {order.date} — {order.time} ({order.area})
                     </span>
                     <span className="font-bold text-sky-600 dark:text-sky-400 font-mono">
-                      {order.finalPrice} ج.م
+                      {order.price} ج.م {isSub && <span className="text-[9px] font-normal text-slate-400">(زيارة)</span>}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
                     <span className="text-[11px] text-slate-400">
-                      {order.technician ? order.technician.name : 'لم يُعيّن فني'}
+                      {order.technicianName}
                     </span>
                     <div className="flex items-center gap-2">
-                      <Link
-                        href={`/admin/orders/${order.id}`}
-                        className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[11px] font-bold text-slate-700 dark:text-slate-300"
-                      >
-                        تفاصيل
-                      </Link>
-                      {order.status === 'pending' && canChangeStatus && (
+                      {isSub ? (
                         <button
-                          onClick={() => handleQuickStatus(order.id, 'confirmed', 'تم استلام الطلب وتأكيده')}
-                          className="px-2.5 py-1 rounded-lg bg-[#0866C6]/10 text-[#0866C6] text-[11px] font-bold hover:bg-[#0866C6] hover:text-white transition-colors cursor-pointer"
+                          type="button"
+                          onClick={() => setSelectedVisitForModal(order.raw)}
+                          className="px-3 py-1.5 rounded-lg bg-sky-500 text-white text-[11px] font-bold hover:bg-sky-600 transition-colors cursor-pointer flex items-center gap-1.5"
                         >
-                          استلام
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>تفاصيل الزيارة بالكامل</span>
                         </button>
-                      )}
-                      {order.status === 'confirmed' && canChangeStatus && (
-                        <Link
-                          href={`/admin/orders/${order.id}`}
-                          className="px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-600 text-[11px] font-bold hover:bg-indigo-500 hover:text-white transition-colors cursor-pointer"
-                        >
-                          تعيين فني
-                        </Link>
-                      )}
-                      {order.status === 'assigned' && canChangeStatus && (
-                        <button
-                          onClick={() => handleQuickStatus(order.id, 'in_progress', 'بدء تنفيذ الخدمة')}
-                          className="px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-600 text-[11px] font-bold hover:bg-blue-600 hover:text-white transition-colors cursor-pointer"
-                        >
-                          بدء التنفيذ
-                        </button>
-                      )}
-                      {order.status === 'in_progress' && canChangeStatus && (
-                        <button
-                          onClick={() => handleQuickStatus(order.id, 'completed', 'تم الانتهاء من تنفيذ الطلب بنجاح')}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 text-[11px] font-bold hover:bg-emerald-500 hover:text-white transition-colors cursor-pointer"
-                        >
-                          تم الانتهاء
-                        </button>
+                      ) : (
+                        <>
+                          <Link
+                            href={`/admin/orders/${order.id}`}
+                            className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[11px] font-bold text-slate-700 dark:text-slate-300"
+                          >
+                            تفاصيل
+                          </Link>
+                          {order.status === 'pending' && canChangeStatus && (
+                            <button
+                              onClick={() => handleQuickStatus(order.id, 'confirmed', 'تم استلام الطلب وتأكيده')}
+                              className="px-2.5 py-1 rounded-lg bg-[#0866C6]/10 text-[#0866C6] text-[11px] font-bold hover:bg-[#0866C6] hover:text-white transition-colors cursor-pointer"
+                            >
+                              استلام
+                            </button>
+                          )}
+                          {order.status === 'confirmed' && canChangeStatus && (
+                            <Link
+                              href={`/admin/orders/${order.id}`}
+                              className="px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-600 text-[11px] font-bold hover:bg-indigo-500 hover:text-white transition-colors cursor-pointer"
+                            >
+                              تعيين فني
+                            </Link>
+                          )}
+                          {order.status === 'assigned' && canChangeStatus && (
+                            <button
+                              onClick={() => handleQuickStatus(order.id, 'in_progress', 'بدء تنفيذ الخدمة')}
+                              className="px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-600 text-[11px] font-bold hover:bg-blue-600 hover:text-white transition-colors cursor-pointer"
+                            >
+                              بدء التنفيذ
+                            </button>
+                          )}
+                          {order.status === 'in_progress' && canChangeStatus && (
+                            <button
+                              onClick={() => handleQuickStatus(order.id, 'completed', 'تم الانتهاء من تنفيذ الطلب بنجاح')}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 text-[11px] font-bold hover:bg-emerald-500 hover:text-white transition-colors cursor-pointer"
+                            >
+                              تم الانتهاء
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -452,15 +619,15 @@ export default function AdminOrdersPage() {
                   <input
                     type="checkbox"
                     checked={
-                      paginatedOrders.length > 0 &&
-                      selectedOrderIds.length === paginatedOrders.length
+                      paginatedOrders.filter((i) => i.itemType === 'normal').length > 0 &&
+                      selectedOrderIds.length === paginatedOrders.filter((i) => i.itemType === 'normal').length
                     }
                     onChange={toggleSelectAll}
                     className="rounded-sm border-slate-400 cursor-pointer"
                   />
                 </th>
-                <th className="py-3.5 px-4">رقم الطلب</th>
-                <th className="py-3.5 px-4">الخدمة</th>
+                <th className="py-3.5 px-4">رقم المعاملة</th>
+                <th className="py-3.5 px-4">النوع والخدمة</th>
                 <th className="py-3.5 px-4">الموعد</th>
                 <th className="py-3.5 px-4">العنوان</th>
                 <th className="py-3.5 px-4">السعر</th>
@@ -473,39 +640,62 @@ export default function AdminOrdersPage() {
               {paginatedOrders.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="py-16 text-center text-slate-400">
-                    لا توجد طلبات مطابقة للبحث أو الفلاتر المختارة.
+                    لا توجد طلبات أو زيارات مطابقة للبحث أو الفلاتر المختارة.
                   </td>
                 </tr>
               ) : (
                 paginatedOrders.map((order) => {
                   const isSelected = selectedOrderIds.includes(order.id);
+                  const isSub = order.itemType === 'subscription';
+
                   return (
                     <tr
-                      key={order.id}
+                      key={`${order.itemType}-${order.id}`}
                       className={cn(
                         'hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors',
                         isSelected ? 'bg-sky-50/40 dark:bg-sky-950/20' : ''
                       )}
                     >
                       <td className="py-3.5 px-4 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSelectOrder(order.id)}
-                          className="rounded-sm border-slate-400 cursor-pointer"
-                        />
+                        {!isSub ? (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectOrder(order.id)}
+                            className="rounded-sm border-slate-400 cursor-pointer"
+                          />
+                        ) : (
+                          <span className="text-[10px] text-slate-400">—</span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
-                        <Link
-                          href={`/admin/orders/${order.id}`}
-                          className="hover:text-sky-500 font-mono"
-                        >
-                          #{String(order.id).slice(-6)}
-                        </Link>
+                        {isSub ? (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedVisitForModal(order.raw)}
+                            className="hover:text-sky-500 font-mono text-right"
+                          >
+                            #{String(order.id).slice(-6)}
+                          </button>
+                        ) : (
+                          <Link
+                            href={`/admin/orders/${order.id}`}
+                            className="hover:text-sky-500 font-mono"
+                          >
+                            #{String(order.id).slice(-6)}
+                          </Link>
+                        )}
                       </td>
                       <td className="py-3.5 px-4">
-                        <div className="font-semibold text-slate-800 dark:text-slate-200">
-                          {order.service?.title || (order as any).serviceSnapshot?.title || 'خدمة كلينزو'}
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            {order.serviceTitle}
+                          </span>
+                          {isSub && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                              اشتراك
+                            </span>
+                          )}
                         </div>
                         <span className="text-[10px] text-slate-400">
                           {order.category === 'car' ? 'سيارات' : 'منازل'}
@@ -516,16 +706,16 @@ export default function AdminOrdersPage() {
                         <span className="text-[10px] text-slate-400">{order.time}</span>
                       </td>
                       <td className="py-3.5 px-4 max-w-[160px] truncate text-slate-600 dark:text-slate-300">
-                        {order.address?.area || 'المنطقة'}
+                        {order.area}
                       </td>
                       <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
-                        {order.finalPrice} ج.م
+                        {order.price} ج.م {isSub && <span className="text-[9px] font-normal text-slate-400">(زيارة)</span>}
                       </td>
                       <td className="py-3.5 px-4">{statusBadge(order.status)}</td>
                       <td className="py-3.5 px-4">
-                        {order.technician ? (
+                        {order.technicianName !== 'لم يُعيّن فني' ? (
                           <div className="font-semibold text-sky-600 dark:text-sky-400">
-                            {order.technician.name}
+                            {order.technicianName}
                           </div>
                         ) : (
                           <span className="text-[11px] text-slate-400">لم يُعيّن</span>
@@ -533,83 +723,97 @@ export default function AdminOrdersPage() {
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
-                          <Link
-                            href={`/admin/orders/${order.id}`}
-                            className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-sky-500 hover:text-white transition-colors"
-                            title="تفاصيل الطلب"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </Link>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const html = generateOfficialInvoiceHtml(order);
-                              printHtmlDocument(`فاتورة رسمية - ${order.id}`, html);
-                            }}
-                            className="p-1.5 rounded-lg bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 hover:bg-[#0866C6] hover:text-white transition-colors cursor-pointer"
-                            title="طباعة الفاتورة الضريبية الرسمية"
-                          >
-                            <Printer className="w-3.5 h-3.5" />
-                          </button>
-                          {order.status === 'pending' && canChangeStatus && (
+                          {isSub ? (
                             <button
-                              onClick={() => handleQuickStatus(order.id, 'confirmed', 'تم استلام الطلب وتأكيده')}
-                              className="p-1.5 rounded-lg bg-[#0866C6]/10 text-[#0866C6] hover:bg-[#0866C6] hover:text-white transition-colors cursor-pointer"
-                              title="استلام الطلب"
+                              type="button"
+                              onClick={() => setSelectedVisitForModal(order.raw)}
+                              className="px-2.5 py-1.5 rounded-lg bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 hover:bg-sky-500 hover:text-white transition-colors flex items-center gap-1 font-semibold text-[11px] cursor-pointer"
+                              title="عرض تفاصيل الزيارة الكاملة"
                             >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>عرض التفاصيل</span>
                             </button>
-                          )}
-                          {order.status === 'confirmed' && canChangeStatus && (
-                            <Link
-                              href={`/admin/orders/${order.id}`}
-                              className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-600 hover:bg-indigo-600 hover:text-white transition-colors cursor-pointer"
-                              title="تعيين فني للطلب"
-                            >
-                              <HardHat className="w-3.5 h-3.5" />
-                            </Link>
-                          )}
-                          {order.status === 'assigned' && canChangeStatus && (
-                            <button
-                              onClick={() =>
-                                handleQuickStatus(order.id, 'in_progress', 'بدء تنفيذ الخدمة')
-                              }
-                              className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 hover:bg-blue-600 hover:text-white transition-colors cursor-pointer"
-                              title="بدء التنفيذ"
-                            >
-                              <PlayCircle className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {order.status === 'in_progress' && canChangeStatus && (
-                            <button
-                              onClick={() =>
-                                handleQuickStatus(order.id, 'completed', 'تم الانتهاء من تنفيذ الطلب بنجاح')
-                              }
-                              className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-colors cursor-pointer"
-                              title="تم الانتهاء"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {order.status !== 'cancelled' && order.status !== 'completed' && canChangeStatus && (
-                            <button
-                              onClick={() =>
-                                handleQuickStatus(order.id, 'cancelled', 'إلغاء بواسطة الإدارة')
-                              }
-                              className="p-1.5 rounded-lg bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors"
-                              title="إلغاء الطلب"
-                            >
-                              <XCircle className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {canDeleteOrder && (
-                            <button
-                              onClick={() => setOrderToDelete(order)}
-                              className="p-1.5 rounded-lg bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors"
-                              title="حذف الطلب نهائياً"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                          ) : (
+                            <>
+                              <Link
+                                href={`/admin/orders/${order.id}`}
+                                className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-sky-500 hover:text-white transition-colors"
+                                title="تفاصيل الطلب"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </Link>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const html = generateOfficialInvoiceHtml(order.raw);
+                                  printHtmlDocument(`فاتورة رسمية - ${order.id}`, html);
+                                }}
+                                className="p-1.5 rounded-lg bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 hover:bg-[#0866C6] hover:text-white transition-colors cursor-pointer"
+                                title="طباعة الفاتورة الضريبية الرسمية"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                              </button>
+                              {order.status === 'pending' && canChangeStatus && (
+                                <button
+                                  onClick={() => handleQuickStatus(order.id, 'confirmed', 'تم استلام الطلب وتأكيده')}
+                                  className="p-1.5 rounded-lg bg-[#0866C6]/10 text-[#0866C6] hover:bg-[#0866C6] hover:text-white transition-colors cursor-pointer"
+                                  title="استلام الطلب"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {order.status === 'confirmed' && canChangeStatus && (
+                                <Link
+                                  href={`/admin/orders/${order.id}`}
+                                  className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-600 hover:bg-indigo-600 hover:text-white transition-colors cursor-pointer"
+                                  title="تعيين فني للطلب"
+                                >
+                                  <HardHat className="w-3.5 h-3.5" />
+                                </Link>
+                              )}
+                              {order.status === 'assigned' && canChangeStatus && (
+                                <button
+                                  onClick={() =>
+                                    handleQuickStatus(order.id, 'in_progress', 'بدء تنفيذ الخدمة')
+                                  }
+                                  className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 hover:bg-blue-600 hover:text-white transition-colors cursor-pointer"
+                                  title="بدء التنفيذ"
+                                >
+                                  <PlayCircle className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {order.status === 'in_progress' && canChangeStatus && (
+                                <button
+                                  onClick={() =>
+                                    handleQuickStatus(order.id, 'completed', 'تم الانتهاء من تنفيذ الطلب بنجاح')
+                                  }
+                                  className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-colors cursor-pointer"
+                                  title="تم الانتهاء"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {order.status !== 'cancelled' && order.status !== 'completed' && canChangeStatus && (
+                                <button
+                                  onClick={() =>
+                                    handleQuickStatus(order.id, 'cancelled', 'إلغاء بواسطة الإدارة')
+                                  }
+                                  className="p-1.5 rounded-lg bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors"
+                                  title="إلغاء الطلب"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {canDeleteOrder && (
+                                <button
+                                  onClick={() => setOrderToDelete(order.raw)}
+                                  className="p-1.5 rounded-lg bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors"
+                                  title="حذف الطلب نهائياً"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </>
                           )}
                         </div>
                       </td>
@@ -625,7 +829,7 @@ export default function AdminOrdersPage() {
         <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
           <span>
             عرض {(page - 1) * itemsPerPage + 1} إلى{' '}
-            {Math.min(page * itemsPerPage, filtered.length)} من إجمالي {filtered.length} طلب
+            {Math.min(page * itemsPerPage, combinedItems.length)} من إجمالي {combinedItems.length} عنصر
           </span>
           <div className="flex items-center gap-1">
             <button
@@ -706,6 +910,13 @@ export default function AdminOrdersPage() {
           </div>
         </div>
       )}
+
+      {/* Dedicated Subscription Visit Details Modal (TASK 06) */}
+      <SubscriptionVisitDetailsModal
+        visit={selectedVisitForModal}
+        isOpen={Boolean(selectedVisitForModal)}
+        onClose={() => setSelectedVisitForModal(null)}
+      />
     </div>
   );
 }

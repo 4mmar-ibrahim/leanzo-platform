@@ -196,7 +196,7 @@ function RegisterForm() {
 
             <Input
               label={isAr ? 'رقم الهاتف' : 'Phone Number'}
-              placeholder="01012345678"
+              placeholder={isAr ? '01xxxxxxxxx' : '01xxxxxxxxx'}
               type="tel"
               inputMode="numeric"
               maxLength={11}
@@ -211,7 +211,7 @@ function RegisterForm() {
             <Input
               label={isAr ? 'كلمة المرور' : 'Password'}
               type="password"
-              placeholder="••••••••"
+              placeholder={isAr ? 'أدخل كلمة المرور (6 أحرف فأكثر)' : 'Enter password (min 6 characters)'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required

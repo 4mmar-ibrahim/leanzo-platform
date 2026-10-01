@@ -824,3 +824,416 @@ export function generateOfficialInvoiceHtml(order: Order, companySettings?: any)
 </html>
   `;
 }
+
+/**
+ * Generates an Official Subscription Tax Invoice (فاتورة ضريبية رسمية لاشتراك دوري)
+ */
+export function generateOfficialSubscriptionInvoiceHtml(
+  sub: any,
+  companySettings?: any
+): string {
+  const subIdClean = String(sub.id || sub.subscriptionNumber || 'SUB').toUpperCase();
+  const invoiceNumber = `INV-${subIdClean}`;
+  const invoiceDate = sub.createdAt
+    ? new Date(sub.createdAt).toLocaleDateString('ar-EG', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : new Date().toLocaleDateString('ar-EG', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+
+  const statusMap: Record<string, { label: string; color: string }> = {
+    active: { label: 'اشتراك نشط وساري (مسدد)', color: '#059669' },
+    completed: { label: 'مكتمل الزيارات بالكامل', color: '#0866C6' },
+    expired: { label: 'منتهي الصلاحية', color: '#D97706' },
+    cancelled: { label: 'اشتراك ملغي', color: '#DC2626' },
+    paused: { label: 'اشتراك موقوف مؤقتاً', color: '#64748B' },
+  };
+
+  const statusInfo = statusMap[sub.status] || { label: sub.status || 'ساري', color: '#059669' };
+
+  const planName =
+    sub.planName || sub.plan?.name || sub.planSnapshot?.name || 'خطة اشتراك دوري';
+  const serviceTitle =
+    sub.serviceTitle || sub.service?.title || sub.serviceSnapshot?.title || 'خدمة تنظيف وغسيل متنقل';
+  const categoryLabel = sub.category === 'home' ? '🏠 منازل' : '🚗 سيارات';
+  const price = sub.price || 0;
+  const totalVisits = sub.totalVisits || (sub.visits ? sub.visits.length : 0);
+  const usedVisits = sub.usedVisits || 0;
+  const remainingVisits =
+    sub.remainingVisits !== undefined
+      ? sub.remainingVisits
+      : Math.max(0, totalVisits - usedVisits);
+
+  const gov =
+    sub.address?.governorate ||
+    sub.address?.governorateNameSnapshot ||
+    'المنيا';
+  const city =
+    sub.address?.city ||
+    sub.address?.cityNameSnapshot ||
+    'المنيا الجديدة';
+  const fullAddress =
+    typeof sub.address === 'string'
+      ? sub.address
+      : `${sub.address?.area || ''} ${sub.address?.building ? `عمارة ${sub.address.building}` : ''} ${sub.address?.details || ''}`.trim() ||
+        'العنوان المسجل لدى كلينزو';
+
+  const visitsList: any[] = Array.isArray(sub.visits) ? sub.visits : [];
+
+  const visitStatusLabels: Record<string, string> = {
+    completed: 'مكتملة ومسجلة',
+    confirmed: 'مؤكدة',
+    assigned: 'تم تعيين فني',
+    pending: 'مجدولة بانتظار الموعد',
+    in_progress: 'جاري التنفيذ',
+    cancelled: 'ملغاة',
+  };
+
+  return `
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>فاتورة اشتراك رسمي - ${invoiceNumber}</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 12mm 15mm 15mm 15mm;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif, 'Cairo', 'Almarai';
+      color: #0F172A;
+      background: #FFFFFF;
+      line-height: 1.5;
+      font-size: 10.5pt;
+    }
+    .invoice-card {
+      width: 100%;
+      border: 1px solid #CBD5E1;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .inv-header {
+      background: linear-gradient(135deg, #07345C 0%, #041728 100%);
+      color: #FFFFFF;
+      padding: 20px 24px;
+    }
+    .inv-header-table {
+      width: 100%;
+    }
+    .inv-brand h1 {
+      font-size: 22pt;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      color: #FFFFFF;
+    }
+    .inv-brand h1 span {
+      color: #0866C6;
+    }
+    .inv-brand p {
+      font-size: 9pt;
+      color: #94A3B8;
+      margin-top: 2px;
+    }
+    .inv-meta-right {
+      text-align: left;
+    }
+    .inv-meta-title {
+      font-size: 16pt;
+      font-weight: 900;
+      color: #0866C6;
+      margin-bottom: 4px;
+    }
+    .inv-number {
+      font-size: 11pt;
+      font-family: monospace;
+      font-weight: bold;
+      color: #FFFFFF;
+    }
+    .inv-status-pill {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 8.5pt;
+      font-weight: bold;
+      background: ${statusInfo.color};
+      color: #FFFFFF;
+      margin-top: 6px;
+    }
+    .details-strip {
+      padding: 18px 24px;
+      background: #F8FAFC;
+      border-bottom: 1px solid #E2E8F0;
+    }
+    .details-table {
+      width: 100%;
+      font-size: 9pt;
+    }
+    .details-table td {
+      vertical-align: top;
+      width: 50%;
+      padding: 4px 8px;
+    }
+    .detail-heading {
+      font-size: 10pt;
+      font-weight: 800;
+      color: #07345C;
+      border-bottom: 1.5px solid #0866C6;
+      padding-bottom: 4px;
+      margin-bottom: 8px;
+    }
+    .detail-row {
+      margin-bottom: 4px;
+      color: #334155;
+    }
+    .detail-row strong {
+      color: #0F172A;
+    }
+    .items-box {
+      padding: 20px 24px;
+    }
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16px;
+    }
+    .items-table th {
+      background: #F1F5F9;
+      color: #07345C;
+      font-weight: 800;
+      text-align: right;
+      padding: 10px 12px;
+      font-size: 9.5pt;
+      border-bottom: 2px solid #CBD5E1;
+    }
+    .items-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #E2E8F0;
+      font-size: 9.5pt;
+      color: #1E293B;
+    }
+    .totals-table {
+      width: 50%;
+      margin-right: auto;
+      border-collapse: collapse;
+      font-size: 9.5pt;
+    }
+    .totals-table td {
+      padding: 6px 12px;
+    }
+    .totals-table tr.grand-total td {
+      font-size: 13pt;
+      font-weight: 900;
+      color: #07345C;
+      border-top: 2px solid #0866C6;
+      background: #EAF8FC;
+      border-radius: 6px;
+    }
+    .visits-box {
+      padding: 0 24px 20px 24px;
+    }
+    .visits-title {
+      font-size: 10pt;
+      font-weight: 800;
+      color: #07345C;
+      margin-bottom: 8px;
+    }
+    .visits-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8.5pt;
+    }
+    .visits-table th {
+      background: #F8FAFC;
+      padding: 6px 8px;
+      border: 1px solid #E2E8F0;
+      color: #475569;
+      font-weight: 700;
+    }
+    .visits-table td {
+      padding: 6px 8px;
+      border: 1px solid #E2E8F0;
+      color: #334155;
+    }
+    .invoice-footer-info {
+      padding: 16px 24px;
+      background: #FAFAFA;
+      border-top: 1px solid #E2E8F0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .guarantee-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 8.5pt;
+      color: #475569;
+    }
+    .official-invoice-seal {
+      border: 2px dashed #059669;
+      color: #059669;
+      border-radius: 50%;
+      width: 86px;
+      height: 86px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 7.5pt;
+      font-weight: bold;
+      text-align: center;
+      transform: rotate(-8deg);
+      background: rgba(5, 150, 105, 0.05);
+    }
+  </style>
+</head>
+<body>
+  <div class="invoice-card">
+    <div class="inv-header">
+      <table class="inv-header-table">
+        <tr>
+          <td class="inv-brand">
+            <h1>CLEAN<span>ZO</span></h1>
+            <p>شركة كلينزو للغسيل والتعقيم المتنقل • منظومة الاشتراكات الدورية</p>
+            <p style="font-size:8pt; color:#94A3B8;">المنيا الجديدة • خدمة العملاء: 01012345678 • subscriptions@cleanzo.app</p>
+          </td>
+          <td class="inv-meta-right">
+            <div class="inv-meta-title">فاتورة اشتراك دوري معتمد</div>
+            <div class="inv-number">${invoiceNumber}</div>
+            <div><span class="inv-status-pill">${statusInfo.label}</span></div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="details-strip">
+      <table class="details-table">
+        <tr>
+          <td>
+            <div class="detail-heading">بيانات المشترك</div>
+            <div class="detail-row"><strong>الاسم:</strong> ${sub.customerName || 'عميل كلينزو'}</div>
+            <div class="detail-row"><strong>رقم الهاتف:</strong> <span dir="ltr">${sub.customerPhone || '-'}</span></div>
+            <div class="detail-row"><strong>المحافظة / المدينة:</strong> ${gov} — ${city}</div>
+            <div class="detail-row"><strong>العنوان:</strong> ${fullAddress}</div>
+            ${
+              sub.vehicleDetails
+                ? `<div class="detail-row"><strong>بيانات المركبة:</strong> ${sub.vehicleDetails.make || ''} ${sub.vehicleDetails.model || ''} (${sub.vehicleDetails.plateNumber || ''})</div>`
+                : ''
+            }
+          </td>
+          <td>
+            <div class="detail-heading">تفاصيل الاشتراك والعقد</div>
+            <div class="detail-row"><strong>رقم الاشتراك:</strong> ${sub.id || sub.subscriptionNumber}</div>
+            <div class="detail-row"><strong>تاريخ الفاتورة:</strong> ${invoiceDate}</div>
+            <div class="detail-row"><strong>فترة سريان الاشتراك:</strong> ${sub.startDate || '-'} إلى ${sub.endDate || '-'}</div>
+            <div class="detail-row"><strong>دورة التجديد:</strong> الدورة رقم ${sub.renewalCycle || 1} ${sub.autoRenew ? '(تجديد تلقائي مفعل)' : ''}</div>
+            <div class="detail-row"><strong>رصيد الزيارات:</strong> ${usedVisits} من ${totalVisits} زيارة منفذة (${remainingVisits} زيارة متبقية)</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="items-box">
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th style="width: 50%;">باقة الاشتراك / الخدمة</th>
+            <th style="width: 15%; text-align: center;">القطاع</th>
+            <th style="width: 15%; text-align: center;">عدد الزيارات</th>
+            <th style="width: 20%; text-align: left;">القيمة التعاقدية (ج.م)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <strong>${planName}</strong>
+              <div style="font-size: 8.5pt; color: #64748B; margin-top: 3px;">
+                الخدمة الأساسية: ${serviceTitle} • مدة الصلاحية: 30 يوماً
+              </div>
+            </td>
+            <td style="text-align: center;">${categoryLabel}</td>
+            <td style="text-align: center; font-weight: bold;">${totalVisits} زيارة</td>
+            <td style="text-align: left; font-weight: bold;">${price} ج.م</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table class="totals-table">
+        <tr>
+          <td>قيمة الباقة الأساسية:</td>
+          <td style="text-align: left; font-weight: bold;">${price} ج.م</td>
+        </tr>
+        <tr class="grand-total">
+          <td>إجمالي الفاتورة المسدد:</td>
+          <td style="text-align: left;">${price} ج.م</td>
+        </tr>
+      </table>
+    </div>
+
+    ${
+      visitsList.length > 0
+        ? `
+    <div class="visits-box">
+      <div class="visits-title">جدول مواعيد زيارات الاشتراك المجددة والمعتمدة (${visitsList.length} زيارات)</div>
+      <table class="visits-table">
+        <thead>
+          <tr>
+            <th style="width: 10%;">#</th>
+            <th style="width: 25%;">التاريخ والموعد</th>
+            <th style="width: 35%;">ملاحظات وتفاصيل الزيارة</th>
+            <th style="width: 30%;">حالة الزيارة</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${visitsList
+            .map(
+              (v: any, idx: number) => `
+            <tr>
+              <td style="text-align: center; font-weight: bold;">الزيارة ${v.visitIndex || idx + 1}</td>
+              <td style="font-family: monospace;">${v.date || '-'} (${v.time || '-'})</td>
+              <td>${v.rescheduledFrom ? `<span style="color:#D97706;">معاد جدولتها من: ${v.rescheduledFrom}</span>` : 'موعد مجدول اعتيادي'}</td>
+              <td><span style="font-weight: bold;">${visitStatusLabels[v.status] || v.status}</span></td>
+            </tr>
+          `
+            )
+            .join('')}
+        </tbody>
+      </table>
+    </div>
+    `
+        : ''
+    }
+
+    <div class="invoice-footer-info">
+      <div class="guarantee-badge">
+        <div>
+          <div style="font-weight: 800; color: #07345C; font-size: 9.5pt;">ضمان جودة كلينزو 100% لاشتراكات العناية المتنقلة</div>
+          <div>هذه الفاتورة وثيقة مالية وتشغيلية رسمية صادرة آلياً ومسجلة بسجلات شركة كلينزو.</div>
+          <div style="font-size:7.5pt; color:#94A3B8; margin-top:2px;">الرقم الضريبي: 620-149-835 • س.ت: 489210 • منصة الاشتراكات الموحدة</div>
+        </div>
+      </div>
+      <div class="official-invoice-seal">
+        <span style="font-size: 8pt; font-weight: 900;">CLEANZO</span>
+        <span>اشتراك مسدد</span>
+        <span>معتمد رسمياً</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}
+

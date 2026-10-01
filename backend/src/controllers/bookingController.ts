@@ -21,6 +21,7 @@ import {
   CANONICAL_PHONE_ERROR_MESSAGE,
   CANONICAL_PHONE_ERROR_CODE,
 } from '../utils/phoneValidator.js';
+import { isNoticeSufficient, getSubscriptionSettings } from '../services/subscriptionService.js';
 
 export async function calculateBookingPriceHandler(req: Request, res: Response): Promise<void> {
   try {
@@ -1402,6 +1403,25 @@ export async function cancelBookingCustomer(req: AuthenticatedRequest, res: Resp
       return;
     }
 
+    // 4. Enforce 6-hour cancellation rule for customer bookings
+    const subSettings = await getSubscriptionSettings();
+    const noticeHours = subSettings.normalBookingCancellationNoticeHours ?? 6;
+    const { isAllowed } = isNoticeSufficient(
+      booking.date,
+      booking.scheduledStart || booking.timeSlotStart || booking.time,
+      noticeHours
+    );
+
+    if (!isAllowed) {
+      sendError(
+        res,
+        'لا يمكن إلغاء أو تغيير الحجز قبل الموعد بأقل من 6 ساعات. يُرجى التواصل مع الدعم للمساعدة.',
+        400,
+        'CANCELLATION_RESTRICTED_6H'
+      );
+      return;
+    }
+
     booking.status = 'cancelled';
     booking.cancelledAt = new Date();
     booking.cancellationSource = 'customer';
@@ -1443,6 +1463,129 @@ export async function cancelBookingCustomer(req: AuthenticatedRequest, res: Resp
     sendSuccess(res, booking, 'تم إلغاء الحجز بنجاح وإتاحة الموعد');
   } catch (err: any) {
     sendError(res, err.message, 500);
+  }
+}
+
+export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { id } = req.params;
+    const { newDate, newTime, reason, customerPhone } = req.body || {};
+
+    if (!newDate || !newTime) {
+      sendError(res, 'التاريخ الجديد والوقت مطلوبان لإعادة الجدولة', 400, 'MISSING_NEW_TIME');
+      return;
+    }
+
+    let booking = await Booking.findById(id);
+    if (!booking) {
+      booking = await Booking.findOne({ $or: [{ id }, { bookingNumber: id }] });
+    }
+
+    if (!booking) {
+      sendError(res, 'الطلب غير موجود', 404, 'BOOKING_NOT_FOUND');
+      return;
+    }
+
+    // IDOR Protection: Must be authenticated owner or verified customer phone
+    if (req.user) {
+      const isOwner =
+        booking.customerId?.toString() === req.user._id.toString() ||
+        booking.customerPhone === req.user.phone;
+      if (!isOwner) {
+        sendError(res, 'غير مصرح لك بإعادة جدولة هذا الحجز', 403, 'FORBIDDEN_RESCHEDULE');
+        return;
+      }
+    } else {
+      if (!customerPhone || String(customerPhone).trim() !== booking.customerPhone) {
+        sendError(res, 'يرجى تأكيد رقم الهاتف المرتبط بالحجز للمتابعة', 403, 'FORBIDDEN_RESCHEDULE_PHONE_MISMATCH');
+        return;
+      }
+    }
+
+    if (booking.status === 'completed') {
+      sendError(res, 'لا يمكن إعادة جدولة حجز مكتمل بالفعل', 400, 'CANNOT_RESCHEDULE_COMPLETED');
+      return;
+    }
+    if (booking.status === 'cancelled') {
+      sendError(res, 'لا يمكن إعادة جدولة حجز ملغي', 400, 'CANNOT_RESCHEDULE_CANCELLED');
+      return;
+    }
+    if (booking.status === 'in_progress') {
+      sendError(res, 'لا يمكن تغيير الموعد بعد بدء تقديم الخدمة فعلياً', 400, 'CANNOT_RESCHEDULE_IN_PROGRESS');
+      return;
+    }
+
+    // 6-hour policy check
+    const subSettings = await getSubscriptionSettings();
+    const noticeHours = subSettings.normalBookingRescheduleNoticeHours ?? 6;
+    const { isAllowed } = isNoticeSufficient(
+      booking.date,
+      booking.scheduledStart || booking.timeSlotStart || booking.time,
+      noticeHours
+    );
+
+    if (!isAllowed) {
+      sendError(
+        res,
+        'لا يمكن إلغاء أو تغيير الحجز قبل الموعد بأقل من 6 ساعات. يُرجى التواصل مع الدعم للمساعدة.',
+        400,
+        'RESCHEDULE_RESTRICTED_6H'
+      );
+      return;
+    }
+
+    const lockKey = `booking_reschedule_${booking.serviceId}`;
+
+    await withBookingLock(lockKey, async () => {
+      // 1. Validate new appointment slot BEFORE releasing old reservation
+      const slotTiming = await assertSlotAvailability({
+        dateStr: newDate,
+        timeStr: newTime,
+        serviceId: booking.serviceId,
+        customDuration: booking.duration,
+        excludeBookingId: booking.id,
+      });
+
+      const previousTime = `${booking.date} (${booking.time})`;
+      const newTimeLabel = `${slotTiming.scheduledStart} – ${slotTiming.scheduledEnd}`;
+
+      booking.date = newDate;
+      booking.time = newTimeLabel;
+      booking.timeSlotStart = slotTiming.scheduledStart;
+      booking.scheduledStart = slotTiming.scheduledStart;
+      booking.scheduledEnd = slotTiming.scheduledEnd;
+      booking.rescheduledFrom = previousTime;
+
+      booking.timeline.push({
+        status: booking.status,
+        label: 'تم تعديل الموعد بواسطة العميل',
+        labelEn: 'Rescheduled by Customer',
+        timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
+        completed: true,
+        description: reason || `تم تعديل الموعد من (${previousTime}) إلى (${newDate} ${newTimeLabel})`,
+        descriptionEn: `Rescheduled from (${previousTime}) to (${newDate} ${newTimeLabel})`,
+        changedBy: req.user?.name || booking.customerName || 'customer',
+      });
+
+      await booking.save();
+
+      try {
+        await Notification.create({
+          target: 'admin',
+          title: `تعديل موعد حجز #${booking.id}`,
+          titleEn: `Booking Rescheduled #${booking.id}`,
+          message: `قام العميل ${booking.customerName} بتغيير موعد الطلب #${booking.id} إلى ${newDate} ${newTimeLabel}`,
+          messageEn: `Customer ${booking.customerName} rescheduled order #${booking.id} to ${newDate} ${newTimeLabel}`,
+          type: 'order',
+          read: false,
+          link: `/admin/orders/${booking.id}`,
+        });
+      } catch (e) {}
+
+      sendSuccess(res, booking, 'تم إعادة جدولة الحجز بنجاح');
+    });
+  } catch (err: any) {
+    sendError(res, err.message, err.statusCode || 500, err.code);
   }
 }
 

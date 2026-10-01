@@ -602,6 +602,24 @@ html:not(.dark) .bg-slate-50 p.text-slate-500 {
   .animate-bell {
     animation: bell-wiggle 1.5s ease-in-out infinite;
   }
+  @keyframes glow-pulse {
+    0%, 100% {
+      box-shadow: 0 0 14px rgba(8, 102, 198, 0.4), 0 0 28px rgba(8, 102, 198, 0.15);
+    }
+    50% {
+      box-shadow: 0 0 24px rgba(8, 102, 198, 0.7), 0 0 40px rgba(8, 102, 198, 0.35);
+    }
+  }
+  @keyframes float-subtle {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-4px); }
+  }
+  .animate-glow-pulse {
+    animation: glow-pulse 2.6s ease-in-out infinite;
+  }
+  .animate-float-subtle {
+    animation: float-subtle 3s ease-in-out infinite;
+  }
 }
 
 /* Print Rules */

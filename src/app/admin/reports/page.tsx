@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import {
   BarChart3,
   Download,
@@ -20,12 +21,20 @@ import {
   Search,
   RefreshCw,
   Percent,
+  RotateCcw,
+  Layers,
+  ExternalLink,
+  Eye,
 } from 'lucide-react';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { ClearStatsButton } from '@/components/admin/ClearStatsButton';
 import { useAdminStore } from '@/store/useAdminStore';
 import { hasPermission } from '@/lib/permissions';
-import { generateOfficialReportHtml, printHtmlDocument } from '@/lib/printUtils';
+import {
+  generateOfficialReportHtml,
+  generateOfficialSubscriptionInvoiceHtml,
+  printHtmlDocument,
+} from '@/lib/printUtils';
 import { toast } from 'sonner';
 
 type ReportTab =
@@ -35,7 +44,8 @@ type ReportTab =
   | 'services'
   | 'areas'
   | 'coupons'
-  | 'bookings';
+  | 'bookings'
+  | 'subscriptions';
 
 export default function AdminReportsPage() {
   const currentAdmin = useAdminStore((s) => s.currentAdmin);
@@ -82,6 +92,9 @@ export default function AdminReportsPage() {
           break;
         case 'bookings':
           res = await cleanzoApi.admin.reports.getBookings(params);
+          break;
+        case 'subscriptions':
+          res = await cleanzoApi.admin.reports.getSubscriptions(params);
           break;
         default:
           res = await cleanzoApi.admin.reports.getOverview(params);
@@ -211,6 +224,62 @@ export default function AdminReportsPage() {
           b.dayName || '-',
           b.count || 0,
         ]);
+      } else if (activeTab === 'subscriptions') {
+        reportTitle = 'تقرير عقود واشتراكات كلينزو الدورية (Subscription Financial & Operations Report)';
+        tableHeaders = [
+          'رقم الاشتراك',
+          'اسم العميل',
+          'رقم الهاتف',
+          'الباقة / الخدمة',
+          'القطاع',
+          'القيمة التعاقدية',
+          'الزيارات المنفذة',
+          'فترة السريان',
+          'الحالة',
+          'التجديد',
+        ];
+        tableRows = (reportData?.subscriptionsList || []).map((s: any) => [
+          s.id,
+          s.customerName || 'عميل كلينزو',
+          s.customerPhone || '-',
+          `${s.planName || ''} (${s.serviceTitle || ''})`,
+          s.category === 'home' ? '🏠 منازل' : '🚗 سيارات',
+          `${(s.price || 0).toLocaleString()} ج.م`,
+          `${s.usedVisits || 0} من ${s.totalVisits || 0}`,
+          `${s.startDate || '-'} إلى ${s.endDate || '-'}`,
+          statusMap[s.status] || s.status,
+          s.renewedToId ? `مجدد (دورة ${s.renewalCycle || 1})` : 'غير مجدد',
+        ]);
+        summaryCards = [
+          { label: 'إجمالي الاشتراكات', value: sum.totalSubscriptions ?? 0 },
+          {
+            label: 'الاشتراكات النشطة',
+            value: sum.activeSubscriptions ?? 0,
+            note: `${sum.expiredSubscriptions || 0} منتهي • ${sum.cancelledSubscriptions || 0} ملغي`,
+          },
+          {
+            label: 'إجمالي إيراد الاشتراكات',
+            value: `${(sum.totalRevenue || sum.subscriptionRevenue || 0).toLocaleString()} ج.م`,
+          },
+          {
+            label: 'القيمة التعاقدية للنشطة',
+            value: `${(sum.activeSubscriptionValue || 0).toLocaleString()} ج.م`,
+          },
+          {
+            label: 'معدل التجديد الدوري',
+            value: `${sum.renewalRate || 0}%`,
+            note: `${sum.renewedSubscriptions || 0} اشتراك مجدد`,
+          },
+          {
+            label: 'الزيارات المنفذة',
+            value: `${sum.completedVisits || 0} من ${sum.totalVisits || 0}`,
+            note: `${sum.rescheduledVisits || 0} معاد جدولتها`,
+          },
+          {
+            label: 'كاش باك ناتج / مستخدم',
+            value: `${sum.cashbackGenerated || 0} / ${sum.cashbackUsed || 0} ج.م`,
+          },
+        ];
       }
 
       const periodLabels: Record<string, string> = {
@@ -277,6 +346,11 @@ export default function AdminReportsPage() {
       csvContent += 'اليوم,عدد الحجوزات\n';
       reportData.bookingsByDay.forEach((b: any) => {
         csvContent += `"${b.dayName}","${b.count}"\n`;
+      });
+    } else if (activeTab === 'subscriptions' && reportData?.subscriptionsList) {
+      csvContent += 'رقم الاشتراك,اسم العميل,رقم الهاتف,باقة الاشتراك,الخدمة,القطاع,القيمة,الزيارات المنفذة,إجمالي الزيارات,تاريخ البدء,تاريخ الانتهاء,الحالة,التجديد\n';
+      reportData.subscriptionsList.forEach((s: any) => {
+        csvContent += `"${s.id}","${s.customerName}","${s.customerPhone}","${s.planName}","${s.serviceTitle}","${s.category === 'home' ? 'منازل' : 'سيارات'}","${s.price}","${s.usedVisits}","${s.totalVisits}","${s.startDate}","${s.endDate}","${s.status}","${s.renewedToId ? 'مجدد' : 'غير مجدد'}"\n`;
       });
     } else {
       csvContent += 'البيان,القيمة\n';
@@ -492,6 +566,18 @@ export default function AdminReportsPage() {
           <Clock className="w-3.5 h-3.5" />
           <span>تقرير المواعيد والحجوزات</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('subscriptions')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'subscriptions'
+              ? 'bg-[#0866C6] text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-300 hover:text-[#07345C] dark:hover:text-white'
+          }`}
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          <span>تقرير الاشتراكات</span>
+        </button>
       </div>
 
       {/* Dynamic Summary Cards for each report */}
@@ -654,6 +740,199 @@ export default function AdminReportsPage() {
               <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
                 <span className="text-[11px] text-slate-400 block mb-1">الحجوزات الملغاة</span>
                 <span className="text-xl font-black text-rose-500">{reportData?.summary?.cancelledCount || 0}</span>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 8: SUBSCRIPTIONS SUMMARY */}
+          {activeTab === 'subscriptions' && (
+            <div className="space-y-4">
+              {/* 8 Primary Metric Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-3">
+                {/* 1. Total Subscriptions */}
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                    <span>إجمالي الاشتراكات</span>
+                    <RotateCcw className="w-3.5 h-3.5 text-sky-500" />
+                  </div>
+                  <span className="text-xl font-black text-slate-900 dark:text-white">
+                    {reportData?.summary?.totalSubscriptions || 0}
+                  </span>
+                  <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-emerald-500 font-bold">{reportData?.summary?.activeSubscriptions || 0} نشط</span>
+                    <span>•</span>
+                    <span className="text-amber-500 font-bold">{reportData?.summary?.expiredSubscriptions || 0} منتهي</span>
+                    <span>•</span>
+                    <span className="text-rose-500 font-bold">{reportData?.summary?.cancelledSubscriptions || 0} ملغي</span>
+                  </div>
+                </div>
+
+                {/* 2. Subscription Revenue */}
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                    <span>إيرادات الاشتراكات</span>
+                    <Banknote className="w-3.5 h-3.5 text-emerald-500" />
+                  </div>
+                  <span className="text-xl font-black text-emerald-600 dark:text-emerald-400">
+                    {(reportData?.summary?.totalRevenue || reportData?.summary?.subscriptionRevenue || 0).toLocaleString()} ج.م
+                  </span>
+                  <div className="text-[10px] text-slate-400 mt-1">
+                    منها تجديدات: <strong className="text-slate-700 dark:text-slate-300">{(reportData?.summary?.renewalRevenue || 0).toLocaleString()} ج.م</strong>
+                  </div>
+                </div>
+
+                {/* 3. Active Contract Value */}
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                    <span>قيمة الاشتراكات النشطة</span>
+                    <TrendingUp className="w-3.5 h-3.5 text-indigo-500" />
+                  </div>
+                  <span className="text-xl font-black text-indigo-600 dark:text-indigo-400">
+                    {(reportData?.summary?.activeSubscriptionValue || 0).toLocaleString()} ج.م
+                  </span>
+                  <div className="text-[10px] text-slate-400 mt-1">
+                    عقود جارية لـ <strong className="text-slate-700 dark:text-slate-300">{reportData?.summary?.activeSubscriptions || 0} عميل</strong>
+                  </div>
+                </div>
+
+                {/* 4. Renewal Rate */}
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                    <span>معدل التجديد الدوري</span>
+                    <Percent className="w-3.5 h-3.5 text-purple-500" />
+                  </div>
+                  <span className="text-xl font-black text-purple-600 dark:text-purple-400">
+                    {reportData?.summary?.renewalRate || 0}%
+                  </span>
+                  <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1.5">
+                    <span className="text-emerald-500 font-bold">{reportData?.summary?.renewedSubscriptions || 0} تم تجديدها</span>
+                    <span>•</span>
+                    <span className="text-slate-500">{reportData?.summary?.nonRenewedSubscriptions || 0} لم تجدد</span>
+                  </div>
+                </div>
+
+                {/* 5. Subscribers Count */}
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                    <span>العملاء المشتركون</span>
+                    <Users className="w-3.5 h-3.5 text-sky-500" />
+                  </div>
+                  <span className="text-xl font-black text-slate-900 dark:text-white">
+                    {reportData?.summary?.totalSubscribers || 0} عميل
+                  </span>
+                  <div className="text-[10px] text-slate-400 mt-1">
+                    عملاء جدد من الاشتراكات: <strong className="text-emerald-600 dark:text-emerald-400 font-bold">+{reportData?.summary?.newSubscriptionCustomers || 0}</strong>
+                  </div>
+                </div>
+
+                {/* 6. Visits Operations */}
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                    <span>الزيارات الميدانية</span>
+                    <Clock className="w-3.5 h-3.5 text-amber-500" />
+                  </div>
+                  <span className="text-xl font-black text-slate-900 dark:text-white">
+                    {reportData?.summary?.totalVisits || 0} زيارة
+                  </span>
+                  <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-emerald-500 font-bold">{reportData?.summary?.completedVisits || 0} منجزة</span>
+                    <span>•</span>
+                    <span className="text-amber-500 font-bold">{reportData?.summary?.rescheduledVisits || 0} معاد جدولتها</span>
+                    <span>•</span>
+                    <span className="text-rose-500 font-bold">{reportData?.summary?.cancelledVisits || 0} ملغاة</span>
+                  </div>
+                </div>
+
+                {/* 7. Cashback System */}
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                    <span>كاش باك الاشتراكات</span>
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  </div>
+                  <span className="text-xl font-black text-amber-600 dark:text-amber-400">
+                    {(reportData?.summary?.cashbackRemaining || 0).toLocaleString()} ج.م
+                  </span>
+                  <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1.5">
+                    <span className="text-emerald-500 font-bold">+{reportData?.summary?.cashbackGenerated || 0} ناتج</span>
+                    <span>•</span>
+                    <span className="text-purple-500 font-bold">-{reportData?.summary?.cashbackUsed || 0} مستخدم</span>
+                  </div>
+                </div>
+
+                {/* 8. Upcoming Visits */}
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                    <span>الزيارات المجدولة القادمة</span>
+                    <Calendar className="w-3.5 h-3.5 text-sky-500" />
+                  </div>
+                  <span className="text-xl font-black text-sky-600 dark:text-sky-400">
+                    {reportData?.summary?.upcomingVisits || 0} موعد
+                  </span>
+                  <div className="text-[10px] text-slate-400 mt-1">
+                    مجدولة للتنفيذ الميداني لدى الفنيين
+                  </div>
+                </div>
+              </div>
+
+              {/* Breakdown Grid: Services Breakdown & Plan Performance */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Subscriptions by Service */}
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 space-y-3">
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center justify-between">
+                    <span>الاشتراكات والإيراد حسب الخدمة</span>
+                    <span className="text-[10px] font-mono text-slate-400">{reportData?.subscriptionsByService?.length || 0} خدمة</span>
+                  </h4>
+                  <div className="space-y-2">
+                    {(reportData?.subscriptionsByService || []).map((srv: any, idx: number) => (
+                      <div key={idx} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 space-y-1">
+                        <div className="flex items-center justify-between text-xs font-bold">
+                          <span className="text-slate-800 dark:text-slate-200">
+                            {srv.category === 'home' ? '🏠' : '🚗'} {srv.serviceTitle}
+                          </span>
+                          <span className="text-emerald-600 dark:text-emerald-400 font-mono">
+                            {(srv.revenue || 0).toLocaleString()} ج.م ({srv.count} اشتراك)
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-sky-500 rounded-full"
+                            style={{ width: `${srv.sharePercentage || 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    {(!reportData?.subscriptionsByService || reportData.subscriptionsByService.length === 0) && (
+                      <div className="text-center py-4 text-xs text-slate-400">لا توجد خدمات مسجلة في هذا النطاق</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Plan Performance Breakdown */}
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 space-y-3">
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center justify-between">
+                    <span>أداء خطط وباقات الاشتراكات</span>
+                    <span className="text-[10px] font-mono text-slate-400">{reportData?.planBreakdown?.length || 0} باقة</span>
+                  </h4>
+                  <div className="space-y-2">
+                    {(reportData?.planBreakdown || []).slice(0, 4).map((p: any) => (
+                      <div key={p.id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between text-xs">
+                        <div>
+                          <strong className="text-slate-800 dark:text-slate-200 block">{p.name}</strong>
+                          <span className="text-[10px] text-slate-400">
+                            {p.category === 'home' ? '🏠 منازل' : '🚗 سيارات'} • {p.visitCount} زيارات • {p.price} ج.م
+                          </span>
+                        </div>
+                        <div className="text-left font-mono">
+                          <span className="font-bold text-sky-600 dark:text-sky-400 block">{p.subscriptionCount} اشتراك</span>
+                          <span className="text-[10px] text-emerald-500 font-bold">{(p.revenue || 0).toLocaleString()} ج.م</span>
+                        </div>
+                      </div>
+                    ))}
+                    {(!reportData?.planBreakdown || reportData.planBreakdown.length === 0) && (
+                      <div className="text-center py-4 text-xs text-slate-400">لا توجد باقات مسجلة</div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -964,6 +1243,134 @@ export default function AdminReportsPage() {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* SUBSCRIPTIONS TABLE */}
+              {activeTab === 'subscriptions' && (
+                <table className="w-full text-right text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400">
+                      <th className="pb-3 px-3">رقم الاشتراك</th>
+                      <th className="pb-3 px-3">العميل</th>
+                      <th className="pb-3 px-3">الباقة والخدمة</th>
+                      <th className="pb-3 px-3">القطاع</th>
+                      <th className="pb-3 px-3">القيمة التعاقدية</th>
+                      <th className="pb-3 px-3">الزيارات</th>
+                      <th className="pb-3 px-3">فترة السريان</th>
+                      <th className="pb-3 px-3">الحالة</th>
+                      <th className="pb-3 px-3">التجديد</th>
+                      <th className="pb-3 px-3 text-center">إجراءات وفاتورة</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {(reportData?.subscriptionsList || [])
+                      .filter((s: any) =>
+                        searchQuery
+                          ? (s.id && s.id.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                            (s.customerName && s.customerName.includes(searchQuery)) ||
+                            (s.customerPhone && s.customerPhone.includes(searchQuery)) ||
+                            (s.planName && s.planName.includes(searchQuery)) ||
+                            (s.serviceTitle && s.serviceTitle.includes(searchQuery))
+                          : true
+                      )
+                      .map((sub: any) => {
+                        const statusBadge =
+                          sub.status === 'active'
+                            ? 'bg-emerald-500/10 text-emerald-600'
+                            : sub.status === 'completed'
+                            ? 'bg-sky-500/10 text-sky-600'
+                            : sub.status === 'expired'
+                            ? 'bg-amber-500/10 text-amber-600'
+                            : 'bg-rose-500/10 text-rose-600';
+
+                        const statusLabel =
+                          sub.status === 'active'
+                            ? 'نشط'
+                            : sub.status === 'completed'
+                            ? 'مكتمل'
+                            : sub.status === 'expired'
+                            ? 'منتهي'
+                            : 'ملغي';
+
+                        return (
+                          <tr key={sub.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                            <td className="py-3 px-3 font-mono font-bold text-sky-600 dark:text-sky-400">
+                              #{sub.id}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className="font-bold text-slate-900 dark:text-white block">
+                                {sub.customerName || 'عميل كلينزو'}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono" dir="ltr">
+                                {sub.customerPhone}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className="font-semibold block">{sub.planName}</span>
+                              <span className="text-[10px] text-slate-400">{sub.serviceTitle}</span>
+                            </td>
+                            <td className="py-3 px-3">
+                              {sub.category === 'home' ? '🏠 منازل' : '🚗 سيارات'}
+                            </td>
+                            <td className="py-3 px-3 font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                              {(sub.price || 0).toLocaleString()} ج.م
+                            </td>
+                            <td className="py-3 px-3 font-mono">
+                              <span className="font-bold">{sub.usedVisits || 0}</span>
+                              <span className="text-slate-400"> / {sub.totalVisits || 0}</span>
+                            </td>
+                            <td className="py-3 px-3 font-mono text-[11px] text-slate-500">
+                              {sub.startDate || '-'} إلى {sub.endDate || '-'}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusBadge}`}>
+                                {statusLabel}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-[11px]">
+                              {sub.renewedToId ? (
+                                <span className="text-purple-600 dark:text-purple-400 font-bold">
+                                  مجدد (دورة {sub.renewalCycle || 1})
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">غير مجدد</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-center">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    const invoiceHtml = generateOfficialSubscriptionInvoiceHtml(sub);
+                                    printHtmlDocument(`فاتورة اشتراك ${sub.id}`, invoiceHtml);
+                                  }}
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-900/50 text-[11px] font-bold transition-all cursor-pointer border border-sky-200 dark:border-sky-800 shadow-xs"
+                                  title="طباعة فاتورة الاشتراك الضريبية الرسمية"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                  <span>طباعة الفاتورة</span>
+                                </button>
+
+                                <Link
+                                  href={`/admin/subscriptions/${sub.id}`}
+                                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"
+                                  title="عرض تفاصيل الاشتراك في لوحة التحكم"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </Link>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    {(!reportData?.subscriptionsList || reportData.subscriptionsList.length === 0) && (
+                      <tr>
+                        <td colSpan={10} className="py-8 text-center text-slate-400">
+                          لا توجد اشتراكات مسجلة في الفترة المحددة.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               )}
             </div>
           </div>

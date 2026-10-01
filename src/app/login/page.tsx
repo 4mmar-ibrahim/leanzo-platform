@@ -39,7 +39,7 @@ function LoginForm() {
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [phoneTouched, setPhoneTouched] = useState(false);
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -176,7 +176,7 @@ function LoginForm() {
               value={phone}
               onChange={handlePhoneChange}
               onBlur={handlePhoneBlur}
-              placeholder="01012345678"
+              placeholder={isAr ? '01xxxxxxxxx' : '01xxxxxxxxx'}
               error={phoneError || undefined}
               required
             />
@@ -186,7 +186,7 @@ function LoginForm() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder={isAr ? 'أدخل كلمة المرور' : 'Enter your password'}
               required
             />
 

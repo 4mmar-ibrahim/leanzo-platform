@@ -14,7 +14,7 @@ import { useAdminStore } from '@/store/useAdminStore';
  * to prevent Chrome's "Access other apps and services on this device" (Private Network Access) prompt
  * and avoid attempting to reach localhost on end-user devices.
  */
-export function getApiBaseUrl(): string | null {
+export function getApiBaseUrl(): string {
   if (process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL;
   }
@@ -23,7 +23,7 @@ export function getApiBaseUrl(): string | null {
       window.location.hostname === 'localhost' ||
       window.location.hostname === '127.0.0.1';
     if (!isLocal) {
-      return null;
+      return '/api';
     }
   }
   return 'http://localhost:5000/api';

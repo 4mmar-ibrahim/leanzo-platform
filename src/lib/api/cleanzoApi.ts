@@ -605,6 +605,14 @@ export const cleanzoApi = {
         const queryStr = qs.toString();
         return apiRequest<any>(`/reports/bookings${queryStr ? `?${queryStr}` : ''}`, { isAdmin: true });
       },
+      getSubscriptions: (params?: { period?: string; startDate?: string; endDate?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.period) qs.set('period', params.period);
+        if (params?.startDate) qs.set('startDate', params.startDate);
+        if (params?.endDate) qs.set('endDate', params.endDate);
+        const queryStr = qs.toString();
+        return apiRequest<any>(`/reports/subscriptions${queryStr ? `?${queryStr}` : ''}`, { isAdmin: true });
+      },
     },
 
     // Analytics

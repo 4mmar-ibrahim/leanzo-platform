@@ -1,3 +1,4 @@
+import prisma from '../config/prisma.js';
 import { Booking, IBooking } from '../models/Booking.js';
 import { User } from '../models/User.js';
 import { Service } from '../models/Service.js';
@@ -1107,31 +1108,129 @@ export async function getAnalyticsOverview(filter: ReportFilter = {}) {
     };
   });
 
-  return {
-    period: range.periodName,
-    currentRange: { start: range.startStr, end: range.endStr },
-    previousRange: { start: range.prevStartStr, end: range.prevEndStr },
-    comparisons: {
-      customers: { current: currCustomers, previous: prevCustomers, growthPercent: customerGrowth },
-      orders: { current: currTotalOrders, previous: prevTotalOrders, growthPercent: ordersGrowth },
-      revenue: { current: currRevenue, previous: prevRevenue, growthPercent: revenueGrowth },
-      averageOrderValue: { current: currAOV, previous: prevAOV, growthPercent: aovGrowth },
-    },
-    efficiency: {
-      cancellationRate,
-      completionRate,
-      couponAdoptionRate,
-      ordersWithCoupon,
-    },
-    categoryShare: {
-      carOrders,
-      homeOrders,
-      carPercentage,
-      homePercentage,
-    },
-    peakHours,
-  };
-}
+    // Subscriptions KPI & Growth from PostgreSQL
+    const [currSubs, prevSubs, subPlans, currVisits, currCashbacks] = await Promise.all([
+      prisma.subscription.findMany({
+        where: { createdAt: { gte: range.start, lte: range.end } },
+        include: { plan: true },
+      }),
+      prisma.subscription.findMany({
+        where: { createdAt: { gte: range.prevStart, lte: range.prevEnd } },
+      }),
+      prisma.subscriptionPlan.findMany({ include: { service: true } }),
+      prisma.subscriptionVisit.findMany({
+        where: { createdAt: { gte: range.start, lte: range.end } },
+      }),
+      prisma.subscriptionCashback.findMany({
+        where: { createdAt: { gte: range.start, lte: range.end } },
+      }),
+    ]);
+
+    const currSubsCount = currSubs.length;
+    const prevSubsCount = prevSubs.length;
+    const subsGrowth = calculateGrowth(currSubsCount, prevSubsCount);
+
+    const currSubsRevenue = currSubs.reduce((acc, s) => acc + (s.price || 0), 0);
+    const prevSubsRevenue = prevSubs.reduce((acc, s) => acc + (s.price || 0), 0);
+    const subsRevenueGrowth = calculateGrowth(currSubsRevenue, prevSubsRevenue);
+
+    const currActiveSubs = currSubs.filter((s) => s.status === 'active').length;
+    const prevActiveSubs = prevSubs.filter((s) => s.status === 'active').length;
+    const activeSubsGrowth = calculateGrowth(currActiveSubs, prevActiveSubs);
+
+    const currActiveValue = currSubs
+      .filter((s) => s.status === 'active')
+      .reduce((acc, s) => acc + (s.price || 0), 0);
+
+    const currSubscribers = new Set(currSubs.map((s) => s.customerPhone)).size;
+    const prevSubscribers = new Set(prevSubs.map((s) => s.customerPhone)).size;
+    const subscribersGrowth = calculateGrowth(currSubscribers, prevSubscribers);
+
+    const currCompletedSubs = currSubs.filter((s) => s.status === 'completed').length;
+    const currExpiredSubs = currSubs.filter((s) => s.status === 'expired').length;
+    const currRenewedSubs = currSubs.filter((s) => Boolean(s.renewedToId)).length;
+    const currEligibleRenewal = currCompletedSubs + currExpiredSubs;
+    const currRenewalRate =
+      currEligibleRenewal > 0 ? Math.round((currRenewedSubs / currEligibleRenewal) * 100) : 0;
+
+    const currCarSubs = currSubs.filter((s) => s.category === 'car').length;
+    const currHomeSubs = currSubs.filter((s) => s.category === 'home').length;
+
+    const completedVisits = currVisits.filter((v) => v.status === 'completed').length;
+    const cancelledVisits = currVisits.filter((v) => v.status === 'cancelled').length;
+    const rescheduledVisits = currVisits.filter(
+      (v) => Boolean(v.rescheduledFrom) || Boolean(v.rescheduledAt)
+    ).length;
+
+    const cashbackGenerated = currCashbacks
+      .filter((c) => c.type === 'credit')
+      .reduce((acc, c) => acc + (c.amount || 0), 0);
+    const cashbackUsed = currCashbacks
+      .filter((c) => c.type === 'debit')
+      .reduce((acc, c) => acc + (c.amount || 0), 0);
+
+    const topPlans = subPlans
+      .map((p) => {
+        const pSubs = currSubs.filter((s) => s.planId === p.id);
+        return {
+          id: p.id,
+          name: p.name,
+          count: pSubs.length,
+          revenue: pSubs.reduce((acc, s) => acc + (s.price || 0), 0),
+          serviceTitle: p.service?.title || '',
+        };
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    return {
+      period: range.periodName,
+      currentRange: { start: range.startStr, end: range.endStr },
+      previousRange: { start: range.prevStartStr, end: range.prevEndStr },
+      comparisons: {
+        customers: { current: currCustomers, previous: prevCustomers, growthPercent: customerGrowth },
+        orders: { current: currTotalOrders, previous: prevTotalOrders, growthPercent: ordersGrowth },
+        revenue: { current: currRevenue, previous: prevRevenue, growthPercent: revenueGrowth },
+        averageOrderValue: { current: currAOV, previous: prevAOV, growthPercent: aovGrowth },
+        subscriptions: {
+          count: { current: currSubsCount, previous: prevSubsCount, growthPercent: subsGrowth },
+          revenue: { current: currSubsRevenue, previous: prevSubsRevenue, growthPercent: subsRevenueGrowth },
+          activeSubscriptions: { current: currActiveSubs, previous: prevActiveSubs, growthPercent: activeSubsGrowth },
+          subscribers: { current: currSubscribers, previous: prevSubscribers, growthPercent: subscribersGrowth },
+        },
+      },
+      subscriptionsAnalytics: {
+        activeCount: currActiveSubs,
+        activeValue: currActiveValue,
+        renewalRate: currRenewalRate,
+        renewedCount: currRenewedSubs,
+        totalVisits: currVisits.length,
+        completedVisits,
+        cancelledVisits,
+        rescheduledVisits,
+        cashbackGenerated,
+        cashbackUsed,
+        carSubscriptions: currCarSubs,
+        homeSubscriptions: currHomeSubs,
+        carPercentage: currSubsCount > 0 ? Math.round((currCarSubs / currSubsCount) * 100) : 50,
+        homePercentage: currSubsCount > 0 ? Math.round((currHomeSubs / currSubsCount) * 100) : 50,
+        topPlans,
+      },
+      efficiency: {
+        cancellationRate,
+        completionRate,
+        couponAdoptionRate,
+        ordersWithCoupon,
+      },
+      categoryShare: {
+        carOrders,
+        homeOrders,
+        carPercentage,
+        homePercentage,
+      },
+      peakHours,
+    };
+  }
 
 // ==========================================
 // 10. DASHBOARD KPIS (Single Source of Truth)
@@ -1252,3 +1351,287 @@ export async function getDashboardKPIs(filter: ReportFilter = {}) {
     dailyChart,
   };
 }
+
+// ==========================================
+// 11. SUBSCRIPTIONS REPORT (PostgreSQL Single Source of Truth)
+// ==========================================
+export async function getSubscriptionsReport(filter: ReportFilter = {}) {
+  const range = parseDateFilter(filter);
+  const now = new Date();
+
+  const whereSub: any = {};
+  if (filter.period !== 'all') {
+    whereSub.createdAt = {
+      gte: range.start,
+      lte: range.end,
+    };
+  }
+
+  // Fetch all live data directly from PostgreSQL via Prisma
+  const [
+    subs,
+    allSubsHistorical,
+    allVisits,
+    allRenewals,
+    allCashbacks,
+    allPlans,
+    allServices,
+  ] = await Promise.all([
+    prisma.subscription.findMany({
+      where: whereSub,
+      include: {
+        plan: { include: { service: true } },
+        service: true,
+        visits: { orderBy: { visitIndex: 'asc' } },
+        renewals: { orderBy: { renewedAt: 'desc' } },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.subscription.findMany({
+      select: { id: true, customerPhone: true, createdAt: true },
+    }),
+    prisma.subscriptionVisit.findMany({
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.subscriptionRenewal.findMany({
+      orderBy: { renewedAt: 'desc' },
+    }),
+    prisma.subscriptionCashback.findMany({
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.subscriptionPlan.findMany({
+      include: { service: true },
+    }),
+    prisma.service.findMany(),
+  ]);
+
+  const totalSubscriptions = subs.length;
+  const activeSubscriptions = subs.filter((s) => s.status === 'active').length;
+  const completedSubscriptions = subs.filter((s) => s.status === 'completed').length;
+  const cancelledSubscriptions = subs.filter((s) => s.status === 'cancelled').length;
+  const expiredSubscriptions = subs.filter(
+    (s) => s.status === 'expired' || (s.status === 'active' && s.endDate < now)
+  ).length;
+
+  const renewedSubscriptions = subs.filter((s) => Boolean(s.renewedToId)).length;
+  const nonRenewedSubscriptions = Math.max(
+    0,
+    completedSubscriptions + expiredSubscriptions - renewedSubscriptions
+  );
+
+  const eligibleForRenewal = completedSubscriptions + expiredSubscriptions;
+  const renewalRate =
+    eligibleForRenewal > 0 ? Math.round((renewedSubscriptions / eligibleForRenewal) * 100) : 0;
+
+  // Distinct subscribers in range
+  const distinctPhones = new Set(subs.map((s) => s.customerPhone));
+  const totalSubscribers = distinctPhones.size;
+
+  // New subscription customers (phone seen for the first time ever within this period)
+  const firstSeenMap = new Map<string, Date>();
+  for (const h of allSubsHistorical) {
+    const existing = firstSeenMap.get(h.customerPhone);
+    if (!existing || h.createdAt < existing) {
+      firstSeenMap.set(h.customerPhone, h.createdAt);
+    }
+  }
+
+  let newSubscriptionCustomers = 0;
+  for (const phone of distinctPhones) {
+    const firstDate = firstSeenMap.get(phone);
+    if (
+      firstDate &&
+      (!range.start || firstDate >= range.start) &&
+      (!range.end || firstDate <= range.end)
+    ) {
+      newSubscriptionCustomers++;
+    }
+  }
+
+  // Financials
+  const subscriptionRevenue = subs.reduce((acc, s) => acc + (s.price || 0), 0);
+  const activeSubscriptionValue = subs
+    .filter((s) => s.status === 'active')
+    .reduce((acc, s) => acc + (s.price || 0), 0);
+
+  // Visits breakdown
+  const subIdsSet = new Set(subs.map((s) => s.id));
+  const relevantVisits = allVisits.filter((v) => subIdsSet.has(v.subscriptionId));
+  const totalVisits = relevantVisits.length;
+  const completedVisits = relevantVisits.filter((v) => v.status === 'completed').length;
+  const cancelledVisits = relevantVisits.filter((v) => v.status === 'cancelled').length;
+  const rescheduledVisits = relevantVisits.filter(
+    (v) => Boolean(v.rescheduledFrom) || Boolean(v.rescheduledAt)
+  ).length;
+  const upcomingVisits = relevantVisits.filter((v) =>
+    ['pending', 'confirmed', 'assigned'].includes(v.status)
+  ).length;
+
+  // Renewals in range
+  const relevantRenewals = allRenewals.filter(
+    (r) => subIdsSet.has(r.subscriptionId) || (r.newSubscriptionId && subIdsSet.has(r.newSubscriptionId))
+  );
+  const renewalRevenue = relevantRenewals.reduce((acc, r) => acc + (r.renewalPrice || 0), 0);
+
+  // Cashback metrics
+  const relevantCashbacks = allCashbacks.filter((c) => subIdsSet.has(c.subscriptionId));
+  const cashbackGenerated = relevantCashbacks
+    .filter((c) => c.type === 'credit')
+    .reduce((acc, c) => acc + (c.amount || 0), 0);
+  const cashbackUsed = relevantCashbacks
+    .filter((c) => c.type === 'debit')
+    .reduce((acc, c) => acc + (c.amount || 0), 0);
+  const cashbackRemaining = Math.max(0, cashbackGenerated - cashbackUsed);
+
+  // Plan Breakdown
+  const planBreakdown = allPlans
+    .map((p) => {
+      const pSubs = subs.filter((s) => s.planId === p.id);
+      const pRevenue = pSubs.reduce((acc, s) => acc + (s.price || 0), 0);
+      const pVisits = relevantVisits.filter((v) => {
+        const sub = subs.find((s) => s.id === v.subscriptionId);
+        return sub?.planId === p.id;
+      });
+      const pCompletedVisits = pVisits.filter((v) => v.status === 'completed').length;
+      const pRenewals = relevantRenewals.filter((r) => r.newPlanId === p.id).length;
+
+      return {
+        id: p.id,
+        planId: p.id,
+        name: p.name,
+        planName: p.name,
+        serviceTitle: p.service?.title || '',
+        category: (p as any).category || (p.service?.category as string) || 'car',
+        price: p.price,
+        visitCount: p.visitCount,
+        subscriptionCount: pSubs.length,
+        activeCount: pSubs.filter((s) => s.status === 'active').length,
+        completedCount: pSubs.filter((s) => s.status === 'completed').length,
+        cancelledCount: pSubs.filter((s) => s.status === 'cancelled').length,
+        revenue: pRevenue,
+        visitsCount: pVisits.length,
+        completedVisitsCount: pCompletedVisits,
+        renewalsCount: pRenewals,
+      };
+    })
+    .sort((a, b) => b.subscriptionCount - a.subscriptionCount);
+
+  // Subscriptions by Service
+  const serviceMap: Record<
+    string,
+    { serviceId: string; serviceTitle: string; category: string; count: number; revenue: number }
+  > = {};
+  for (const s of subs) {
+    const sId = s.serviceId || 'unknown';
+    const sTitle = s.service?.title || (s.serviceSnapshot as any)?.title || 'خدمة غير محددة';
+    const sCat = s.category || (s.service?.category as string) || 'car';
+    if (!serviceMap[sId]) {
+      serviceMap[sId] = {
+        serviceId: sId,
+        serviceTitle: sTitle,
+        category: sCat,
+        count: 0,
+        revenue: 0,
+      };
+    }
+    serviceMap[sId].count++;
+    serviceMap[sId].revenue += s.price || 0;
+  }
+
+  const subscriptionsByService = Object.values(serviceMap)
+    .map((srv) => ({
+      ...srv,
+      sharePercentage:
+        totalSubscriptions > 0 ? Math.round((srv.count / totalSubscriptions) * 100) : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  // Subscriptions Timeline (daily distribution)
+  const timelineMap: Record<string, { count: number; revenue: number; visits: number }> = {};
+  for (const s of subs) {
+    const dStr = s.createdAt ? s.createdAt.toISOString().split('T')[0] : range.startStr;
+    if (!timelineMap[dStr]) {
+      timelineMap[dStr] = { count: 0, revenue: 0, visits: 0 };
+    }
+    timelineMap[dStr].count++;
+    timelineMap[dStr].revenue += s.price || 0;
+  }
+  for (const v of relevantVisits) {
+    const dStr = v.date || (v.createdAt ? v.createdAt.toISOString().split('T')[0] : range.startStr);
+    if (timelineMap[dStr]) {
+      timelineMap[dStr].visits++;
+    }
+  }
+
+  const subscriptionsTimeline = Object.entries(timelineMap)
+    .map(([date, data]) => ({
+      date,
+      ...data,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  // Subscriptions List (Full details & Invoice printable objects)
+  const subscriptionsList = subs.map((s) => ({
+    id: s.id,
+    subscriptionNumber: s.id,
+    customerId: s.customerId,
+    customerName: s.customerName,
+    customerPhone: s.customerPhone,
+    planId: s.planId,
+    planName: s.plan?.name || (s.planSnapshot as any)?.name || 'خطة اشتراك',
+    serviceId: s.serviceId,
+    serviceTitle: s.service?.title || (s.serviceSnapshot as any)?.title || 'خدمة',
+    category: s.category || 'car',
+    price: s.price,
+    totalVisits: s.totalVisits,
+    usedVisits: s.usedVisits,
+    remainingVisits: s.remainingVisits,
+    status: s.status,
+    startDate: s.startDate ? s.startDate.toISOString().split('T')[0] : '',
+    endDate: s.endDate ? s.endDate.toISOString().split('T')[0] : '',
+    autoRenew: s.autoRenew,
+    renewalCycle: s.renewalCycle,
+    renewedToId: s.renewedToId,
+    renewedFromId: s.renewedFromId,
+    address: s.address,
+    vehicleDetails: s.vehicleDetails,
+    createdAt: s.createdAt,
+    visits: s.visits,
+    renewals: s.renewals,
+  }));
+
+  return {
+    period: range.periodName,
+    startDate: range.startStr,
+    endDate: range.endStr,
+    summary: {
+      totalSubscriptions,
+      activeSubscriptions,
+      expiredSubscriptions,
+      cancelledSubscriptions,
+      renewedSubscriptions,
+      nonRenewedSubscriptions,
+      totalSubscribers,
+      newSubscriptionCustomers,
+      totalRevenue: subscriptionRevenue,
+      subscriptionRevenue,
+      activeSubscriptionValue,
+      totalVisits,
+      completedVisits,
+      cancelledVisits,
+      rescheduledVisits,
+      upcomingVisits,
+      renewalRate,
+      renewalRevenue,
+      cashbackGenerated,
+      cashbackUsed,
+      cashbackRemaining,
+    },
+    planBreakdown,
+    subscriptionsByService,
+    subscriptionsTimeline,
+    subscriptionsList,
+    renewalsList: relevantRenewals,
+  };
+}
+

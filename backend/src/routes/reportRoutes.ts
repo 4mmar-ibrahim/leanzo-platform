@@ -9,6 +9,7 @@ import {
   getCouponsReportController,
   getBookingsReportController,
   getDashboardKPIsController,
+  getSubscriptionsReportController,
 } from '../controllers/reportsController.js';
 import { authenticateAdmin, authorize } from '../middleware/adminAuthMiddleware.js';
 
@@ -23,6 +24,7 @@ router.get('/services', authenticateAdmin, authorize('reports', 'view'), getServ
 router.get('/areas', authenticateAdmin, authorize('reports', 'view'), getAreasReportController);
 router.get('/coupons', authenticateAdmin, authorize('reports', 'view'), getCouponsReportController);
 router.get('/bookings', authenticateAdmin, authorize('reports', 'view'), getBookingsReportController);
+router.get('/subscriptions', authenticateAdmin, authorize('reports', 'view'), getSubscriptionsReportController);
 
 // Dashboard / KPI summary (accessible by any authenticated admin)
 router.get('/dashboard-kpis', authenticateAdmin, getDashboardKPIsController);

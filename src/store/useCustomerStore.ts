@@ -1,7 +1,6 @@
 'use client';
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import { CustomerProfile } from '@/types';
 import { useNotificationStore } from './useNotificationStore';
 
@@ -43,9 +42,7 @@ function syncCustomerStatusToAuth(phone: string, status: 'active' | 'inactive' |
   }
 }
 
-export const useCustomerStore = create<CustomerState>()(
-  persist(
-    (set, get) => ({
+export const useCustomerStore = create<CustomerState>((set, get) => ({
       customers: [],
 
       addCustomer: (data) => {
@@ -168,9 +165,5 @@ export const useCustomerStore = create<CustomerState>()(
       getCustomerById: (id) => {
         return get().customers.find((c) => c.id === id || (c as any)._id === id);
       },
-    }),
-    {
-      name: 'cleanzo-customers-storage',
-    }
-  )
+    })
 );

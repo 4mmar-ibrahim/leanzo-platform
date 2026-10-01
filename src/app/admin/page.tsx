@@ -31,6 +31,7 @@ import { OrderStatus } from '@/types';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { AdminTour } from '@/components/admin/AdminTour';
+import { SubscriptionDashboardOverview } from '@/components/admin/subscriptions/SubscriptionDashboardOverview';
 
 export default function AdminDashboardPage() {
   const [dateFilter, setDateFilter] = useState<'today' | '7days' | '30days' | 'year'>('30days');
@@ -402,6 +403,9 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Subscription Comprehensive Dashboard Overview (TASK 07) */}
+      <SubscriptionDashboardOverview />
 
       {/* Recent Orders Table */}
       <div className="p-5 rounded-3xl bg-white dark:bg-[#072540] border border-slate-200/80 dark:border-[#133B61] shadow-xs">
