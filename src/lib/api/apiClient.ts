@@ -285,15 +285,25 @@ export async function apiRequest<T = any>(
 ): Promise<T> {
   const { isAdmin = false, _isRetry = false, headers = {}, ...rest } = options;
 
+  // Public endpoints should never be treated as admin endpoints
+  const isPublicEndpoint =
+    endpoint.includes('/public') ||
+    endpoint.startsWith('/public') ||
+    endpoint === '/settings/public' ||
+    endpoint.startsWith('/auth/customer') ||
+    endpoint.startsWith('/services') ||
+    endpoint.startsWith('/portfolio') ||
+    endpoint.startsWith('/offers') ||
+    endpoint.startsWith('/reviews');
+
   // Auto-detect admin context from route or path
   const isEffectiveAdmin =
-    isAdmin ||
-    endpoint.includes('/admin') ||
-    endpoint.startsWith('/admin') ||
-    endpoint.includes('/settings/') ||
-    endpoint.includes('/technicians') ||
-    endpoint.includes('/audit-logs') ||
-    (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin'));
+    !isPublicEndpoint &&
+    (isAdmin ||
+      endpoint.includes('/admin') ||
+      endpoint.startsWith('/admin') ||
+      endpoint.includes('/audit-logs') ||
+      (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')));
 
   const token = isEffectiveAdmin ? getAdminAuthToken() : getCustomerAuthToken();
 
@@ -351,8 +361,12 @@ export async function apiRequest<T = any>(
           });
         } else {
           clearAdminAuthSession();
-          // Redirect to login page when session expires and refresh fails
-          if (typeof window !== 'undefined' && !window.location.pathname.includes('/admin/login')) {
+          // ONLY redirect to admin login if the user is currently on an /admin route
+          if (
+            typeof window !== 'undefined' &&
+            window.location.pathname.startsWith('/admin') &&
+            !window.location.pathname.includes('/admin/login')
+          ) {
             window.location.href = '/admin/login?session=expired';
           }
           throw new ApiError('انتهت صلاحية جلسة المسؤول، يرجى تسجيل الدخول مجدداً', 401, 'SESSION_EXPIRED');

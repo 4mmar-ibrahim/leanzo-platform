@@ -146,12 +146,16 @@ function AdminLoginForm() {
       </div>
 
       {/* Back to Customer Website */}
-      <Link
+      <a
         href="/"
-        className="mt-6 text-xs text-slate-400 hover:text-white transition-colors"
+        onClick={(e) => {
+          e.preventDefault();
+          window.location.href = '/';
+        }}
+        className="mt-6 text-xs text-slate-400 hover:text-white transition-colors cursor-pointer font-medium"
       >
         ← العودة إلى الموقع الرئيسي للعملاء
-      </Link>
+      </a>
     </div>
   );
 }
