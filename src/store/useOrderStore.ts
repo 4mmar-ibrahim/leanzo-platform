@@ -6,6 +6,7 @@ import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { useCustomerStore } from './useCustomerStore';
 import { useNotificationStore } from './useNotificationStore';
 import { useCustomerNotificationStore } from './useCustomerNotificationStore';
+import { findConflictingOrder } from '@/lib/bookingEngine';
 
 interface OrderState {
   orders: Order[];
@@ -43,6 +44,12 @@ const statusLabels: Record<OrderStatus, { ar: string; en: string; descAr: string
     en: 'Technician Assigned',
     descAr: 'تم إسناد الطلب للفني المختص وجاهز للانطلاق.',
     descEn: 'Specialized technician assigned.',
+  },
+  on_the_way: {
+    ar: 'الفني في الطريق إليك',
+    en: 'Technician On The Way',
+    descAr: 'تحركت الوحدة المتنقلة وهي متجهة إلى موقعك الآن.',
+    descEn: 'Technician mobile unit is on the way to your location.',
   },
   in_progress: {
     ar: 'الخدمة جارية الآن',
@@ -270,6 +277,16 @@ export const useOrderStore = create<OrderState>((set, get) => ({
       },
 
       assignTechnician: (orderId, technician) => {
+        const state = get();
+        const currentOrder = state.orders.find((o) => o.id === orderId);
+        if (currentOrder) {
+          const conflict = findConflictingOrder(currentOrder, technician.id, state.orders);
+          if (conflict) {
+            console.warn(`Prevented overlapping technician assignment for order ${orderId} with order ${conflict.id}`);
+            return;
+          }
+        }
+
         const now = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
         set((state) => ({
           orders: state.orders.map((o) => {
@@ -278,6 +295,7 @@ export const useOrderStore = create<OrderState>((set, get) => ({
             return {
               ...o,
               technician,
+              assignedTechnicianId: technician.id,
               status: 'assigned' as OrderStatus,
               timeline: [
                 ...(o.timeline || []),

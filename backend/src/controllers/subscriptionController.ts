@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import prisma from '../config/prisma.js';
 import { sendSuccess, sendError } from '../utils/responseHandler.js';
 import { AuthenticatedRequest } from '../middleware/authMiddleware.js';
@@ -16,7 +17,99 @@ import { Technician } from '../models/Technician.js';
 import { SystemSettings } from '../models/SystemSettings.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { Notification } from '../models/Notification.js';
+import { Booking } from '../models/Booking.js';
 import { validateEgyptianPhone, CANONICAL_PHONE_ERROR_MESSAGE, CANONICAL_PHONE_ERROR_CODE } from '../utils/phoneValidator.js';
+import { withBookingLock } from '../services/availabilityService.js';
+
+function timeStringToMinutes(timeStr: string): number {
+  if (!timeStr) return 0;
+  const raw = String(timeStr).trim();
+  const firstSegment = raw.split(/[-–—]/)[0].trim();
+  const clean = firstSegment.toUpperCase();
+  const isPM = clean.includes('PM') || clean.includes('مساء');
+  const isAM = clean.includes('AM') || clean.includes('صباح');
+
+  const timePart = clean.replace(/(AM|PM|مساءً|مساء|صباحاً|صباح)/g, '').trim();
+  const cleanNumbers = timePart.replace(/[^0-9:]/g, '');
+  const [hourStr, minuteStr] = cleanNumbers.split(':');
+  let hours = parseInt(hourStr || '0', 10);
+  const minutes = parseInt(minuteStr || '0', 10);
+
+  if (isPM && hours < 12) hours += 12;
+  if (isAM && hours === 12) hours = 0;
+
+  return hours * 60 + (isNaN(minutes) ? 0 : minutes);
+}
+
+function getBookingTimeInterval(b: any): { startMin: number; endMin: number; display: string } {
+  if (!b) return { startMin: 0, endMin: 60, display: '—' };
+
+  const timeStr = String(b.time || '').trim();
+  const fullDuration =
+    b.totalOccupiedMinutes ||
+    (b.serviceDurationMinutes ? b.serviceDurationMinutes + (b.travelTimeMinutes || 0) : undefined) ||
+    b.duration ||
+    b.service?.duration ||
+    b.serviceSnapshot?.duration ||
+    60;
+
+  // 1. Explicit scheduledStart & scheduledEnd
+  if (b.scheduledStart && b.scheduledEnd) {
+    const s = timeStringToMinutes(b.scheduledStart);
+    let e = timeStringToMinutes(b.scheduledEnd);
+    if (e <= s) e = s + fullDuration;
+    return {
+      startMin: s,
+      endMin: e,
+      display: timeStr || `${b.scheduledStart} - ${b.scheduledEnd}`,
+    };
+  }
+
+  // 2. Range inside timeStr
+  if (timeStr.includes('–') || timeStr.includes('-') || timeStr.includes('—')) {
+    const parts = timeStr.split(/[-–—]/).map((p: string) => p.trim());
+    const min1 = timeStringToMinutes(parts[0]);
+    const min2 = timeStringToMinutes(parts[1]);
+    const startMin = Math.min(min1, min2);
+    let endMin = Math.max(min1, min2);
+
+    if (endMin <= startMin) {
+      endMin = startMin + fullDuration;
+    } else {
+      endMin = Math.max(endMin, startMin + fullDuration);
+    }
+
+    return {
+      startMin,
+      endMin,
+      display: timeStr,
+    };
+  }
+
+  // 3. Single start time
+  const startMin = b.scheduledStart ? timeStringToMinutes(b.scheduledStart) : timeStringToMinutes(timeStr);
+  let endMin = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : startMin + fullDuration;
+  if (endMin <= startMin) {
+    endMin = startMin + fullDuration;
+  } else {
+    endMin = Math.max(endMin, startMin + fullDuration);
+  }
+
+  const display = timeStr || `${Math.floor(startMin / 60).toString().padStart(2, '0')}:${(startMin % 60).toString().padStart(2, '0')}`;
+
+  return {
+    startMin,
+    endMin,
+    display,
+  };
+}
+
+function isTimeIntervalOverlapping(
+  intA: { startMin: number; endMin: number },
+  intB: { startMin: number; endMin: number }
+): boolean {
+  return intA.startMin < intB.endMin && intB.startMin < intA.endMin;
+}
 
 /**
  * Customer: Create a new Subscription atomically
@@ -570,68 +663,157 @@ export async function assignTechnicianToVisitAdmin(req: AuthenticatedAdminReques
       return;
     }
 
-    let techSnapshot: any = null;
-    let newStatus = visit.status;
-
     if (technicianId) {
       const tech = await Technician.findOne({ id: technicianId });
       if (!tech) {
         sendError(res, 'الفني المحدد غير موجود في النظام', 404, 'TECHNICIAN_NOT_FOUND');
         return;
       }
-      techSnapshot = {
-        id: tech.id,
-        name: tech.name,
-        phone: tech.phone,
-        avatar: tech.avatar,
-        rating: tech.rating,
-        specialty: tech.specialty,
-      };
-      if (visit.status === 'pending' || visit.status === 'confirmed') {
-        newStatus = 'assigned';
-      }
+
+      await withBookingLock(`tech_assign_${tech.id}_${visit.date}`, async () => {
+        // Schedule overlap prevention check
+        const currentInterval = getBookingTimeInterval(visit);
+
+        // 1. Check overlapping regular bookings (Prisma & MongoDB)
+        const conflictingBookings = await prisma.booking.findMany({
+          where: {
+            date: visit.date,
+            status: { notIn: ['cancelled', 'CANCELLED'] },
+            OR: [
+              { assignedTechnicianId: tech.id },
+              { technician: { path: ['id'], equals: tech.id } },
+            ],
+          },
+        });
+
+        for (const b of conflictingBookings) {
+          const bInterval = getBookingTimeInterval(b);
+          if (isTimeIntervalOverlapping(currentInterval, bInterval)) {
+            sendError(
+              res,
+              'هذا العامل غير متاح في هذا الوقت لوجود حجز آخر متداخل.',
+              409,
+              'TECHNICIAN_SCHEDULE_OVERLAP'
+            );
+            return;
+          }
+        }
+
+        // 2. Check other subscription visits
+        const otherVisits = await prisma.subscriptionVisit.findMany({
+          where: {
+            id: { not: visitId },
+            date: visit.date,
+            status: { notIn: ['cancelled', 'CANCELLED'] },
+            OR: [
+              { assignedTechnicianId: tech.id },
+              { technician: { path: ['id'], equals: tech.id } },
+            ],
+          },
+        });
+
+        for (const v of otherVisits) {
+          const vInterval = getBookingTimeInterval(v);
+          if (isTimeIntervalOverlapping(currentInterval, vInterval)) {
+            sendError(
+              res,
+              'هذا العامل غير متاح في هذا الوقت لوجود حجز آخر متداخل.',
+              409,
+              'TECHNICIAN_SCHEDULE_OVERLAP'
+            );
+            return;
+          }
+        }
+
+        const techSnapshot = {
+          id: tech.id,
+          name: tech.name,
+          phone: tech.phone,
+          avatar: tech.avatar,
+          rating: tech.rating,
+          specialty: tech.specialty,
+        };
+        let newStatus = visit.status;
+        if (visit.status === 'pending' || visit.status === 'confirmed') {
+          newStatus = 'assigned';
+        }
+
+        const updatedTimeline = Array.isArray(visit.timeline) ? [...(visit.timeline as any[])] : [];
+        updatedTimeline.push({
+          status: newStatus,
+          label: `تم إسناد الفني (${techSnapshot.name})`,
+          labelEn: `Assigned to technician ${techSnapshot.name}`,
+          timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
+          completed: true,
+          description: `تم تعيين الفني ${techSnapshot.name} لتنفيذ الزيارة`,
+          changedBy: req.admin?.name || 'Admin',
+        });
+
+        const updated = await prisma.subscriptionVisit.update({
+          where: { id: visitId },
+          data: {
+            assignedTechnicianId: tech.id,
+            technician: techSnapshot,
+            status: newStatus,
+            timeline: updatedTimeline,
+          },
+        });
+
+        await AuditLog.create({
+          adminId: req.admin?._id?.toString() || 'admin',
+          adminName: req.admin?.name || 'Admin',
+          adminRole: req.admin?.role || 'manager',
+          action: 'تعيين فني لزيارة اشتراك',
+          module: 'subscriptions',
+          entityType: 'subscription_visit',
+          entityId: visitId,
+          target: visitId,
+          details: `تم إسناد الفني ${techSnapshot.name} للزيارة #${visitId}`,
+        });
+
+        sendSuccess(res, updated, 'تم تعيين الفني للزيارة بنجاح');
+      });
     } else {
+      let newStatus = visit.status;
       if (visit.status === 'assigned') {
         newStatus = 'confirmed';
       }
-    }
 
-    const updatedTimeline = Array.isArray(visit.timeline) ? [...(visit.timeline as any[])] : [];
-    updatedTimeline.push({
-      status: newStatus,
-      label: technicianId ? `تم إسناد الفني (${techSnapshot?.name})` : 'تم إلغاء تعيين الفني',
-      labelEn: technicianId ? `Assigned to technician ${techSnapshot?.name}` : 'Technician unassigned',
-      timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
-      completed: true,
-      description: technicianId ? `تم تعيين الفني ${techSnapshot?.name} لتنفيذ الزيارة` : 'إلغاء التعيين بواسطة المشرف',
-      changedBy: req.admin?.name || 'Admin',
-    });
-
-    const updated = await prisma.subscriptionVisit.update({
-      where: { id: visitId },
-      data: {
-        assignedTechnicianId: technicianId || null,
-        technician: techSnapshot,
+      const updatedTimeline = Array.isArray(visit.timeline) ? [...(visit.timeline as any[])] : [];
+      updatedTimeline.push({
         status: newStatus,
-        timeline: updatedTimeline,
-      },
-    });
+        label: 'تم إلغاء تعيين الفني',
+        labelEn: 'Technician unassigned',
+        timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
+        completed: true,
+        description: 'إلغاء التعيين بواسطة المشرف',
+        changedBy: req.admin?.name || 'Admin',
+      });
 
-    await AuditLog.create({
-      adminId: req.admin?._id?.toString() || 'admin',
-      adminName: req.admin?.name || 'Admin',
-      adminRole: req.admin?.role || 'manager',
-      action: 'تعيين فني لزيارة اشتراك',
-      module: 'subscriptions',
-      entityType: 'subscription_visit',
-      entityId: visitId,
-      target: visitId,
-      details: technicianId
-        ? `تم إسناد الفني ${techSnapshot?.name} للزيارة #${visitId}`
-        : `تم إلغاء تعيين الفني للزيارة #${visitId}`,
-    });
+      const updated = await prisma.subscriptionVisit.update({
+        where: { id: visitId },
+        data: {
+          assignedTechnicianId: null,
+          technician: Prisma.DbNull,
+          status: newStatus,
+          timeline: updatedTimeline,
+        },
+      });
 
-    sendSuccess(res, updated, 'تم تعيين الفني للزيارة بنجاح');
+      await AuditLog.create({
+        adminId: req.admin?._id?.toString() || 'admin',
+        adminName: req.admin?.name || 'Admin',
+        adminRole: req.admin?.role || 'manager',
+        action: 'تعيين فني لزيارة اشتراك',
+        module: 'subscriptions',
+        entityType: 'subscription_visit',
+        entityId: visitId,
+        target: visitId,
+        details: `تم إلغاء تعيين الفني للزيارة #${visitId}`,
+      });
+
+      sendSuccess(res, updated, 'تم إلغاء تعيين الفني بنجاح');
+    }
   } catch (err: any) {
     sendError(res, err.message, 500);
   }

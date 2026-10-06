@@ -30,6 +30,7 @@ import {
   validateEgyptianPhone,
   VALID_EGYPTIAN_PREFIXES,
 } from '@/lib/validation/phoneValidation';
+import { validateCustomerName } from '@/lib/validation/nameValidation';
 
 export function StepAddress() {
   const { t, locale } = useLocaleStore();
@@ -67,7 +68,34 @@ export function StepAddress() {
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [phoneTouched, setPhoneTouched] = useState(false);
   const [guestNameInput, setGuestNameInput] = useState(user?.name || guestName || '');
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [nameTouched, setNameTouched] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleGuestNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setGuestNameInput(val);
+
+    // Immediate feedback if symbols or digits are entered
+    if (/[^\u0600-\u06FF\u0750-\u077F\u08A0-\u08FFa-zA-Z\s\-']/.test(val)) {
+      setNameError(
+        isAr
+          ? 'اسم العميل يجب أن يحتوي على أحرف فقط دون أرقام أو رموز خاصة.'
+          : 'Customer name must only contain letters without numbers or special symbols.'
+      );
+    } else if (nameTouched) {
+      const res = validateCustomerName(val, isAr);
+      setNameError(res.isValid ? null : res.message || null);
+    } else {
+      setNameError(null);
+    }
+  };
+
+  const handleGuestNameBlur = () => {
+    setNameTouched(true);
+    const res = validateCustomerName(guestNameInput, isAr);
+    setNameError(res.isValid ? null : res.message || null);
+  };
 
   const handleGuestPhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawVal = e.target.value;
@@ -116,7 +144,10 @@ export function StepAddress() {
   // Synchronize guest phone/name if user logs in
   useEffect(() => {
     if (user?.phone) setGuestPhoneInput(user.phone);
-    if (user?.name) setGuestNameInput(user.name);
+    if (user?.name) {
+      setGuestNameInput(user.name);
+      setNameError(null);
+    }
   }, [user]);
 
   // Prefill form from existing selectedAddress if available
@@ -238,6 +269,8 @@ export function StepAddress() {
     setApartment('');
     setLandmark('');
     setNotes('');
+    setNameError(null);
+    setNameTouched(false);
     setSaveToProfile(true);
   };
 
@@ -266,25 +299,37 @@ export function StepAddress() {
       return;
     }
 
+    // Customer name validation (mandatory)
+    // When unauthenticated, always strictly validate what the guest typed in guestNameInput
+    const activeName = (!isAuthenticated ? guestNameInput : (guestNameInput || user?.name || '')).trim();
+    const nameVal = validateCustomerName(activeName, isAr);
+    if (!nameVal.isValid) {
+      setNameTouched(true);
+      setNameError(nameVal.message || (isAr ? 'يرجى إدخال اسم العميل' : 'Please enter customer name'));
+      toast.error(nameVal.message || (isAr ? 'يرجى إدخال اسم العميل' : 'Please enter customer name'));
+      return;
+    }
+    setNameError(null);
+    const effectiveName = activeName;
+
     if (!area.trim()) {
       toast.error(isAr ? 'يرجى إدخال اسم المنطقة أو الشارع' : 'Please enter the street or area details');
       return;
     }
 
+    if (!user?.phone && guestPhoneInput.trim()) {
+      const phoneVal = validateEgyptianPhone(guestPhoneInput.trim());
+      if (!phoneVal.isValid) {
+        setPhoneTouched(true);
+        setPhoneError(phoneVal.message || 'يرجى إدخال رقم هاتف مصري صحيح.');
+        toast.error(phoneVal.message || 'يرجى إدخال رقم هاتف مصري صحيح.');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       const effectivePhone = user?.phone || guestPhoneInput.trim();
-      const effectiveName = user?.name || guestNameInput.trim();
-
-      if (!user?.phone && guestPhoneInput.trim()) {
-        const phoneVal = validateEgyptianPhone(guestPhoneInput.trim());
-        if (!phoneVal.isValid) {
-          setPhoneError(phoneVal.message || 'يرجى إدخال رقم هاتف مصري صحيح.');
-          toast.error(phoneVal.message || 'يرجى إدخال رقم هاتف مصري صحيح.');
-          setIsSubmitting(false);
-          return;
-        }
-      }
 
       // Check if customer account is deactivated by admin
       if (effectivePhone) {
@@ -474,7 +519,7 @@ export function StepAddress() {
           </div>
         </div>
 
-        <form onSubmit={handleSaveAddress} className="space-y-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <form onSubmit={handleSaveAddress} noValidate className="space-y-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label={isAr ? 'تسمية العنوان (مثل: المنزل، العمل، الشاليه)' : 'Address Label'}
@@ -529,7 +574,7 @@ export function StepAddress() {
             </div>
           </div>
 
-          {/* Optional Guest Contact Info if unauthenticated */}
+          {/* Guest Contact Info if unauthenticated */}
           {!isAuthenticated && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
               <Input
@@ -545,10 +590,13 @@ export function StepAddress() {
                 error={phoneError || undefined}
               />
               <Input
-                label={isAr ? 'اسم العميل (اختياري)' : 'Customer Name (Optional)'}
+                label={isAr ? 'اسم العميل' : 'Customer Name'}
                 placeholder={isAr ? 'أحمد عبد الله' : 'Customer Name'}
                 value={guestNameInput}
-                onChange={(e) => setGuestNameInput(e.target.value)}
+                onChange={handleGuestNameChange}
+                onBlur={handleGuestNameBlur}
+                error={nameError || undefined}
+                required
               />
             </div>
           )}
@@ -602,7 +650,7 @@ export function StepAddress() {
               type="submit"
               variant="primary"
               className="w-full h-12 text-sm font-bold shadow-lg shadow-sky-500/20"
-              disabled={isSubmitting || !area.trim()}
+              disabled={isSubmitting}
             >
               {isSubmitting ? (
                 <Loader2 className="w-5 h-5 animate-spin mx-auto" />

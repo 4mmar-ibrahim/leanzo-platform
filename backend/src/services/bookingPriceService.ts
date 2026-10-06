@@ -2,6 +2,7 @@ import { Service } from '../models/Service.js';
 import { ServicePackage } from '../models/ServicePackage.js';
 import { ServiceAddon } from '../models/ServiceAddon.js';
 import { validateCoupon } from './couponService.js';
+import { calculateItemizedPricing } from '../utils/pricingCalculator.js';
 
 export interface PriceCalculationOptions {
   serviceId: string;
@@ -12,11 +13,18 @@ export interface PriceCalculationOptions {
 }
 
 export interface PriceCalculationResult {
+  originalPrice: number;
+  baseOriginalPrice: number;
+  baseSellingPrice: number;
   basePrice: number;
   packagePrice?: number;
+  catalogDiscount: number;
+  catalogDiscountPercent: number;
   addonsTotal: number;
   subtotal: number;
   discount: number;
+  couponDiscount: number;
+  totalDiscount: number;
   serviceFee: number;
   finalPrice: number;
   totalServiceDuration: number;
@@ -89,10 +97,10 @@ export async function calculateBookingPrice(
     throw new Error('الخدمة المطلوبة غير موجودة');
   }
 
-  let basePrice = Number(service.price) || 0;
   let totalServiceDuration = Number(service.serviceDurationMinutes || service.duration) || 45;
   let packageSnapshot: PriceCalculationResult['packageSnapshot'] = undefined;
   let resolvedPackageId: string | undefined = undefined;
+  let selectedPackageForCalc: any = null;
 
   // 1. Authoritative Package Validation
   if (packageId && String(packageId).trim()) {
@@ -109,9 +117,14 @@ export async function calculateBookingPrice(
       throw new Error('الباقة المحددة غير متاحة حالياً');
     }
 
-    basePrice = Number(pkg.price);
     totalServiceDuration = Number(pkg.durationMinutes) || 45;
     resolvedPackageId = pkg.id;
+    selectedPackageForCalc = {
+      id: pkg.id,
+      name: pkg.name,
+      price: Number(pkg.price),
+      originalPrice: pkg.originalPrice !== undefined && pkg.originalPrice !== null ? Number(pkg.originalPrice) : undefined,
+    };
     packageSnapshot = {
       id: pkg.id,
       name: pkg.name,
@@ -119,14 +132,14 @@ export async function calculateBookingPrice(
       description: pkg.description || '',
       descriptionEn: pkg.descriptionEn || '',
       price: Number(pkg.price),
-      originalPrice: pkg.originalPrice !== undefined && pkg.originalPrice !== null ? Number(pkg.originalPrice) : undefined,
+      originalPrice: selectedPackageForCalc.originalPrice,
       durationMinutes: Number(pkg.durationMinutes) || 45,
     };
   }
 
   // 2. Authoritative Add-ons Validation
   const addonsSnapshot: PriceCalculationResult['addons'] = [];
-  let addonsTotal = 0;
+  const addonsForCalc: Array<{ id: string; name: string; price: number }> = [];
 
   if (Array.isArray(addonIds) && addonIds.length > 0) {
     // Deduplicate addonIds to prevent malicious or accidental duplicate submission
@@ -149,8 +162,13 @@ export async function calculateBookingPrice(
       const addonPrice = Number(addon.price) || 0;
       const addonDuration = Number(addon.durationMinutes) || 0;
 
-      addonsTotal += addonPrice;
       totalServiceDuration += addonDuration;
+
+      addonsForCalc.push({
+        id: addon.id,
+        name: addon.name,
+        price: addonPrice,
+      });
 
       addonsSnapshot.push({
         id: addon.id,
@@ -164,24 +182,37 @@ export async function calculateBookingPrice(
     }
   }
 
-  const subtotal = basePrice + addonsTotal;
-  let discountAmount = 0;
-  let couponSnapshot: PriceCalculationResult['couponSnapshot'] = undefined;
-  let appliedCode: string | undefined = undefined;
-
-  // 3. Apply service direct catalog discount if no package selected and service has discount
-  if (!packageSnapshot && service.discount && service.discount > 0) {
-    discountAmount = Math.round((basePrice * service.discount) / 100);
-  }
+  // 3. Pre-Coupon Calculation using Single Authoritative Pricing Engine
+  const baseCalc = calculateItemizedPricing({
+    service: {
+      id: service.id,
+      price: Number(service.price) || 0,
+      originalPrice: service.originalPrice !== undefined && service.originalPrice !== null ? Number(service.originalPrice) : null,
+      discount: service.discount !== undefined && service.discount !== null ? Number(service.discount) : null,
+    },
+    selectedPackage: selectedPackageForCalc,
+    addons: addonsForCalc,
+    coupon: null,
+    serviceFee: 0,
+  });
 
   // 4. Validate and apply authoritative coupon if provided
-  if (promoCode && promoCode.trim()) {
-    const couponResult = await validateCoupon(promoCode.trim(), subtotal, customerPhone, serviceId);
-    if (couponResult && couponResult.isValid) {
-      const couponDiscount = couponResult.actualDiscountAmount;
-      discountAmount = Math.max(discountAmount, couponDiscount);
-      appliedCode = couponResult.code;
+  let couponSnapshot: PriceCalculationResult['couponSnapshot'] = undefined;
+  let appliedCode: string | undefined = undefined;
+  let couponInputForCalc: any = null;
 
+  if (promoCode && promoCode.trim()) {
+    const couponResult = await validateCoupon(promoCode.trim(), baseCalc.subtotal, customerPhone, serviceId);
+    if (couponResult && couponResult.isValid) {
+      appliedCode = couponResult.code;
+      couponInputForCalc = {
+        code: couponResult.code,
+        discountType: couponResult.discountType,
+        discountValue: couponResult.discountValue,
+        maxDiscount: (couponResult.coupon as any)?.maxDiscount,
+      };
+
+      const couponDiscount = couponResult.actualDiscountAmount;
       couponSnapshot = {
         couponId: couponResult.coupon._id ? couponResult.coupon._id.toString() : couponResult.coupon.id,
         couponCode: couponResult.code,
@@ -189,23 +220,41 @@ export async function calculateBookingPrice(
         discountValue: couponResult.discountValue,
         discountAmount: couponDiscount,
         actualDiscountAmount: couponDiscount,
-        originalPrice: subtotal,
-        finalPrice: Math.max(0, subtotal - couponDiscount),
+        originalPrice: baseCalc.subtotal,
+        finalPrice: Math.max(0, baseCalc.subtotal - couponDiscount),
       };
     }
   }
 
-  const serviceFee = 0; // Configurable fee
-  const finalPrice = Math.max(0, subtotal - discountAmount + serviceFee);
+  // 5. Final Authoritative Pricing Calculation
+  const finalCalc = calculateItemizedPricing({
+    service: {
+      id: service.id,
+      price: Number(service.price) || 0,
+      originalPrice: service.originalPrice !== undefined && service.originalPrice !== null ? Number(service.originalPrice) : null,
+      discount: service.discount !== undefined && service.discount !== null ? Number(service.discount) : null,
+    },
+    selectedPackage: selectedPackageForCalc,
+    addons: addonsForCalc,
+    coupon: couponInputForCalc,
+    serviceFee: 0,
+  });
 
   return {
-    basePrice,
-    packagePrice: packageSnapshot ? packageSnapshot.price : basePrice,
-    addonsTotal,
-    subtotal,
-    discount: discountAmount,
-    serviceFee,
-    finalPrice,
+    originalPrice: finalCalc.originalTotal,
+    baseOriginalPrice: finalCalc.baseOriginalPrice,
+    baseSellingPrice: finalCalc.baseSellingPrice,
+    basePrice: finalCalc.originalTotal, // Invariant: basePrice - totalDiscount = finalPrice
+    packagePrice: packageSnapshot ? packageSnapshot.price : finalCalc.baseSellingPrice,
+    catalogDiscount: finalCalc.catalogDiscount,
+    catalogDiscountPercent: finalCalc.catalogDiscountPercent,
+    addonsTotal: finalCalc.addonsTotal,
+    subtotal: finalCalc.subtotal,
+    discount: finalCalc.totalDiscount,
+    couponDiscount: finalCalc.couponDiscount,
+    totalDiscount: finalCalc.totalDiscount,
+    serviceFee: finalCalc.serviceFee,
+    finalPrice: finalCalc.finalPrice,
     totalServiceDuration,
     packageId: resolvedPackageId,
     packageSnapshot,

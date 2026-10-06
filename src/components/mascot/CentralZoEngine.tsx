@@ -7,6 +7,7 @@ import { ZoCharacter } from './ZoCharacter';
 import { cn } from '@/lib/utils';
 import { ZoDeviceBreakpoint } from '@/types/zoStudioTypes';
 import { getCachedZoImage } from '@/lib/zo/zoImageStorage';
+import { DEFAULT_ZO_PAGE_CONFIGS } from '@/data/defaultZoConfigs';
 
 // Subtle, gentle chime played ONLY when customer explicitly taps Zo (if enabled in Admin)
 function playInteractiveZoChime() {
@@ -141,14 +142,29 @@ export function CentralZoEngine() {
   }, [pathname, currentSearch, getActivePageConfig, publishedConfigs, refreshKey]);
 
   // Determine if this page has an enabled message and valid text
-  const activeMessageText = activeTrigger?.message || pageConfig?.message?.text;
-  const activeMessageTextEn = activeTrigger?.messageEn || pageConfig?.message?.textEn;
+  const fallbackMessageText = 'أهلاً بك في Cleanzo! كيف يمكنني مساعدتك؟';
+  const fallbackMessageTextEn = 'Welcome to Cleanzo! How can I help you?';
+
+  const resolvedMessageText =
+    activeTrigger?.message ||
+    pageConfig?.message?.text ||
+    DEFAULT_ZO_PAGE_CONFIGS[pageConfig?.pageId || 'home']?.message?.text ||
+    DEFAULT_ZO_PAGE_CONFIGS.home?.message?.text ||
+    fallbackMessageText;
+
+  const resolvedMessageTextEn =
+    activeTrigger?.messageEn ||
+    pageConfig?.message?.textEn ||
+    DEFAULT_ZO_PAGE_CONFIGS[pageConfig?.pageId || 'home']?.message?.textEn ||
+    DEFAULT_ZO_PAGE_CONFIGS.home?.message?.textEn ||
+    fallbackMessageTextEn;
+
   const hasConfiguredMessage = Boolean(
     pageConfig &&
     pageConfig.enabled &&
     pageConfig.message?.enabled !== false &&
-    activeMessageText &&
-    activeMessageText.trim().length > 0
+    resolvedMessageText &&
+    resolvedMessageText.trim().length > 0
   );
 
   // 1. PAGE INDEPENDENCE LIFECYCLE:
@@ -319,80 +335,62 @@ export function CentralZoEngine() {
         ref={mascotContainerRef}
         className="relative pointer-events-auto"
       >
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={handleZoToggle}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              handleZoToggle();
-            }
+        <ZoCharacter
+          key={`zo-engine-${pageConfig.pageId}-${refreshKey}-${pageConfig.character.customImage || 'default'}`}
+          expression={expression}
+          pose={pose}
+          animation={animation}
+          animationSpeed={pageConfig.character.animationSpeed}
+          autoBlink={pageConfig.character.autoBlink}
+          eyeMovement={pageConfig.character.eyeMovement}
+          scale={pageConfig.character.scale}
+          rotationY={pageConfig.character.rotationY}
+          opacity={pageConfig.character.opacity}
+          shadow={pageConfig.character.shadow}
+          glow={pageConfig.character.glow}
+          originalImageUrl={
+            (() => {
+              const url = pageConfig.character.originalImageUrl || pageConfig.character.customImage || '/brand/zo/zo-approved.png';
+              if (url && url.startsWith('/uploads') && pageConfig.character.versionTimestamp) {
+                return `${url}?v=${pageConfig.character.versionTimestamp}`;
+              }
+              return url;
+            })()
+          }
+          customImage={
+            (() => {
+              const raw =
+                pageConfig.character.originalImageUrl ||
+                pageConfig.character.customImage ||
+                getCachedZoImage(`zo_img_${pageConfig.pageId}`) ||
+                '/brand/zo/zo-approved.png';
+              if (raw && raw.startsWith('/uploads') && pageConfig.character.versionTimestamp) {
+                return `${raw}?v=${pageConfig.character.versionTimestamp}`;
+              }
+              return raw;
+            })()
+          }
+          animationIntensity={pageConfig.character.animationIntensity}
+          customImageDepth={pageConfig.character.customImageDepth}
+          size={computedSize}
+          lookAtCursor={true}
+          bubbleAlignment="right"
+          message={resolvedMessageText}
+          messageEn={resolvedMessageTextEn}
+          messageTitle={pageConfig.message.title}
+          isMessageOpen={isMessageOpen}
+          messageConfig={{
+            ...pageConfig.message,
+            delay: 200,
+            duration: 4000,
+            autoHide: false, // Fully controlled by CentralZoEngine interaction system
+            playSound: false,
           }}
-          aria-label="مساعد زو الذكي - اضغط لعرض أو إخفاء الرسالة"
-          style={{
-            width: `${computedSize}px`,
-            touchAction: 'manipulation',
+          onCharacterClick={handleZoToggle}
+          onMessageClose={() => {
+            setIsMessageOpen(false);
           }}
-          className="relative cursor-pointer select-none active:scale-95 focus:outline-hidden transition-transform duration-200"
-          title="اضغط لعرض رسالة المساعد"
-        >
-          <ZoCharacter
-            key={`zo-engine-${pageConfig.pageId}-${refreshKey}-${pageConfig.character.customImage || 'default'}`}
-            expression={expression}
-            pose={pose}
-            animation={animation}
-            animationSpeed={pageConfig.character.animationSpeed}
-            autoBlink={pageConfig.character.autoBlink}
-            eyeMovement={pageConfig.character.eyeMovement}
-            scale={pageConfig.character.scale}
-            rotationY={pageConfig.character.rotationY}
-            opacity={pageConfig.character.opacity}
-            shadow={pageConfig.character.shadow}
-            glow={pageConfig.character.glow}
-            originalImageUrl={
-              (() => {
-                const url = pageConfig.character.originalImageUrl || pageConfig.character.customImage;
-                if (url && url.startsWith('/uploads') && pageConfig.character.versionTimestamp) {
-                  return `${url}?v=${pageConfig.character.versionTimestamp}`;
-                }
-                return url;
-              })()
-            }
-            customImage={
-              (() => {
-                const raw =
-                  pageConfig.character.originalImageUrl ||
-                  pageConfig.character.customImage ||
-                  getCachedZoImage(`zo_img_${pageConfig.pageId}`) ||
-                  undefined;
-                if (raw && raw.startsWith('/uploads') && pageConfig.character.versionTimestamp) {
-                  return `${raw}?v=${pageConfig.character.versionTimestamp}`;
-                }
-                return raw;
-              })()
-            }
-            animationIntensity={pageConfig.character.animationIntensity}
-            customImageDepth={pageConfig.character.customImageDepth}
-            size={computedSize}
-            lookAtCursor={true}
-            bubbleAlignment="right"
-            message={activeMessageText}
-            messageEn={activeMessageTextEn}
-            messageTitle={pageConfig.message.title}
-            isMessageOpen={isMessageOpen}
-            messageConfig={{
-              ...pageConfig.message,
-              delay: 200,
-              duration: 4000,
-              autoHide: false, // Fully controlled by CentralZoEngine interaction system
-              playSound: false,
-            }}
-            onMessageClose={() => {
-              setIsMessageOpen(false);
-            }}
-          />
-        </div>
+        />
       </div>
     </div>
   );

@@ -14,6 +14,8 @@ import { toast } from 'sonner';
 import {
   validateEgyptianPhone,
   VALID_EGYPTIAN_PREFIXES,
+  normalizePhoneInput,
+  convertArabicToAsciiDigits,
 } from '@/lib/validation/phoneValidation';
 
 function LoginForm() {
@@ -44,14 +46,15 @@ function LoginForm() {
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawVal = e.target.value;
+    const converted = convertArabicToAsciiDigits(rawVal);
 
-    if (/[^0-9]/.test(rawVal)) {
+    if (/[^0-9\s\+\-]/.test(converted)) {
       setPhoneError('يرجى إدخال أرقام فقط.');
     } else {
       setPhoneError(null);
     }
 
-    const digits = rawVal.replace(/[^0-9]/g, '').slice(0, 11);
+    const digits = normalizePhoneInput(rawVal);
     setPhone(digits);
 
     if (digits.length >= 3) {

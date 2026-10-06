@@ -21,6 +21,7 @@ import { useServiceStore } from '@/store/useServiceStore';
 import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { formatDuration } from '@/lib/utils';
 import { Service, ServicePackage, ServiceAddon, ServiceCategory } from '@/types';
+import { getServiceDisplayPrice } from '@/lib/pricing';
 
 export function StepService() {
   const { t, locale } = useLocaleStore();
@@ -34,6 +35,10 @@ export function StepService() {
     selectedAddons,
     toggleAddon,
     getBasePrice,
+    getOriginalPrice,
+    getCatalogSavings,
+    getDiscountAmount,
+    getFinalPrice,
     getTotalDuration,
   } = useBookingStore();
   const isAr = locale === 'ar';
@@ -357,7 +362,10 @@ export function StepService() {
                   </div>
 
                   <div className="sm:text-end shrink-0 ps-9 sm:ps-0 flex sm:flex-col items-center sm:items-end justify-between sm:justify-center border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 dark:border-slate-800">
-                    <PriceDisplay price={srv.price} originalPrice={srv.originalPrice} size="md" />
+                    {(() => {
+                      const sp = getServiceDisplayPrice(srv);
+                      return <PriceDisplay price={sp.sellingPrice} originalPrice={sp.hasDiscount ? sp.originalPrice : undefined} size="md" />;
+                    })()}
                     <span
                       className={`text-[11px] font-bold mt-1 ${
                         isSelected ? 'text-[#0866C6] dark:text-sky-400' : 'text-slate-400'
@@ -438,7 +446,10 @@ export function StepService() {
                   </span>
                 </span>
 
-                <PriceDisplay price={selectedService.price} originalPrice={selectedService.originalPrice} size="sm" />
+                {(() => {
+                  const sp = getServiceDisplayPrice(selectedService);
+                  return <PriceDisplay price={sp.sellingPrice} originalPrice={sp.hasDiscount ? sp.originalPrice : undefined} size="sm" />;
+                })()}
               </div>
             </div>
 
@@ -608,11 +619,30 @@ export function StepService() {
             </p>
           </div>
 
-          <div className="sm:text-end shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200 dark:border-slate-800">
-            <span className="text-[10px] text-slate-400 block">{isAr ? 'المجموع المبدئي' : 'Subtotal'}</span>
-            <span className="text-base sm:text-lg font-black text-[#0866C6] dark:text-sky-400 font-mono">
-              {getBasePrice()} {isAr ? 'ج.م' : 'EGP'}
-            </span>
+          <div className="sm:text-end shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200 dark:border-slate-800 space-y-0.5">
+            <span className="text-[10px] text-slate-400 block">{isAr ? 'المجموع المستحق للخدمة' : 'Payable Subtotal'}</span>
+            <div className="flex items-center sm:justify-end gap-2 flex-wrap">
+              {getOriginalPrice() > getFinalPrice() && (
+                <span className="text-xs text-slate-400 line-through font-mono">
+                  {getOriginalPrice()} {isAr ? 'ج.م' : 'EGP'}
+                </span>
+              )}
+              <span className="text-base sm:text-lg font-black text-[#0866C6] dark:text-sky-400 font-mono">
+                {getFinalPrice()} {isAr ? 'ج.م' : 'EGP'}
+              </span>
+            </div>
+            {getCatalogSavings() > 0 && (
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 block">
+                {isAr
+                  ? `وفّرت ${getCatalogSavings()} ج.م (${selectedPackage?.originalPrice ? Math.round((getCatalogSavings() / Number(selectedPackage.originalPrice)) * 100) : selectedService?.discount || 15}%)`
+                  : `Saved ${getCatalogSavings()} EGP`}
+              </span>
+            )}
+            {getDiscountAmount() > getCatalogSavings() && (
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 block">
+                {isAr ? `خصم الكوبون: -${getDiscountAmount() - getCatalogSavings()} ج.م` : `Coupon Discount: -${getDiscountAmount() - getCatalogSavings()} EGP`}
+              </span>
+            )}
           </div>
         </div>
       )}

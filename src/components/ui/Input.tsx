@@ -9,12 +9,16 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, type = 'text', error, label, id, ...props }, ref) => {
     const inputId = id || (label ? label.replace(/\s+/g, '-').toLowerCase() : undefined);
+    const hasAsterisk = typeof label === 'string' && label.includes('*');
 
     return (
       <div className="w-full space-y-1.5 text-start">
         {label && (
           <label htmlFor={inputId} className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
             {label}
+            {props.required && !hasAsterisk && (
+              <span className="text-[#F0444C] mx-1 font-bold" aria-hidden="true">*</span>
+            )}
           </label>
         )}
         <input

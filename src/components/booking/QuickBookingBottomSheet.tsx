@@ -31,6 +31,8 @@ import { Service, ServiceCategory, Order, Address, ServicePackage, ServiceAddon 
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { validateCustomerName } from '@/lib/validation/nameValidation';
+import { calculateItemizedPricing } from '@/lib/pricing';
 
 interface QuickBookingBottomSheetProps {
   isOpen: boolean;
@@ -89,9 +91,45 @@ export function QuickBookingBottomSheet({
     setSelectedAddonsList([]);
   }, [selectedService]);
 
-  const quickBasePrice = selectedPkg ? Number(selectedPkg.price) : Number(selectedService?.price || 0);
-  const quickAddonsTotal = selectedAddonsList.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
-  const quickTotalPrice = quickBasePrice + quickAddonsTotal;
+  const quickPricing = useMemo(() => {
+    if (!selectedService) {
+      return {
+        baseOriginalPrice: 0,
+        catalogDiscount: 0,
+        catalogDiscountPercent: 0,
+        baseSellingPrice: 0,
+        addonsTotal: 0,
+        subtotal: 0,
+        totalDiscount: 0,
+        finalPrice: 0,
+      };
+    }
+    return calculateItemizedPricing({
+      service: {
+        id: selectedService.id,
+        price: Number(selectedService.price) || 0,
+        originalPrice: selectedService.originalPrice,
+        discount: selectedService.discount,
+      },
+      selectedPackage: selectedPkg
+        ? {
+            id: selectedPkg.id,
+            name: selectedPkg.name,
+            price: Number(selectedPkg.price) || 0,
+            originalPrice: selectedPkg.originalPrice,
+          }
+        : null,
+      addons: selectedAddonsList.map((a) => ({
+        id: a.id,
+        name: a.name,
+        price: Number(a.price) || 0,
+      })),
+      coupon: null,
+      serviceFee: 0,
+    });
+  }, [selectedService, selectedPkg, selectedAddonsList]);
+
+  const quickTotalPrice = quickPricing.finalPrice;
 
   const bookingSettings = useSettingsStore((s) => s.settings.booking);
   const fetchPublicSettings = useSettingsStore((s) => s.fetchPublicSettings);
@@ -233,6 +271,11 @@ export function QuickBookingBottomSheet({
       toast.error('يرجى إدخال رقم هاتف صحيح للتواصل');
       return;
     }
+    const nameVal = validateCustomerName(customerName, isAr);
+    if (!nameVal.isValid) {
+      toast.error(nameVal.message || (isAr ? 'يرجى إدخال اسم العميل للمتابعة' : 'Please enter customer name to proceed'));
+      return;
+    }
 
     // Check if customer account is deactivated by admin
     try {
@@ -287,7 +330,7 @@ export function QuickBookingBottomSheet({
       date: selectedDate,
       time: selectedTime,
       address: finalAddress,
-      basePrice: quickTotalPrice,
+      basePrice: quickPricing.baseOriginalPrice + quickPricing.addonsTotal,
       packageId: selectedPkg?.id,
       packageSnapshot: selectedPkg
         ? {
@@ -306,9 +349,9 @@ export function QuickBookingBottomSheet({
         price: a.price,
         durationMinutes: a.durationMinutes,
       })),
-      discount: 0,
+      discount: quickPricing.totalDiscount,
       serviceFee: 0,
-      finalPrice: quickTotalPrice,
+      finalPrice: quickPricing.finalPrice,
       currency: isAr ? 'ج.م' : 'EGP',
       status: 'pending',
       timeline: [
@@ -709,13 +752,15 @@ export function QuickBookingBottomSheet({
               <div className="space-y-1">
                 <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5 text-[#0866C6]" />
-                  <span>اسم العميل</span>
+                  <span>{isAr ? 'اسم العميل' : 'Customer Name'}</span>
+                  <span className="text-[#F0444C] font-bold">*</span>
                 </label>
                 <input
                   type="text"
+                  required
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="أدخل اسمك الكريم"
+                  placeholder={isAr ? 'أدخل اسمك الكريم' : 'Enter customer name'}
                   className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs"
                 />
               </div>
@@ -834,9 +879,15 @@ export function QuickBookingBottomSheet({
                   <span>رسوم الانتقال والمعدات:</span>
                   <span className="font-bold text-emerald-600 dark:text-emerald-400">مجاناً (عرض اليوم)</span>
                 </div>
+                {quickPricing.catalogDiscount > 0 && (
+                  <div className="flex justify-between text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                    <span>خصم العرض المباشر ({quickPricing.catalogDiscountPercent}%):</span>
+                    <span className="font-mono">-{quickPricing.catalogDiscount} ج.م</span>
+                  </div>
+                )}
                 <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex justify-between font-black text-sm text-slate-900 dark:text-white">
                   <span>الإجمالي للدفع عند الاستلام:</span>
-                  <span className="text-sky-600 dark:text-sky-400">{quickTotalPrice} ج.م</span>
+                  <span className="text-sky-600 dark:text-sky-400 font-mono">{quickPricing.finalPrice} ج.م</span>
                 </div>
               </div>
             </div>

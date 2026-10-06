@@ -47,6 +47,7 @@ export function StepReview() {
     getDiscountAmount,
     getServiceFee,
     getFinalPrice,
+    getItemizedPricing,
   } = useBookingStore();
   const user = useAuthStore((s) => s.user);
   const isAr = locale === 'ar';
@@ -290,67 +291,120 @@ export function StepReview() {
         />
       </div>
 
-      {/* Authoritative Financial Breakdown Table */}
-      <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800 space-y-3.5 shadow-xs">
-        {selectedPackage ? (
-          <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
-            <span>{isAr ? `سعر الباقة (${selectedPackage.name})` : `Package (${selectedPackage.nameEn || selectedPackage.name})`}</span>
-            <span className="font-bold text-slate-800 dark:text-slate-200 font-mono">
-              {selectedPackage.price} {isAr ? 'ج.م' : 'EGP'}
-            </span>
-          </div>
-        ) : (
-          <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
-            <span>{t.booking.basePrice}</span>
-            <span className="font-bold text-slate-800 dark:text-slate-200 font-mono">
-              {getPackageBasePrice()} {isAr ? 'ج.م' : 'EGP'}
-            </span>
-          </div>
-        )}
+      {/* Authoritative Financial Breakdown Table (Phase 4 Itemized Display) */}
+      {(() => {
+        const pricing = getItemizedPricing();
+        return (
+          <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800 space-y-3.5 shadow-xs">
+            {/* Service or Package Row */}
+            {selectedPackage ? (
+              <>
+                <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
+                  <span>{isAr ? `سعر الباقة (${selectedPackage.name})` : `Package (${selectedPackage.nameEn || selectedPackage.name})`}</span>
+                  <div className="flex items-center gap-1.5 font-mono">
+                    {pricing.catalogDiscount > 0 && (
+                      <span className="text-[11px] text-slate-400 line-through">
+                        {pricing.baseOriginalPrice} {isAr ? 'ج.م' : 'EGP'}
+                      </span>
+                    )}
+                    <span className="font-bold text-slate-800 dark:text-slate-200">
+                      {pricing.baseSellingPrice} {isAr ? 'ج.م' : 'EGP'}
+                    </span>
+                  </div>
+                </div>
+                {pricing.catalogDiscount > 0 && (
+                  <div className="flex justify-between text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
+                    <span>{isAr ? 'وفّرت في الباقة' : 'Package Savings'}</span>
+                    <span className="font-mono">
+                      -{pricing.catalogDiscount} {isAr ? 'ج.م' : 'EGP'}
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
+                  <span>{pricing.catalogDiscount > 0 ? (isAr ? 'السعر الأصلي للخدمة' : 'Original Service Price') : t.booking.basePrice}</span>
+                  <div className="flex items-center gap-1.5 font-mono">
+                    {pricing.catalogDiscount > 0 && (
+                      <span className="text-[11px] text-slate-400 line-through">
+                        {pricing.baseOriginalPrice} {isAr ? 'ج.م' : 'EGP'}
+                      </span>
+                    )}
+                    <span className="font-bold text-slate-800 dark:text-slate-200">
+                      {pricing.baseSellingPrice} {isAr ? 'ج.م' : 'EGP'}
+                    </span>
+                  </div>
+                </div>
+                {pricing.catalogDiscount > 0 && (
+                  <div className="flex justify-between text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
+                    <span>
+                      {isAr ? 'خصم الخدمة المباشر' : 'Direct Service Discount'}
+                      {pricing.catalogDiscountPercent > 0 ? ` (${pricing.catalogDiscountPercent}%)` : ''}
+                    </span>
+                    <span className="font-mono">
+                      -{pricing.catalogDiscount} {isAr ? 'ج.م' : 'EGP'}
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
 
-        {selectedAddons && selectedAddons.map((addon) => (
-          <div key={addon.id} className="flex justify-between text-xs text-amber-700 dark:text-amber-400">
-            <span>+{isAr ? `إضافة: ${addon.name}` : `Add-on: ${addon.nameEn || addon.name}`}</span>
-            <span className="font-bold font-mono">+{addon.price} {isAr ? 'ج.م' : 'EGP'}</span>
-          </div>
-        ))}
+            {/* Add-ons Rows */}
+            {selectedAddons && selectedAddons.map((addon) => (
+              <div key={addon.id} className="flex justify-between text-xs text-amber-700 dark:text-amber-400">
+                <span>+{isAr ? `إضافة: ${addon.name}` : `Add-on: ${addon.nameEn || addon.name}`}</span>
+                <span className="font-bold font-mono">+{addon.price} {isAr ? 'ج.م' : 'EGP'}</span>
+              </div>
+            ))}
 
-        {selectedAddons && selectedAddons.length > 0 && (
-          <div className="flex justify-between text-xs text-slate-500 pt-1 border-t border-dashed border-slate-200 dark:border-slate-800">
-            <span>{isAr ? 'المجموع الفرعي' : 'Subtotal'}</span>
-            <span className="font-bold font-mono text-slate-700 dark:text-slate-300">
-              {basePrice} {isAr ? 'ج.م' : 'EGP'}
-            </span>
-          </div>
-        )}
+            {/* Subtotal Row (displayed if add-ons or catalog discount exist) */}
+            {(selectedAddons.length > 0 || pricing.catalogDiscount > 0) && (
+              <div className="flex justify-between text-xs text-slate-500 pt-1 border-t border-dashed border-slate-200 dark:border-slate-800">
+                <span>{isAr ? 'المجموع الفرعي' : 'Subtotal'}</span>
+                <span className="font-bold font-mono text-slate-700 dark:text-slate-300">
+                  {pricing.subtotal} {isAr ? 'ج.م' : 'EGP'}
+                </span>
+              </div>
+            )}
 
-        {discountAmount > 0 && (
-          <div className="flex justify-between text-xs text-emerald-600 dark:text-emerald-400 font-bold">
-            <span className="flex items-center gap-1.5">
-              <TicketPercent className="w-3.5 h-3.5" />
-              <span>{t.booking.discount} ({promoCode})</span>
-            </span>
-            <span className="font-mono">-{discountAmount} {isAr ? 'ج.م' : 'EGP'}</span>
-          </div>
-        )}
+            {/* Coupon Discount Row */}
+            {pricing.couponDiscount > 0 && (
+              <div className="flex justify-between text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                <span className="flex items-center gap-1.5">
+                  <TicketPercent className="w-3.5 h-3.5" />
+                  <span>
+                    {t.booking.discount}
+                    {promoCode ? ` (${promoCode})` : ''}
+                  </span>
+                </span>
+                <span className="font-mono">-{pricing.couponDiscount} {isAr ? 'ج.م' : 'EGP'}</span>
+              </div>
+            )}
 
-        <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
-          <span>{t.booking.serviceFee}</span>
-          <span className="text-emerald-600 dark:text-emerald-400 font-bold">{t.booking.free}</span>
-        </div>
+            {/* Fees */}
+            <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
+              <span>{t.booking.serviceFee}</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                {pricing.serviceFee > 0 ? `${pricing.serviceFee} ${isAr ? 'ج.م' : 'EGP'}` : t.booking.free}
+              </span>
+            </div>
 
-        <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-between items-baseline">
-          <div>
-            <span className="text-sm font-black text-slate-900 dark:text-white block">
-              {t.booking.finalTotal}
-            </span>
-            <span className="text-[10px] text-slate-400">
-              {isAr ? 'شامل ضريبة القيمة المضافة والمصاريف' : 'Inclusive of VAT and fees'}
-            </span>
+            {/* Final Total */}
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-between items-baseline">
+              <div>
+                <span className="text-sm font-black text-slate-900 dark:text-white block">
+                  {t.booking.finalTotal}
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  {isAr ? 'شامل ضريبة القيمة المضافة والمصاريف' : 'Inclusive of VAT and fees'}
+                </span>
+              </div>
+              <PriceDisplay price={pricing.finalPrice} size="lg" />
+            </div>
           </div>
-          <PriceDisplay price={finalPrice} size="lg" />
-        </div>
-      </div>
+        );
+      })()}
     </div>
   );
 }

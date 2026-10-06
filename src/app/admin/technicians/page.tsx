@@ -28,6 +28,12 @@ import {
 } from 'lucide-react';
 import { useTechnicianStore } from '@/store/useTechnicianStore';
 import { useActivityLogStore } from '@/store/useActivityLogStore';
+import {
+  normalizePhoneInput,
+  validateEgyptianPhone,
+  isValidEgyptianPhone,
+  CANONICAL_PHONE_ERROR_MESSAGE,
+} from '@/lib/validation/phoneValidation';
 import { useAdminStore } from '@/store/useAdminStore';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { cn } from '@/lib/utils';
@@ -60,6 +66,7 @@ export default function AdminTechniciansPage() {
   const [editingTechId, setEditingTechId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [specialty, setSpecialty] = useState('');
   const [bio, setBio] = useState('');
@@ -150,6 +157,7 @@ export default function AdminTechniciansPage() {
     setEditingTechId(null);
     setName('');
     setPhone('');
+    setPhoneError(null);
     setEmail('');
     setSpecialty('خبير تلميع وغسيل سيارات متنقل');
     setBio('');
@@ -162,6 +170,11 @@ export default function AdminTechniciansPage() {
     setEditingTechId(t.id);
     setName(t.name);
     setPhone(t.phone);
+    if (t.phone && !isValidEgyptianPhone(t.phone)) {
+      setPhoneError(CANONICAL_PHONE_ERROR_MESSAGE);
+    } else {
+      setPhoneError(null);
+    }
     setEmail(t.email || '');
     setSpecialty(t.specialty);
     setBio(t.bio || '');
@@ -173,10 +186,19 @@ export default function AdminTechniciansPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !phone.trim()) {
-      toast.error('يرجى ملء اسم الفني ورقم الهاتف');
+    if (!name.trim()) {
+      toast.error('يرجى إدخال اسم الفني بالكامل');
       return;
     }
+
+    const phoneValidation = validateEgyptianPhone(phone);
+    if (!phoneValidation.isValid) {
+      const errorMsg = phoneValidation.message || CANONICAL_PHONE_ERROR_MESSAGE;
+      setPhoneError(errorMsg);
+      toast.error(errorMsg);
+      return;
+    }
+    setPhoneError(null);
 
     setIsUploadingImage(true);
     let finalAvatarUrl = existingAvatar || '/uploads/images/default-avatar.png';
@@ -464,10 +486,27 @@ export default function AdminTechniciansPage() {
                 </div>
 
                 {/* Contact Phone */}
-                <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-[#041728] border border-slate-100 dark:border-slate-800/80 p-2 rounded-xl">
-                  <Phone className="w-3.5 h-3.5 text-[#0866C6] shrink-0" />
-                  <span className="font-mono font-bold" dir="ltr">{tech.phone}</span>
-                </div>
+                {isValidEgyptianPhone(tech.phone) ? (
+                  <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-[#041728] border border-slate-100 dark:border-slate-800/80 p-2 rounded-xl">
+                    <Phone className="w-3.5 h-3.5 text-[#0866C6] shrink-0" />
+                    <span className="font-mono font-bold" dir="ltr">{tech.phone}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 p-2 rounded-xl">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <span className="font-bold text-[11px] truncate">رقم غير صالح:</span>
+                      <span className="font-mono font-bold line-through text-slate-400 shrink-0" dir="ltr">{tech.phone}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(tech)}
+                      className="text-[10px] font-black underline text-amber-600 hover:text-amber-700 shrink-0"
+                    >
+                      تصحيح
+                    </button>
+                  </div>
+                )}
 
                 {/* Link to Technician Full Profile Dashboard */}
                 <Link
@@ -651,12 +690,36 @@ export default function AdminTechniciansPage() {
                   </label>
                   <input
                     type="tel"
+                    dir="ltr"
                     required
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => {
+                      const clean = normalizePhoneInput(e.target.value);
+                      setPhone(clean);
+                      if (phoneError) {
+                        const val = validateEgyptianPhone(clean);
+                        if (val.isValid) setPhoneError(null);
+                      }
+                    }}
                     placeholder="010XXXXXXXX"
-                    className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-[#041728] border border-slate-200 dark:border-[#133B61] text-[#07345C] dark:text-white font-mono font-bold focus:outline-hidden focus:border-[#0866C6] transition-colors"
+                    style={{ direction: 'ltr', textAlign: 'left', unicodeBidi: 'isolate' }}
+                    className={cn(
+                      'w-full p-2.5 rounded-xl bg-slate-50 dark:bg-[#041728] border text-[#07345C] dark:text-white font-mono font-bold text-left [direction:ltr] [unicode-bidi:isolate] focus:outline-hidden transition-colors',
+                      phoneError
+                        ? 'border-rose-500 focus:border-rose-500 bg-rose-50/20'
+                        : 'border-slate-200 dark:border-[#133B61] focus:border-[#0866C6]'
+                    )}
                   />
+                  {phoneError ? (
+                    <p className="text-[11px] text-[#F0444C] font-bold mt-1.5 flex items-center gap-1 animate-in fade-in">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{phoneError}</span>
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-slate-400 mt-1 font-mono">
+                      11 رقمًا يبدأ بـ 010 أو 011 أو 012 أو 015
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">

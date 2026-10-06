@@ -26,7 +26,7 @@ export interface IUser extends Document {
   deletedAt?: Date;
   deletedBy?: string;
   deletionReason?: string;
-  source: 'website' | 'whatsapp' | 'social_media' | 'other';
+  source: 'website' | 'whatsapp' | 'facebook' | 'instagram' | 'telegram' | 'tiktok' | 'social_media' | 'other';
   notes: Array<{ id: string; text: string; date: string; author: string }>;
   tags: string[];
   discount?: number;
@@ -62,7 +62,7 @@ const UserSchema = new Schema<IUser>(
     deletedAt: { type: Date },
     deletedBy: { type: String },
     deletionReason: { type: String },
-    source: { type: String, enum: ['website', 'whatsapp', 'social_media', 'other'], default: 'website' },
+    source: { type: String, enum: ['website', 'whatsapp', 'facebook', 'instagram', 'telegram', 'tiktok', 'social_media', 'other'], default: 'website' },
     notes: [
       {
         id: { type: String, default: () => `note-${Date.now()}` },

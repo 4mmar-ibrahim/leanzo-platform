@@ -317,12 +317,42 @@ export default function OrderDetailsPage() {
           <span className="font-bold">{order.basePrice} {isAr ? 'ج.م' : 'EGP'}</span>
         </div>
 
-        {order.discount > 0 && (
-          <div className="flex justify-between text-xs text-emerald-600 dark:text-emerald-400 font-bold">
-            <span>{t.booking.discount}</span>
-            <span>-{order.discount} {isAr ? 'ج.م' : 'EGP'}</span>
-          </div>
-        )}
+        {(() => {
+          const coupon = order.couponSnapshot || (order as any).coupon;
+          const totalDiscount = Number(order.discount) || 0;
+          const couponDiscount = Number(coupon?.actualDiscountAmount || coupon?.discountAmount) || 0;
+          const catalogDiscount = Math.max(0, totalDiscount - couponDiscount);
+
+          return (
+            <>
+              {catalogDiscount > 0 && (
+                <div className="flex justify-between text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                  <span>{isAr ? 'خصم الخدمة المباشر' : 'Direct Service Discount'}</span>
+                  <span>-{catalogDiscount} {isAr ? 'ج.م' : 'EGP'}</span>
+                </div>
+              )}
+
+              {couponDiscount > 0 && (
+                <div className="flex justify-between text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                  <span>
+                    {t.booking.discount}{' '}
+                    {coupon?.couponCode || order.promoCode
+                      ? `(${coupon?.couponCode || order.promoCode})`
+                      : ''}
+                  </span>
+                  <span>-{couponDiscount} {isAr ? 'ج.م' : 'EGP'}</span>
+                </div>
+              )}
+
+              {catalogDiscount === 0 && couponDiscount === 0 && totalDiscount > 0 && (
+                <div className="flex justify-between text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                  <span>{t.booking.discount}</span>
+                  <span>-{totalDiscount} {isAr ? 'ج.م' : 'EGP'}</span>
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
           <span>{t.booking.serviceFee}</span>

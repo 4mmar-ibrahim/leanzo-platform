@@ -483,10 +483,18 @@ export function generateOfficialInvoiceHtml(order: Order, companySettings?: any)
 
   const coupon = order.couponSnapshot || (order as any).coupon;
   const discountAmount =
-    coupon?.discountAmount || coupon?.actualDiscountAmount || order.discount || 0;
+    order.discount !== undefined && order.discount !== null
+      ? Number(order.discount)
+      : coupon?.discountAmount || coupon?.actualDiscountAmount || 0;
 
-  const basePrice = order.basePrice || (order as any).price || 0;
-  const finalPrice = order.finalPrice || basePrice - discountAmount;
+  const basePrice =
+    order.basePrice !== undefined && order.basePrice !== null
+      ? Number(order.basePrice)
+      : (order as any).price || 0;
+  const finalPrice =
+    order.finalPrice !== undefined && order.finalPrice !== null
+      ? Number(order.finalPrice)
+      : Math.max(0, basePrice - discountAmount);
   const gov = order.address?.governorate || (order as any).governorate || 'المنيا';
   const city = order.address?.city || (order as any).city || 'المنيا الجديدة';
   const fullAddress =

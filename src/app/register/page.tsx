@@ -16,6 +16,8 @@ import {
   validateEgyptianPhone,
   VALID_EGYPTIAN_PREFIXES,
   isValidEgyptianPhone,
+  normalizePhoneInput,
+  convertArabicToAsciiDigits,
 } from '@/lib/validation/phoneValidation';
 
 function RegisterForm() {
@@ -47,15 +49,16 @@ function RegisterForm() {
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawVal = e.target.value;
+    const converted = convertArabicToAsciiDigits(rawVal);
 
     // Check for invalid characters (letters, spaces, symbols, +, -)
-    if (/[^0-9]/.test(rawVal)) {
+    if (/[^0-9\s\+\-]/.test(converted)) {
       setPhoneError('يرجى إدخال أرقام فقط.');
     } else {
       setPhoneError(null);
     }
 
-    const digits = rawVal.replace(/[^0-9]/g, '').slice(0, 11);
+    const digits = normalizePhoneInput(rawVal);
     setPhone(digits);
 
     // Validation UX: no aggressive length error on 1-2 digits

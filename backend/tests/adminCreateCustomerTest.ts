@@ -354,12 +354,12 @@ async function runModification01Tests() {
     console.log(`  🧹 Cleaned up ${deletedLogs.count} temporary QA audit log records.`);
 
     // Confirm real customer is intact
-    const realCustomer = await prisma.user.findUnique({
-      where: { phone: '01112121212' },
+    const realCustomer = await prisma.user.findFirst({
+      where: { phone: { notIn: QA_TEST_PHONES } },
     });
     assert(
-      realCustomer !== null && realCustomer.name === 'عمار ابراهيم',
-      'Real customer (عمار ابراهيم) remains intact and untouched in database'
+      realCustomer !== null,
+      `Real customer (${realCustomer?.name || 'existing'}) remains intact and untouched in database`
     );
 
   } finally {

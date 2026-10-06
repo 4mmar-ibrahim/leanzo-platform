@@ -273,11 +273,13 @@ export async function runDynamicSchedulingTestSuite() {
     // Should have [13:00-13:30], [13:30-14:00], then 14:00-14:30 is occupied, then next is [14:30-15:00]!
     const res4 = await makeRequest('GET', `/availability?date=${testFutureDate}&serviceId=${s1.id}`);
     const slots4 = res4.body.data.slots;
-    const slotTimes4 = slots4.map((s: any) => s.time);
-    assert(slotTimes4.includes('13:00 – 13:30'), 'Contains 13:00 – 13:30');
-    assert(slotTimes4.includes('13:30 – 14:00'), 'Contains 13:30 – 14:00');
-    assert(!slotTimes4.includes('14:00 – 14:30'), 'Occupied interval 14:00 – 14:30 is NOT available');
-    assert(slotTimes4.includes('14:30 – 15:00'), 'Continuously resumes at 14:30 – 15:00 without artificial gaps');
+    const availableSlotTimes4 = slots4.filter((s: any) => s.available).map((s: any) => s.time);
+    assert(availableSlotTimes4.includes('13:00 – 13:30'), 'Contains 13:00 – 13:30');
+    assert(availableSlotTimes4.includes('13:30 – 14:00'), 'Contains 13:30 – 14:00');
+    assert(!availableSlotTimes4.includes('14:00 – 14:30'), 'Occupied interval 14:00 – 14:30 is NOT available');
+    const slot14 = slots4.find((s: any) => s.time === '14:00 – 14:30');
+    assert(slot14 && slot14.available === false, '14:00 – 14:30 is retained and marked unavailable');
+    assert(availableSlotTimes4.includes('14:30 – 15:00'), 'Continuously resumes at 14:30 – 15:00 without artificial gaps');
 
     // -------------------------------------------------------------------
     // TEST 5: Cancel future booking -> Released interval becomes available
@@ -377,6 +379,7 @@ export async function runDynamicSchedulingTestSuite() {
       date: testDate7,
       time: '13:00 – 13:30',
       customerPhone: '01011113333',
+      guestName: 'محمد أحمد',
       address: testAddress,
     });
     assert(b7Init.status === 201, 'Initial booking created');
@@ -388,6 +391,7 @@ export async function runDynamicSchedulingTestSuite() {
       date: testDate7,
       time: '13:00 – 13:30',
       customerPhone: '01099998888',
+      guestName: 'علي حسن',
       address: testAddress,
     });
     assert(b7Conflict.status === 409, `Conflicting booking rejected with HTTP 409, got ${b7Conflict.status}`);
@@ -465,6 +469,7 @@ export async function runDynamicSchedulingTestSuite() {
       date: testDate9,
       time: '13:00 – 13:30',
       customerPhone: '01033334444',
+      guestName: 'طارق يوسف',
       address: testAddress,
     });
     assert(b9.status === 201, 'Booking 9 created with 30m total occupancy');
@@ -568,13 +573,17 @@ export async function runDynamicSchedulingTestSuite() {
       date: testDate16,
       time: '15:00 – 15:30',
       customerPhone: '01055556666',
+      guestName: 'سارة علي',
       address: testAddress,
     });
     assert(b16.status === 201, 'Booking 16 created');
 
     // Check slot is occupied
     const checkBefore16 = await makeRequest('GET', `/availability?date=${testDate16}&serviceId=${s1.id}`);
-    assert(!checkBefore16.body.data.slots.map((s: any) => s.time).includes('15:00 – 15:30'), 'Occupied before admin cancel');
+    const availBefore16 = checkBefore16.body.data.slots.filter((s: any) => s.available).map((s: any) => s.time);
+    assert(!availBefore16.includes('15:00 – 15:30'), 'Occupied before admin cancel');
+    const slot15Before = checkBefore16.body.data.slots.find((s: any) => s.time === '15:00 – 15:30');
+    assert(slot15Before && slot15Before.available === false, '15:00 – 15:30 is retained as unavailable');
 
     // Admin cancels via PUT /admin/:id/status
     const adminCancelRes = await makeRequest(
@@ -602,6 +611,7 @@ export async function runDynamicSchedulingTestSuite() {
       date: testDate17,
       time: '16:00 – 16:30',
       customerPhone: '01077778888',
+      guestName: 'محمود حسن',
       address: testAddress,
     });
     assert(b17.status === 201, 'Booking 17 created');
@@ -618,7 +628,10 @@ export async function runDynamicSchedulingTestSuite() {
 
     // Verify time is still occupied
     const checkAfter17 = await makeRequest('GET', `/availability?date=${testDate17}&serviceId=${s1.id}`);
-    assert(!checkAfter17.body.data.slots.map((s: any) => s.time).includes('16:00 – 16:30'), 'In-progress interval remains occupied');
+    const availAfter17 = checkAfter17.body.data.slots.filter((s: any) => s.available).map((s: any) => s.time);
+    assert(!availAfter17.includes('16:00 – 16:30'), 'In-progress interval remains occupied');
+    const slot16After = checkAfter17.body.data.slots.find((s: any) => s.time === '16:00 – 16:30');
+    assert(slot16After && slot16After.available === false, '16:00 – 16:30 is retained as unavailable');
 
     // -------------------------------------------------------------------
     // TEST 18: Inactive service returns empty availability

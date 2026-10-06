@@ -68,7 +68,7 @@ export interface ServiceAddon {
   updatedAt?: string;
 }
 
-export type OrderStatus = 'pending' | 'confirmed' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
+export type OrderStatus = 'pending' | 'confirmed' | 'assigned' | 'on_the_way' | 'in_progress' | 'completed' | 'cancelled';
 
 export interface OrderTimelineEvent {
   status: OrderStatus;
@@ -435,7 +435,7 @@ export interface CustomerProfile extends User {
   deletedAt?: string;
   deletedBy?: string;
   deletionReason?: string;
-  source: 'website' | 'whatsapp' | 'social_media' | 'other';
+  source: 'website' | 'whatsapp' | 'facebook' | 'instagram' | 'telegram' | 'tiktok' | 'social_media' | 'other';
   totalSpent: number;
   ordersCount: number;
   completedOrdersCount: number;

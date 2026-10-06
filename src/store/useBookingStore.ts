@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { Service, ServicePackage, ServiceAddon, ServiceCategory, Address, CouponDiscountType } from '@/types';
 import { useServiceStore } from '@/store/useServiceStore';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
+import { calculateItemizedPricing, ItemizedPricingCalculation } from '@/lib/pricing';
 
 export interface AppliedCouponState {
   code: string;
@@ -56,11 +57,14 @@ interface BookingState {
   // Computed pricing & duration getters (Authoritative)
   getBasePrice: () => number;
   getPackageBasePrice: () => number;
+  getOriginalPrice: () => number;
+  getCatalogSavings: () => number;
   getAddonsTotal: () => number;
   getTotalDuration: () => number;
   getDiscountAmount: () => number;
   getServiceFee: () => number;
   getFinalPrice: () => number;
+  getItemizedPricing: () => ItemizedPricingCalculation;
 }
 
 export const useBookingStore = create<BookingState>((set, get) => ({
@@ -237,19 +241,73 @@ export const useBookingStore = create<BookingState>((set, get) => ({
         });
       },
 
-      getPackageBasePrice: () => {
+      getItemizedPricing: () => {
+        const s = get().selectedService;
+        if (!s) {
+          return {
+            baseOriginalPrice: 0,
+            catalogDiscount: 0,
+            catalogDiscountPercent: 0,
+            baseSellingPrice: 0,
+            isPackageSelected: false,
+            packagePrice: undefined,
+            packageOriginalPrice: undefined,
+            addonsTotal: 0,
+            originalTotal: 0,
+            subtotal: 0,
+            couponDiscount: 0,
+            appliedCouponCode: undefined,
+            serviceFee: 0,
+            totalDiscount: 0,
+            finalPrice: 0,
+          };
+        }
+
         const pkg = get().selectedPackage;
-        if (pkg) return Number(pkg.price) || 0;
-        return Number(get().selectedService?.price) || 0;
+        const addons = get().selectedAddons || [];
+        const coupon = get().appliedCoupon
+          ? {
+              code: get().appliedCoupon!.code,
+              discountType: get().appliedCoupon!.discountType,
+              discountValue: get().appliedCoupon!.discountValue,
+            }
+          : null;
+
+        return calculateItemizedPricing({
+          service: {
+            id: s.id,
+            price: Number(s.price) || 0,
+            originalPrice: s.originalPrice,
+            discount: s.discount,
+          },
+          selectedPackage: pkg
+            ? {
+                id: pkg.id,
+                name: pkg.name,
+                price: Number(pkg.price) || 0,
+                originalPrice: pkg.originalPrice,
+              }
+            : null,
+          addons: addons.map((a) => ({
+            id: a.id,
+            name: a.name,
+            price: Number(a.price) || 0,
+          })),
+          coupon,
+          serviceFee: 0,
+        });
+      },
+
+      getPackageBasePrice: () => {
+        return get().getItemizedPricing().baseSellingPrice;
       },
 
       getAddonsTotal: () => {
-        const addons = get().selectedAddons || [];
-        return addons.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+        return get().getItemizedPricing().addonsTotal;
       },
 
       getBasePrice: () => {
-        return get().getPackageBasePrice() + get().getAddonsTotal();
+        return get().getItemizedPricing().subtotal;
       },
 
       getTotalDuration: () => {
@@ -266,32 +324,24 @@ export const useBookingStore = create<BookingState>((set, get) => ({
         return baseDuration + addonsDuration;
       },
 
+      getOriginalPrice: () => {
+        return get().getItemizedPricing().originalTotal;
+      },
+
+      getCatalogSavings: () => {
+        return get().getItemizedPricing().catalogDiscount;
+      },
+
       getDiscountAmount: () => {
-        const applied = get().appliedCoupon;
-        if (applied) {
-          return applied.actualDiscountAmount;
-        }
-        // Direct catalog discount if no package selected
-        const pkg = get().selectedPackage;
-        if (!pkg) {
-          const s = get().selectedService;
-          if (s?.discount && s.discount > 0) {
-            const base = Number(s.price) || 0;
-            return Math.round((base * s.discount) / 100);
-          }
-        }
-        return 0;
+        return get().getItemizedPricing().totalDiscount;
       },
 
       getServiceFee: () => {
-        return 0; // Free transport promo
+        return get().getItemizedPricing().serviceFee;
       },
 
       getFinalPrice: () => {
-        const base = get().getBasePrice();
-        const discount = get().getDiscountAmount();
-        const fee = get().getServiceFee();
-        return Math.max(0, base - discount + fee);
+        return get().getItemizedPricing().finalPrice;
       },
     })
 );

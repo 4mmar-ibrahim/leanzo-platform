@@ -20,85 +20,29 @@ export interface LiveZoCharacterProps {
 }
 
 /**
- * Cleanzo Official Mascot SVG Fallback
- * Displayed gracefully when no custom image is set or if network loading fails.
+ * Cleanzo Official Mascot Fallback
+ * Strictly renders the approved brand Zo artwork if custom image is missing or failed.
  */
 function CleanzoMascotFallback({ size = 180 }: { size?: number }) {
   return (
     <div
-      style={{ width: `${size}px`, height: `${Math.round(size * 1.15)}px` }}
-      className="relative flex flex-col items-center justify-center select-none"
+      style={{ width: `${size}px` }}
+      className="relative flex items-center justify-center select-none"
     >
-      <svg
-        viewBox="0 0 200 240"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        className="w-full h-full drop-shadow-xl"
-      >
-        <defs>
-          <linearGradient id="fallbackBody" x1="100" y1="20" x2="100" y2="210" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#25B8E6" />
-            <stop offset="50%" stopColor="#0866C6" />
-            <stop offset="100%" stopColor="#06529E" />
-          </linearGradient>
-          <linearGradient id="fallbackHighlight" x1="70" y1="30" x2="130" y2="100" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.45" />
-            <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
-          </linearGradient>
-          <linearGradient id="fallbackSash" x1="40" y1="120" x2="160" y2="150" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#F0444C" />
-            <stop offset="100%" stopColor="#D42E36" />
-          </linearGradient>
-          <filter id="fallbackGlow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="8" stdDeviation="12" floodColor="#0866C6" floodOpacity="0.3" />
-          </filter>
-        </defs>
-
-        {/* Mascot Droplet Body */}
-        <path
-          d="M 100 25 C 105 55, 160 110, 160 160 C 160 195, 133 215, 100 215 C 67 215, 40 195, 40 160 C 40 110, 95 55, 100 25 Z"
-          fill="url(#fallbackBody)"
-          filter="url(#fallbackGlow)"
-        />
-
-        {/* Gloss highlight */}
-        <path
-          d="M 100 35 C 103 60, 145 110, 145 150 C 145 170, 135 185, 115 195 C 130 180, 135 160, 135 145 C 135 110, 98 60, 95 40 Z"
-          fill="url(#fallbackHighlight)"
-        />
-
-        {/* Cleanzo Signature Red Sash */}
-        <path
-          d="M 50 155 Q 100 178 150 155 Q 152 166 148 174 Q 100 195 52 173 Z"
-          fill="url(#fallbackSash)"
-        />
-
-        {/* Big expressive friendly eyes */}
-        {/* Left eye */}
-        <ellipse cx="82" cy="125" rx="14" ry="18" fill="#FFFFFF" />
-        <ellipse cx="84" cy="125" rx="8" ry="11" fill="#07345C" />
-        <circle cx="81" cy="120" r="4" fill="#FFFFFF" />
-        <circle cx="87" cy="130" r="1.8" fill="#FFFFFF" />
-
-        {/* Right eye */}
-        <ellipse cx="118" cy="125" rx="14" ry="18" fill="#FFFFFF" />
-        <ellipse cx="116" cy="125" rx="8" ry="11" fill="#07345C" />
-        <circle cx="113" cy="120" r="4" fill="#FFFFFF" />
-        <circle cx="119" cy="130" r="1.8" fill="#FFFFFF" />
-
-        {/* Cheerful smiling mouth */}
-        <path
-          d="M 88 145 Q 100 158 112 145"
-          stroke="#07345C"
-          strokeWidth="3.5"
-          strokeLinecap="round"
-          fill="none"
-        />
-
-        {/* Cute blushing cheeks */}
-        <ellipse cx="70" cy="142" rx="6" ry="3.5" fill="#F0444C" fillOpacity="0.4" />
-        <ellipse cx="130" cy="142" rx="6" ry="3.5" fill="#F0444C" fillOpacity="0.4" />
-      </svg>
+      <img
+        src="/brand/zo/zo-approved.png"
+        alt="Cleanzo Zo Character"
+        loading="eager"
+        decoding="async"
+        style={{
+          width: 'auto',
+          height: 'auto',
+          maxWidth: '100%',
+          maxHeight: `${Math.round(size * 1.35)}px`,
+          objectFit: 'contain',
+        }}
+        className="transition-all duration-300 drop-shadow-md select-none pointer-events-none"
+      />
     </div>
   );
 }
@@ -108,7 +52,7 @@ function CleanzoMascotFallback({ size = 180 }: { size?: number }) {
  * Strictly preserves 100% of original image content, resolution, colors, and background.
  */
 export function LiveZoCharacter({
-  imageUrl,
+  imageUrl = '/brand/zo/zo-approved.png',
   altText = 'Cleanzo Zo Character',
   animation = 'gentle_float',
   animationSpeed = 1.0,

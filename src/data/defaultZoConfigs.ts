@@ -1,6 +1,8 @@
 import { ZoPageConfig } from '@/types/zoStudioTypes';
 
-export const DEFAULT_ZO_PAGE_CONFIGS: Record<string, ZoPageConfig> = {
+export const APPROVED_ZO_IMAGE = '/brand/zo/zo-approved.png';
+
+const RAW_DEFAULT_ZO_PAGE_CONFIGS: Record<string, ZoPageConfig> = {
   // 1. Homepage
   home: {
     pageId: 'home',
@@ -1821,3 +1823,19 @@ export const DEFAULT_ZO_PAGE_CONFIGS: Record<string, ZoPageConfig> = {
     },
   },
 };
+
+export const DEFAULT_ZO_PAGE_CONFIGS: Record<string, ZoPageConfig> = Object.fromEntries(
+  Object.entries(RAW_DEFAULT_ZO_PAGE_CONFIGS).map(([key, config]) => [
+    key,
+    {
+      ...config,
+      character: {
+        ...config.character,
+        customImage: config.character.customImage || APPROVED_ZO_IMAGE,
+        originalImageUrl: config.character.originalImageUrl || APPROVED_ZO_IMAGE,
+        renderMode: 'live_2d_character',
+      },
+    },
+  ])
+);
+

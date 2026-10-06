@@ -44,6 +44,9 @@ import {
   EyeOff,
   X,
   Edit,
+  Share2,
+  Home,
+  Building2,
 } from 'lucide-react';
 import { useCustomerStore } from '@/store/useCustomerStore';
 import { useAdminStore } from '@/store/useAdminStore';
@@ -57,6 +60,7 @@ import { Button } from '@/components/ui/Button';
 import {
   validateEgyptianPhone,
   VALID_EGYPTIAN_PREFIXES,
+  normalizePhoneInput,
 } from '@/lib/validation/phoneValidation';
 
 interface SummaryData {
@@ -130,6 +134,7 @@ export default function AdminCustomerDetailPage() {
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [editSource, setEditSource] = useState<string>('whatsapp');
   const [editPhoneError, setEditPhoneError] = useState('');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
@@ -150,7 +155,7 @@ export default function AdminCustomerDetailPage() {
   const ordersPerPage = 8;
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<'orders' | 'services' | 'promotions' | 'timeline' | 'notes'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'addresses' | 'services' | 'promotions' | 'timeline' | 'notes'>('orders');
 
   // Load customer and live booking details from backend
   const loadCustomerData = useCallback(async () => {
@@ -394,12 +399,13 @@ export default function AdminCustomerDetailPage() {
     setEditName(customer?.name || '');
     setEditPhone(customer?.phone || '');
     setEditEmail(customer?.email || '');
+    setEditSource(customer?.source || 'whatsapp');
     setEditPhoneError('');
     setIsEditModalOpen(true);
   };
 
   const handleEditPhoneChange = (val: string) => {
-    const cleaned = val.replace(/\D/g, '').slice(0, 11);
+    const cleaned = normalizePhoneInput(val);
     setEditPhone(cleaned);
     if (editPhoneError && (cleaned.length === 0 || cleaned.length >= 3)) {
       const res = validateEgyptianPhone(cleaned);
@@ -438,6 +444,7 @@ export default function AdminCustomerDetailPage() {
         name: editName.trim(),
         phone: editPhone.trim(),
         email: editEmail.trim() || undefined,
+        source: editSource,
       });
       if (res && (res.success || res.id || res._id || res.phone)) {
         toast.success('تم تحديث بيانات العميل بنجاح');
@@ -446,7 +453,18 @@ export default function AdminCustomerDetailPage() {
           name: editName.trim(),
           phone: editPhone.trim(),
           email: editEmail.trim() || null,
+          source: editSource,
         }));
+        try {
+          useCustomerStore.getState().updateCustomer(cId, {
+            name: editName.trim(),
+            phone: editPhone.trim(),
+            email: editEmail.trim() || undefined,
+            source: editSource as any,
+          });
+        } catch {
+          // ignore
+        }
         setIsEditModalOpen(false);
       } else {
         toast.error((res as any)?.message || 'فشل تحديث بيانات العميل');
@@ -732,14 +750,14 @@ export default function AdminCustomerDetailPage() {
               <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
                 <div className="flex items-center gap-1.5 font-mono">
                   <Phone className="w-3.5 h-3.5 text-slate-400" />
-                  <span>{customer.phone}</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">{customer.phone}</span>
                 </div>
-                {customer.email && (
-                  <div className="flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{customer.email}</span>
-                  </div>
-                )}
+                <div className="flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                  <span className={customer.email ? 'text-slate-700 dark:text-slate-300 font-semibold' : 'text-slate-400 italic'}>
+                    {customer.email || 'لا يوجد بريد إلكتروني'}
+                  </span>
+                </div>
                 <div className="flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
                   <span>
@@ -748,21 +766,37 @@ export default function AdminCustomerDetailPage() {
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                  <Share2 className="w-3.5 h-3.5 text-sky-500" />
                   <span>
                     القناة:{' '}
-                    {({
-                      website: 'موقع إلكتروني',
-                      whatsapp: 'واتساب',
-                      facebook: 'فيسبوك',
-                      instagram: 'إنستجرام',
-                      telegram: 'تيليجرام',
-                      tiktok: 'تيك توك',
-                      social_media: 'سوشيال ميديا',
-                      other: 'أخرى',
-                    } as Record<string, string>)[customer.source] || customer.source || 'موقع إلكتروني'}
+                    <strong className="text-slate-700 dark:text-slate-300">
+                      {({
+                        website: 'موقع إلكتروني',
+                        whatsapp: 'واتساب',
+                        facebook: 'فيسبوك',
+                        instagram: 'إنستجرام',
+                        telegram: 'تيليجرام',
+                        tiktok: 'تيك توك',
+                        social_media: 'سوشيال ميديا',
+                        other: 'أخرى',
+                      } as Record<string, string>)[customer.source] || customer.source || 'موقع إلكتروني'}
+                    </strong>
                   </span>
                 </div>
+                {customer.addresses && customer.addresses.length > 0 ? (
+                  <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>
+                      {customer.addresses[0].cityNameSnapshot || customer.addresses[0].city}
+                      {customer.addresses[0].area ? `، ${customer.addresses[0].area}` : ''}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-slate-400">
+                    <MapPin className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600" />
+                    <span className="italic">لم يُسجل عنوان بعد</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -981,6 +1015,19 @@ export default function AdminCustomerDetailPage() {
         >
           <ShoppingBag className="w-3.5 h-3.5" />
           <span>سجل الطلبات والحجوزات ({orders.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('addresses')}
+          className={cn(
+            'px-4 py-2 rounded-xl transition-all flex items-center gap-1.5',
+            activeTab === 'addresses'
+              ? 'bg-sky-500 text-white shadow-sm'
+              : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+          )}
+        >
+          <MapPin className="w-3.5 h-3.5" />
+          <span>العناوين المسجلة ({customer.addresses?.length || 0})</span>
         </button>
 
         <button
@@ -1256,6 +1303,88 @@ export default function AdminCustomerDetailPage() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Tab Content: Registered Addresses */}
+      {activeTab === 'addresses' && (
+        <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-sky-500" />
+              <span>سجل العناوين والمواقع المسجلة للعميل</span>
+            </h3>
+            <span className="text-xs text-slate-400 font-semibold">
+              إجمالي العناوين: {customer.addresses?.length || 0}
+            </span>
+          </div>
+
+          {(!customer.addresses || customer.addresses.length === 0) ? (
+            <div className="py-12 text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
+                <MapPin className="w-6 h-6" />
+              </div>
+              <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                لا توجد عناوين مسجلة لهذا العميل حتى الآن.
+              </p>
+              <p className="text-[11px] text-slate-400 max-w-md mx-auto">
+                يتم حفظ وتحديث عناوين العميل تلقائياً عند قيام العميل أو المشرف بتأكيد أول حجز أو حفظ عنوان من خلال بوابة الحجز.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
+              {customer.addresses.map((addr: any, idx: number) => (
+                <div
+                  key={addr._id || addr.id || idx}
+                  className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 space-y-3 relative hover:border-sky-300 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <Home className="w-4 h-4 text-sky-500" />
+                      {addr.label || 'العنوان المسجل'}
+                    </span>
+                    {addr.isDefault && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                        العنوان الافتراضي
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 leading-relaxed">
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-slate-400 font-semibold shrink-0">المحافظة / المدينة:</span>
+                      <strong className="text-slate-800 dark:text-slate-200">
+                        {addr.governorateNameSnapshot || addr.governorate || 'غير محدد'} - {addr.cityNameSnapshot || addr.city || 'غير محدد'}
+                      </strong>
+                    </div>
+                    {addr.area && (
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-slate-400 font-semibold shrink-0">المنطقة / الحي:</span>
+                        <span>{addr.area}</span>
+                      </div>
+                    )}
+                    {(addr.building || addr.floor || addr.apartment) && (
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 bg-white dark:bg-slate-900/60 p-2 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                        {addr.building && <span>عمارة: <strong>{addr.building}</strong></span>}
+                        {addr.floor && <span>طابق: <strong>{addr.floor}</strong></span>}
+                        {addr.apartment && <span>شقة: <strong>{addr.apartment}</strong></span>}
+                      </div>
+                    )}
+                    {addr.landmark && (
+                      <div className="text-[11px] text-slate-500">
+                        علامة مميزة: {addr.landmark}
+                      </div>
+                    )}
+                    {addr.notes && (
+                      <div className="text-[11px] text-slate-400 italic">
+                        ملاحظات: {addr.notes}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1644,15 +1773,27 @@ export default function AdminCustomerDetailPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              رقم الهاتف المحمول (11 رقم) <span className="text-rose-500">*</span>
-            </label>
-            <div className="relative">
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                رقم الهاتف المحمول (11 رقم) <span className="text-rose-500">*</span>
+              </label>
+              <span
+                dir="ltr"
+                className={cn(
+                  'text-[11px] font-mono font-semibold transition-colors',
+                  editPhone.length === 11
+                    ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                    : 'text-slate-400'
+                )}
+              >
+                {editPhone.length}/11
+              </span>
+            </div>
+            <div dir="ltr" className="relative w-full">
               <Input
                 type="tel"
                 inputMode="numeric"
                 pattern="[0-9]*"
-                maxLength={11}
                 required
                 dir="ltr"
                 placeholder="010XXXXXXXX"
@@ -1660,11 +1801,12 @@ export default function AdminCustomerDetailPage() {
                 onChange={(e) => handleEditPhoneChange(e.target.value)}
                 onBlur={handleEditPhoneBlur}
                 disabled={isSavingEdit}
-                className={cn('font-mono text-left', editPhoneError && 'border-rose-500 focus:ring-rose-500')}
+                style={{ direction: 'ltr', textAlign: 'left', unicodeBidi: 'isolate' }}
+                className={cn(
+                  'font-mono text-left tracking-wider [direction:ltr] [unicode-bidi:isolate] text-slate-900 dark:text-slate-100',
+                  editPhoneError && 'border-rose-500 focus:ring-rose-500'
+                )}
               />
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400">
-                {editPhone.length}/11
-              </span>
             </div>
             {editPhoneError ? (
               <p className="text-xs text-rose-500 mt-1 font-medium">{editPhoneError}</p>
@@ -1688,6 +1830,38 @@ export default function AdminCustomerDetailPage() {
               disabled={isSavingEdit}
               className="text-left"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              قناة الاستقطاب (المصدر)
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { id: 'whatsapp', label: 'واتساب' },
+                { id: 'facebook', label: 'فيسبوك' },
+                { id: 'instagram', label: 'إنستجرام' },
+                { id: 'telegram', label: 'تيليجرام' },
+                { id: 'tiktok', label: 'تيك توك' },
+                { id: 'website', label: 'موقع إلكتروني' },
+                { id: 'other', label: 'أخرى' },
+              ].map((src) => (
+                <button
+                  key={src.id}
+                  type="button"
+                  onClick={() => setEditSource(src.id)}
+                  disabled={isSavingEdit}
+                  className={cn(
+                    'p-2.5 rounded-xl border text-xs font-semibold transition-all text-center',
+                    editSource === src.id
+                      ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 ring-1 ring-sky-500/40 font-bold'
+                      : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
+                  )}
+                >
+                  {src.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">

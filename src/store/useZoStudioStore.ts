@@ -626,7 +626,9 @@ export const useZoStudioStore = create<ZoStudioState>()(
           publishedConfig?.character?.originalImageUrl ||
           publishedConfig?.character?.customImage ||
           getCachedZoImage(`zo_img_${pageId}`) ||
-          undefined;
+          defaultConfig?.character?.originalImageUrl ||
+          defaultConfig?.character?.customImage ||
+          '/brand/zo/zo-approved.png';
 
         let config: ZoPageConfig = {
           ...defaultConfig,
@@ -634,13 +636,9 @@ export const useZoStudioStore = create<ZoStudioState>()(
           character: {
             ...defaultConfig.character,
             ...(base.character || {}),
-            ...(bestImage
-              ? {
-                  customImage: bestImage,
-                  originalImageUrl: bestImage,
-                  renderMode: 'live_2d_character',
-                }
-              : {}),
+            customImage: bestImage,
+            originalImageUrl: bestImage,
+            renderMode: 'live_2d_character',
           },
         };
 

@@ -247,6 +247,18 @@ export const cleanzoApi = {
     getBookingById: (id: string) => apiRequest<Order>(`/bookings/${id}`),
     trackOrder: (id: string, phone?: string) =>
       apiRequest<Order>(`/bookings/track/${id}${phone ? `?phone=${phone}` : ''}`),
+    calculatePrice: (options: {
+      serviceId: string;
+      packageId?: string;
+      addonIds?: string[];
+      promoCode?: string;
+      customerPhone?: string;
+      category?: string;
+    }) =>
+      apiRequest<any>('/bookings/calculate-price', {
+        method: 'POST',
+        body: JSON.stringify(options),
+      }),
     cancel: (id: string, reason?: string, customerPhone?: string) =>
       apiRequest<Order>(`/bookings/${id}/cancel`, {
         method: 'POST',
@@ -642,6 +654,8 @@ export const cleanzoApi = {
       date?: string;
       dateFrom?: string;
       dateTo?: string;
+      bookingDateFrom?: string;
+      bookingDateTo?: string;
       minPrice?: number;
       maxPrice?: number;
       serviceId?: string;
@@ -658,6 +672,8 @@ export const cleanzoApi = {
       if (params.date) query.set('date', params.date);
       if (params.dateFrom) query.set('dateFrom', params.dateFrom);
       if (params.dateTo) query.set('dateTo', params.dateTo);
+      if (params.bookingDateFrom) query.set('bookingDateFrom', params.bookingDateFrom);
+      if (params.bookingDateTo) query.set('bookingDateTo', params.bookingDateTo);
       if (params.minPrice !== undefined) query.set('minPrice', params.minPrice.toString());
       if (params.maxPrice !== undefined) query.set('maxPrice', params.maxPrice.toString());
       if (params.serviceId) query.set('serviceId', params.serviceId);
@@ -786,6 +802,7 @@ export const cleanzoApi = {
         name?: string;
         phone?: string;
         email?: string;
+        source?: string;
       }
     ) => {
       const res = await apiRequest<any>(`/customers/${customerId}`, {

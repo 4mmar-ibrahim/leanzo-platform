@@ -4,6 +4,13 @@ import { Booking, BookingStatus } from '../models/Booking.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { sendSuccess, sendError } from '../utils/responseHandler.js';
 import { AuthenticatedAdminRequest } from '../middleware/adminAuthMiddleware.js';
+import {
+  validateEgyptianPhone,
+  isValidEgyptianPhone,
+  normalizeEgyptianPhone,
+  CANONICAL_PHONE_ERROR_MESSAGE,
+  CANONICAL_PHONE_ERROR_CODE,
+} from '../utils/phoneValidator.js';
 
 function findTechnicianByIdOrMongoId(id: string) {
   const isMongoId = typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id);
@@ -57,6 +64,7 @@ export async function getAllTechniciansAdmin(req: AuthenticatedAdminRequest, res
 
     const enrichedTechnicians = technicians.map((t) => ({
       ...t,
+      isPhoneValid: isValidEgyptianPhone(t.phone),
       completedOrders: completedMap.get(t.id) ?? t.completedOrders ?? 0,
       assignedOrders: currentMap.get(t.id) ?? t.assignedOrders ?? 0,
     }));
@@ -243,7 +251,10 @@ export async function getTechnicianProfileAdmin(req: AuthenticatedAdminRequest, 
     sendSuccess(
       res,
       {
-        technician,
+        technician: {
+          ...(typeof (technician as any).toObject === 'function' ? (technician as any).toObject() : technician),
+          isPhoneValid: isValidEgyptianPhone(technician.phone),
+        },
         metrics: {
           totalAssigned,
           completedOrders,
@@ -284,7 +295,26 @@ export async function createTechnicianAdmin(req: AuthenticatedAdminRequest, res:
     }
 
     if (!phone || typeof phone !== 'string' || !phone.trim()) {
-      sendError(res, 'يرجى إدخال رقم هاتف الفني', 422, 'PHONE_REQUIRED');
+      sendError(res, 'يرجى إدخال رقم هاتف الفني', 400, 'PHONE_REQUIRED');
+      return;
+    }
+
+    const cleanPhone = normalizeEgyptianPhone(phone);
+    const phoneVal = validateEgyptianPhone(cleanPhone);
+    if (!phoneVal.isValid) {
+      sendError(
+        res,
+        phoneVal.message || CANONICAL_PHONE_ERROR_MESSAGE,
+        400,
+        phoneVal.code || CANONICAL_PHONE_ERROR_CODE
+      );
+      return;
+    }
+
+    // Check duplicate phone
+    const existingTech = await Technician.findOne({ phone: cleanPhone });
+    if (existingTech) {
+      sendError(res, 'رقم الهاتف مسجل بالفعل لفني آخر في سجلات العمل', 409, 'PHONE_ALREADY_EXISTS');
       return;
     }
 
@@ -309,7 +339,7 @@ export async function createTechnicianAdmin(req: AuthenticatedAdminRequest, res:
     const newTechnician = await Technician.create({
       id: techId,
       name: name.trim(),
-      phone: phone.trim(),
+      phone: cleanPhone,
       email: email ? email.trim() : undefined,
       avatar: avatarPath,
       specialty: specialty?.trim() || 'غسيل وتلميع سيارات متنقل',
@@ -368,7 +398,33 @@ export async function updateTechnicianAdmin(req: AuthenticatedAdminRequest, res:
     }
 
     if (name) technician.name = name.trim();
-    if (phone) technician.phone = phone.trim();
+    if (phone !== undefined) {
+      if (typeof phone !== 'string' || !phone.trim()) {
+        sendError(res, 'يرجى إدخال رقم هاتف الفني', 400, 'PHONE_REQUIRED');
+        return;
+      }
+      const cleanPhone = normalizeEgyptianPhone(phone);
+      const phoneVal = validateEgyptianPhone(cleanPhone);
+      if (!phoneVal.isValid) {
+        sendError(
+          res,
+          phoneVal.message || CANONICAL_PHONE_ERROR_MESSAGE,
+          400,
+          phoneVal.code || CANONICAL_PHONE_ERROR_CODE
+        );
+        return;
+      }
+
+      const existingTech = await Technician.findOne({
+        phone: cleanPhone,
+        id: { $ne: technician.id },
+      });
+      if (existingTech) {
+        sendError(res, 'رقم الهاتف مسجل بالفعل لفني آخر في سجلات العمل', 409, 'PHONE_ALREADY_EXISTS');
+        return;
+      }
+      technician.phone = cleanPhone;
+    }
     if (specialty) technician.specialty = specialty.trim();
     if (avatar) technician.avatar = avatar.trim();
     if (Array.isArray(specialtiesList)) technician.specialtiesList = specialtiesList;

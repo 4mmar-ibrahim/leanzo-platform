@@ -43,13 +43,13 @@ export default function DirectOrderTrackPage() {
     }
   }, [localOrder]);
 
-  // Attempt to fetch live from backend if not available in store
+  // Always fetch fresh authoritative status from backend
   useEffect(() => {
-    if (localOrder) return;
-
     let isMounted = true;
     async function loadOrderLive() {
-      setIsLoading(true);
+      if (!localOrder) {
+        setIsLoading(true);
+      }
       setErrorMsg(null);
 
       // 1. If user is logged in, try authenticated getBookingById
@@ -70,6 +70,7 @@ export default function DirectOrderTrackPage() {
             setOrder(mappedOrder);
             addOrder(mappedOrder);
             setIsLoading(false);
+            setNeedsPhoneVerification(false);
             return;
           }
         } catch {
@@ -77,8 +78,8 @@ export default function DirectOrderTrackPage() {
         }
       }
 
-      // 2. If phone is already known via search params or profile, try public tracking
-      const phoneToTry = searchParams?.get('phone') || currentUser?.phone;
+      // 2. If phone is known via search params, profile, or cached order, try public tracking
+      const phoneToTry = searchParams?.get('phone') || currentUser?.phone || localOrder?.customerPhone;
       if (phoneToTry) {
         try {
           const tracked = await cleanzoApi.bookings.trackOrder(orderId, phoneToTry);
@@ -86,17 +87,19 @@ export default function DirectOrderTrackPage() {
             const mappedOrder: any = {
               ...tracked,
               id: tracked.id || orderId,
-              service: tracked.service || {
-                id: 'srv-cleanzo',
-                title: (tracked as any).serviceTitle || 'خدمة كلينزو',
-                titleEn: 'Cleanzo Service',
-                category: 'car',
-                price: tracked.finalPrice || 0,
+              customerPhone: phoneToTry,
+              service: tracked.service || (tracked as any).serviceSnapshot || {
+                id: (tracked as any).serviceId || 'srv-cleanzo',
+                title: (tracked as any).serviceTitle || (tracked as any).serviceSnapshot?.title || 'خدمة كلينزو',
+                titleEn: (tracked as any).serviceSnapshot?.titleEn || 'Cleanzo Service',
+                category: (tracked as any).category || (tracked as any).serviceSnapshot?.category || 'car',
+                price: tracked.finalPrice || (tracked as any).serviceSnapshot?.price || 0,
               },
             };
             setOrder(mappedOrder);
             addOrder(mappedOrder);
             setIsLoading(false);
+            setNeedsPhoneVerification(false);
             return;
           }
         } catch (err: any) {
@@ -109,8 +112,8 @@ export default function DirectOrderTrackPage() {
         }
       }
 
-      // 3. Needs phone verification to protect customer privacy
-      if (isMounted) {
+      // 3. Needs phone verification to protect customer privacy if not already loaded
+      if (isMounted && !localOrder) {
         setNeedsPhoneVerification(true);
         setIsLoading(false);
       }
@@ -121,7 +124,7 @@ export default function DirectOrderTrackPage() {
     return () => {
       isMounted = false;
     };
-  }, [orderId, currentUser, localOrder, searchParams, isAr, addOrder]);
+  }, [orderId, currentUser, searchParams, isAr, addOrder]);
 
   const handlePhoneVerifySubmit = async (e: React.FormEvent) => {
     e.preventDefault();

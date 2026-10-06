@@ -42,6 +42,7 @@ import { SocialBrandIcon } from '@/components/common/SocialBrandIcon';
 import {
   validateEgyptianPhone,
   VALID_EGYPTIAN_PREFIXES,
+  normalizePhoneInput,
 } from '@/lib/validation/phoneValidation';
 
 export const CUSTOMER_SOURCE_OPTIONS = [
@@ -149,7 +150,7 @@ export default function AdminCustomersPage() {
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
 
   const handleNewPhoneChange = (val: string) => {
-    const cleaned = val.replace(/\D/g, '').slice(0, 11);
+    const cleaned = normalizePhoneInput(val);
     setNewPhone(cleaned);
     if (newPhoneError && (cleaned.length === 0 || cleaned.length >= 3)) {
       const res = validateEgyptianPhone(cleaned);
@@ -197,6 +198,26 @@ export default function AdminCustomersPage() {
       });
       if (res && (res.success || res.id || res._id || res.phone)) {
         toast.success('تمت إضافة العميل بنجاح');
+        const createdCust = (res as any).customer || res;
+        const newStoreCustomer = {
+          id: String(createdCust.id || createdCust._id || `usr-${Date.now()}`),
+          name: createdCust.name || newName.trim(),
+          phone: createdCust.phone || newPhone.trim(),
+          email: createdCust.email || (newEmail.trim() ? newEmail.trim() : undefined),
+          source: (createdCust.source || newSource) as any,
+          status: 'active' as const,
+          role: 'customer' as const,
+          ordersCount: 0,
+          totalSpent: 0,
+          joinedDate: new Date().toISOString().split('T')[0],
+          discount: 0,
+          notes: [],
+        };
+        try {
+          useCustomerStore.getState().addCustomer(newStoreCustomer as any);
+        } catch {
+          // ignore
+        }
         setIsAddModalOpen(false);
         setNewName('');
         setNewPhone('');
@@ -655,15 +676,27 @@ export default function AdminCustomersPage() {
 
           {/* Customer Phone */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              رقم الهاتف المحمول (11 رقم) <span className="text-rose-500">*</span>
-            </label>
-            <div className="relative">
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                رقم الهاتف المحمول (11 رقم) <span className="text-rose-500">*</span>
+              </label>
+              <span
+                dir="ltr"
+                className={cn(
+                  'text-[11px] font-mono font-semibold transition-colors',
+                  newPhone.length === 11
+                    ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                    : 'text-slate-400'
+                )}
+              >
+                {newPhone.length}/11
+              </span>
+            </div>
+            <div dir="ltr" className="relative w-full">
               <Input
                 type="tel"
                 inputMode="numeric"
                 pattern="[0-9]*"
-                maxLength={11}
                 required
                 dir="ltr"
                 placeholder="010XXXXXXXX"
@@ -671,11 +704,12 @@ export default function AdminCustomersPage() {
                 onChange={(e) => handleNewPhoneChange(e.target.value)}
                 onBlur={handleNewPhoneBlur}
                 disabled={isCreatingCustomer}
-                className={cn('font-mono text-left', newPhoneError && 'border-rose-500 focus:ring-rose-500')}
+                style={{ direction: 'ltr', textAlign: 'left', unicodeBidi: 'isolate' }}
+                className={cn(
+                  'font-mono text-left tracking-wider [direction:ltr] [unicode-bidi:isolate] text-slate-900 dark:text-slate-100',
+                  newPhoneError && 'border-rose-500 focus:ring-rose-500'
+                )}
               />
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400">
-                {newPhone.length}/11
-              </span>
             </div>
             {newPhoneError ? (
               <p className="text-xs text-rose-500 mt-1 font-medium">{newPhoneError}</p>

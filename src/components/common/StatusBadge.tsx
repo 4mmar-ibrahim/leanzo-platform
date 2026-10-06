@@ -3,7 +3,7 @@
 import React from 'react';
 import { OrderStatus } from '@/types';
 import { useLocaleStore } from '@/store/useLocaleStore';
-import { Clock, CheckCircle2, UserCheck, PlayCircle, XCircle } from 'lucide-react';
+import { Clock, CheckCircle2, UserCheck, PlayCircle, XCircle, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface StatusBadgeProps {
@@ -42,6 +42,14 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
       text: 'text-[#07345C] dark:text-[#F8FAFC]',
       border: 'border-slate-200 dark:border-[#133B61]',
       icon: UserCheck,
+    },
+    on_the_way: {
+      labelAr: 'الفني في الطريق',
+      labelEn: 'On the Way',
+      bg: 'bg-sky-50 dark:bg-sky-950/50',
+      text: 'text-sky-700 dark:text-sky-300',
+      border: 'border-sky-200 dark:border-sky-800',
+      icon: Truck,
     },
     in_progress: {
       labelAr: 'قيد التنفيذ',

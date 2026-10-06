@@ -350,11 +350,13 @@ export async function getAvailableSlots(
   // - Status is in ['pending', 'confirmed', 'assigned', 'in_progress', 'completed']
   // - OR status is 'cancelled' but service execution was already started (timeline had 'in_progress')
   // - OR status is 'cancelled' during the slot window: the elapsed portion before cancellation is occupied
-  interface Interval {
+  interface DetailedInterval {
     start: number;
     end: number;
+    type: 'break' | 'booking' | 'elapsed';
+    reason: string;
   }
-  const occupiedIntervals: Interval[] = [];
+  const occupiedIntervals: DetailedInterval[] = [];
 
   for (const b of allBookings) {
     const bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
@@ -365,13 +367,13 @@ export async function getAvailableSlots(
 
     if (b.status !== 'cancelled') {
       // Active booking: occupies [bStart, bEnd]
-      occupiedIntervals.push({ start: bStart, end: bEnd });
+      occupiedIntervals.push({ start: bStart, end: bEnd, type: 'booking', reason: 'محجوز بالكامل' });
     } else {
       // Cancelled booking safety rules:
       const wasStarted = Array.isArray(b.timeline) && b.timeline.some((e: any) => e.status === 'in_progress');
       if (wasStarted) {
         // Service execution was already in progress: elapsed/occupied time CANNOT be reopened
-        occupiedIntervals.push({ start: bStart, end: bEnd });
+        occupiedIntervals.push({ start: bStart, end: bEnd, type: 'booking', reason: 'محجوز بالكامل' });
       } else if (b.cancelledAt) {
         const cancelDateStr = getCairoDateFromDate(new Date(b.cancelledAt));
         if (isToday || cancelDateStr === dateStr) {
@@ -380,7 +382,7 @@ export async function getAvailableSlots(
           const cancelMin = timeStringToMinutes(cancelTimeStr);
           if (cancelMin > bStart && cancelMin < bEnd) {
             // Time prior to cancellation is elapsed, remaining [cancelMin, bEnd] is released!
-            occupiedIntervals.push({ start: bStart, end: cancelMin });
+            occupiedIntervals.push({ start: bStart, end: cancelMin, type: 'elapsed', reason: 'وقت منقضي' });
           }
           // If cancelMin <= bStart, cancelled before start -> 0 minutes occupied, completely released!
         }
@@ -406,18 +408,18 @@ export async function getAvailableSlots(
     const vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + vDuration;
 
     if (v.status !== 'cancelled') {
-      occupiedIntervals.push({ start: vStart, end: vEnd });
+      occupiedIntervals.push({ start: vStart, end: vEnd, type: 'booking', reason: 'محجوز بالكامل' });
     } else {
       const wasStarted = Array.isArray(v.timeline) && v.timeline.some((e: any) => e.status === 'in_progress');
       if (wasStarted) {
-        occupiedIntervals.push({ start: vStart, end: vEnd });
+        occupiedIntervals.push({ start: vStart, end: vEnd, type: 'booking', reason: 'محجوز بالكامل' });
       } else if (v.cancelledAt) {
         const cancelDateStr = getCairoDateFromDate(new Date(v.cancelledAt));
         if (isToday || cancelDateStr === dateStr) {
           const cancelTimeStr = getCairoTimeFromDate(new Date(v.cancelledAt));
           const cancelMin = timeStringToMinutes(cancelTimeStr);
           if (cancelMin > vStart && cancelMin < vEnd) {
-            occupiedIntervals.push({ start: vStart, end: cancelMin });
+            occupiedIntervals.push({ start: vStart, end: cancelMin, type: 'elapsed', reason: 'وقت منقضي' });
           }
         }
       }
@@ -429,7 +431,7 @@ export async function getAvailableSlots(
     const breakStart = timeStringToMinutes(settings.breakStart);
     const breakEnd = timeStringToMinutes(settings.breakEnd);
     if (breakEnd > breakStart) {
-      occupiedIntervals.push({ start: breakStart, end: breakEnd });
+      occupiedIntervals.push({ start: breakStart, end: breakEnd, type: 'break', reason: 'استراحة عمل' });
     }
   }
 
@@ -441,12 +443,14 @@ export async function getAvailableSlots(
     .map((int) => ({
       start: Math.max(workStartMin, int.start),
       end: Math.min(workEndMin, int.end),
+      type: int.type,
+      reason: int.reason,
     }))
     .filter((int) => int.end > int.start)
     .sort((a, b) => a.start - b.start);
 
   // Merge overlapping or abutting occupied intervals
-  const mergedOccupied: Interval[] = [];
+  const mergedOccupied: DetailedInterval[] = [];
   for (const int of validOccupied) {
     if (mergedOccupied.length === 0) {
       mergedOccupied.push({ ...int });
@@ -454,6 +458,10 @@ export async function getAvailableSlots(
       const prev = mergedOccupied[mergedOccupied.length - 1];
       if (int.start <= prev.end) {
         prev.end = Math.max(prev.end, int.end);
+        if (int.type === 'break' || prev.type === 'break') {
+          prev.type = 'break';
+          prev.reason = 'استراحة عمل';
+        }
       } else {
         mergedOccupied.push({ ...int });
       }
@@ -461,7 +469,7 @@ export async function getAvailableSlots(
   }
 
   // 6. Compute Disjoint Free Blocks within working window
-  const freeBlocks: Interval[] = [];
+  const freeBlocks: { start: number; end: number }[] = [];
   let blockCursor = workStartMin;
 
   for (const occ of mergedOccupied) {
@@ -476,12 +484,13 @@ export async function getAvailableSlots(
   }
 
   // 7. Continuous Sequential Generation (Model A)
-  // Inside each free block [blockStart, blockEnd]:
-  // First available appointment starts at blockStart.
-  // Next appointment starts exactly when previous ends.
+  // Generates every slot across working hours:
+  // - Free blocks produce available slots.
+  // - Occupied blocks produce unavailable slots (so they are visible and not silently missing).
   const slots: TimeSlotOption[] = [];
   const requiredDuration = timing.totalOccupiedMinutes;
 
+  // 7.1 Available slots from free blocks
   for (const block of freeBlocks) {
     let slotStart = block.start;
 
@@ -515,17 +524,103 @@ export async function getAvailableSlots(
         scheduledEnd: end24,
       });
 
-      // Next appointment starts exactly when previous appointment ends
       slotStart = slotEnd;
     }
   }
 
+  // 7.2 Retain occupied slots (marked unavailable instead of silently removed)
+  for (const occ of mergedOccupied) {
+    if (occ.type === 'elapsed') continue;
+
+    let slotStart = occ.start;
+    if (occ.end - occ.start >= requiredDuration) {
+      while (slotStart + requiredDuration <= occ.end) {
+        const slotEnd = slotStart + requiredDuration;
+
+        if (isToday && slotStart < earliestAllowedMinutes) {
+          slotStart = slotEnd;
+          continue;
+        }
+
+        const { time24: start24, time12Ar: start12Ar } = minutesToDisplayTime(slotStart);
+        const { time24: end24, time12Ar: end12Ar } = minutesToDisplayTime(slotEnd);
+
+        const intervalLabel = `${start24} – ${end24}`;
+        const intervalLabelEn = `${start24} – ${end24}`;
+
+        slots.push({
+          time: intervalLabel,
+          time24: start24,
+          label: intervalLabel,
+          labelEn: intervalLabelEn,
+          start: start24,
+          end: end24,
+          available: false,
+          reason: occ.reason || 'محجوز بالكامل',
+          serviceDurationMinutes: timing.serviceDurationMinutes,
+          travelTimeMinutes: timing.travelTimeMinutes,
+          totalOccupiedMinutes: timing.totalOccupiedMinutes,
+          scheduledStart: start24,
+          scheduledEnd: end24,
+        });
+
+        slotStart = slotEnd;
+      }
+    } else {
+      // Partial block that collides with slot starting at occ.start
+      const slotEnd = slotStart + requiredDuration;
+      if (slotEnd <= workEndMin) {
+        if (!isToday || slotStart >= earliestAllowedMinutes) {
+          const { time24: start24 } = minutesToDisplayTime(slotStart);
+          const { time24: end24 } = minutesToDisplayTime(slotEnd);
+          const intervalLabel = `${start24} – ${end24}`;
+          const intervalLabelEn = `${start24} – ${end24}`;
+
+          slots.push({
+            time: intervalLabel,
+            time24: start24,
+            label: intervalLabel,
+            labelEn: intervalLabelEn,
+            start: start24,
+            end: end24,
+            available: false,
+            reason: occ.reason || 'محجوز بالكامل',
+            serviceDurationMinutes: timing.serviceDurationMinutes,
+            travelTimeMinutes: timing.travelTimeMinutes,
+            totalOccupiedMinutes: timing.totalOccupiedMinutes,
+            scheduledStart: start24,
+            scheduledEnd: end24,
+          });
+        }
+      }
+    }
+  }
+
+  // 7.3 Deduplicate and sort all slots chronologically
+  slots.sort((a, b) => timeStringToMinutes(a.start) - timeStringToMinutes(b.start));
+
+  const seenTimes = new Set<string>();
+  const finalSlots: TimeSlotOption[] = [];
+  for (const s of slots) {
+    if (!seenTimes.has(s.time)) {
+      seenTimes.add(s.time);
+      finalSlots.push(s);
+    }
+  }
+
+  const hasAnyAvailable = finalSlots.some((s) => s.available);
+
   return {
     date: dateStr,
-    isDayAvailable: slots.length > 0,
-    dayReason: slots.length === 0 ? 'لا توجد مواعيد متاحة لهذا اليوم' : undefined,
+    isDayAvailable: hasAnyAvailable,
+    dayReason:
+      finalSlots.length === 0
+        ? 'لا توجد مواعيد متاحة لهذا اليوم'
+        : !hasAnyAvailable
+        ? 'جميع المواعيد محجوزة بالكامل لهذا اليوم'
+        : undefined,
     serviceTiming: timing,
-    slots,
+    slots: finalSlots,
   };
 }
 

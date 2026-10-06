@@ -431,6 +431,19 @@ export function createPrismaRepository(prismaDelegateName: keyof typeof prisma) 
         }
       }
 
+      if (modelName === 'coupon') {
+        if (cleanData.active !== undefined) {
+          if (cleanData.status === undefined) cleanData.status = cleanData.active ? 'active' : 'inactive';
+          delete cleanData.active;
+        }
+      }
+
+      if (modelName === 'offer') {
+        if (!cleanData.id) {
+          cleanData.id = cleanData.code || `offer_${Date.now()}`;
+        }
+      }
+
       if (modelName === 'booking') {
         if (cleanData.service !== undefined) delete cleanData.service;
         if (!cleanData.timeSlotStart) {

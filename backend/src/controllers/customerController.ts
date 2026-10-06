@@ -124,9 +124,17 @@ export async function getCustomerDetailsAdmin(req: Request, res: Response): Prom
       return;
     }
 
-    const bookings = await Booking.find({
-      $or: [{ customerId: customer._id }, { customerPhone: customer.phone }],
-    }).sort({ createdAt: -1 });
+    const [bookings, savedAddresses] = await Promise.all([
+      Booking.find({
+        $or: [{ customerId: customer._id }, { customerPhone: customer.phone }],
+      }).sort({ createdAt: -1 }),
+      CustomerAddress.find({
+        $or: [{ customerId: customer._id }, { customerPhone: customer.phone }],
+      }).sort({ isDefault: -1, createdAt: -1 }),
+    ]);
+
+    const customerObj = customer.toObject ? customer.toObject() : { ...customer };
+    customerObj.addresses = savedAddresses && savedAddresses.length > 0 ? savedAddresses : customerObj.addresses || [];
 
     // Calculate real stats directly from database records
     const totalOrders = bookings.length;
@@ -235,7 +243,8 @@ export async function getCustomerDetailsAdmin(req: Request, res: Response): Prom
     }
 
     sendSuccess(res, {
-      customer,
+      customer: customerObj,
+      addresses: customerObj.addresses,
       bookings,
       summary: {
         totalOrders,
@@ -295,8 +304,7 @@ export async function createCustomerAdmin(req: AuthenticatedAdminRequest, res: R
     }
 
     // Customer source normalization:
-    // Allowed values: whatsapp, facebook, instagram, telegram, tiktok, other
-    const allowedSources = ['whatsapp', 'facebook', 'instagram', 'telegram', 'tiktok', 'other'];
+    const allowedSources = ['website', 'whatsapp', 'facebook', 'instagram', 'telegram', 'tiktok', 'social_media', 'other'];
     let cleanSource = 'other';
     if (source && typeof source === 'string') {
       const s = source.trim().toLowerCase();
@@ -394,7 +402,7 @@ export async function createCustomerAdmin(req: AuthenticatedAdminRequest, res: R
 export async function updateCustomerStatusAdmin(req: Request, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const { status, note, tags, discount, name, phone, email } = req.body;
+    const { status, note, tags, discount, name, phone, email, source } = req.body;
 
     const customer = await User.findById(id);
     if (!customer) {
@@ -408,6 +416,12 @@ export async function updateCustomerStatusAdmin(req: Request, res: Response): Pr
 
     if (email !== undefined) {
       customer.email = email ? String(email).trim() : undefined;
+    }
+
+    if (source && typeof source === 'string') {
+      const s = source.trim().toLowerCase();
+      const allowedSources = ['website', 'whatsapp', 'facebook', 'instagram', 'telegram', 'tiktok', 'social_media', 'other'];
+      customer.source = allowedSources.includes(s) ? (s as any) : customer.source;
     }
 
     if (phone !== undefined) {

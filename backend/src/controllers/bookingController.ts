@@ -21,7 +21,99 @@ import {
   CANONICAL_PHONE_ERROR_MESSAGE,
   CANONICAL_PHONE_ERROR_CODE,
 } from '../utils/phoneValidator.js';
+import { validateCustomerName } from '../utils/nameValidator.js';
 import { isNoticeSufficient, getSubscriptionSettings } from '../services/subscriptionService.js';
+import prisma from '../config/prisma.js';
+
+function timeStringToMinutes(timeStr: string): number {
+  if (!timeStr) return 0;
+  const raw = String(timeStr).trim();
+  const firstSegment = raw.split(/[-–—]/)[0].trim();
+  const clean = firstSegment.toUpperCase();
+  const isPM = clean.includes('PM') || clean.includes('مساء');
+  const isAM = clean.includes('AM') || clean.includes('صباح');
+
+  const timePart = clean.replace(/(AM|PM|مساءً|مساء|صباحاً|صباح)/g, '').trim();
+  const cleanNumbers = timePart.replace(/[^0-9:]/g, '');
+  const [hourStr, minuteStr] = cleanNumbers.split(':');
+  let hours = parseInt(hourStr || '0', 10);
+  const minutes = parseInt(minuteStr || '0', 10);
+
+  if (isPM && hours < 12) hours += 12;
+  if (isAM && hours === 12) hours = 0;
+
+  return hours * 60 + (isNaN(minutes) ? 0 : minutes);
+}
+
+function getBookingTimeInterval(b: any): { startMin: number; endMin: number; display: string } {
+  if (!b) return { startMin: 0, endMin: 60, display: '—' };
+
+  const timeStr = String(b.time || '').trim();
+  const fullDuration =
+    b.totalOccupiedMinutes ||
+    (b.serviceDurationMinutes ? b.serviceDurationMinutes + (b.travelTimeMinutes || 0) : undefined) ||
+    b.duration ||
+    b.service?.duration ||
+    b.serviceSnapshot?.duration ||
+    60;
+
+  // 1. Explicit scheduledStart & scheduledEnd
+  if (b.scheduledStart && b.scheduledEnd) {
+    const sMin = timeStringToMinutes(b.scheduledStart);
+    const eMin = timeStringToMinutes(b.scheduledEnd);
+    if (sMin > 0 && eMin > sMin) {
+      return {
+        startMin: sMin,
+        endMin: Math.max(eMin, sMin + fullDuration),
+        display: timeStr || `${b.scheduledStart} – ${b.scheduledEnd}`,
+      };
+    }
+  }
+
+  // 2. Range strings with dash/hyphen
+  if (timeStr.includes('–') || timeStr.includes('-') || timeStr.includes('—')) {
+    const parts = timeStr.split(/[-–—]/).map((p: string) => p.trim());
+    if (parts.length >= 2) {
+      const min1 = timeStringToMinutes(parts[0]);
+      const min2 = timeStringToMinutes(parts[1]);
+
+      if (min1 > 0 && min2 > 0) {
+        // Robust against both LTR and RTL string ordering:
+        const startMin = Math.min(min1, min2);
+        const endMin = Math.max(Math.max(min1, min2), startMin + fullDuration);
+        return {
+          startMin,
+          endMin,
+          display: timeStr,
+        };
+      } else if (min1 > 0) {
+        return {
+          startMin: min1,
+          endMin: min1 + fullDuration,
+          display: timeStr,
+        };
+      }
+    }
+  }
+
+  // 3. Single start time
+  const rawStart = b.scheduledStart || timeStr;
+  const startMin = timeStringToMinutes(rawStart);
+  const endMin = startMin + fullDuration;
+
+  return {
+    startMin,
+    endMin,
+    display: timeStr || `${Math.floor(startMin / 60).toString().padStart(2, '0')}:${(startMin % 60).toString().padStart(2, '0')}`,
+  };
+}
+
+function isTimeIntervalOverlapping(
+  intA: { startMin: number; endMin: number },
+  intB: { startMin: number; endMin: number }
+): boolean {
+  return intA.startMin < intB.endMin && intB.startMin < intA.endMin;
+}
 
 export async function calculateBookingPriceHandler(req: Request, res: Response): Promise<void> {
   try {
@@ -133,7 +225,13 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
 
     // 2. Resolve customer first
     let customerId: any = req.user?._id;
-    let customerName = req.user?.name || guestName || req.body.customerName || 'عميل كلينزو';
+    const rawCustomerName = req.user?.name || guestName || req.body.customerName;
+    const nameVal = validateCustomerName(rawCustomerName, true);
+    if (!nameVal.isValid) {
+      sendError(res, nameVal.message || 'يرجى إدخال اسم العميل', 422, nameVal.code || 'NAME_REQUIRED');
+      return;
+    }
+    const customerName = String(rawCustomerName).trim();
     let customerPhone = req.user?.phone || guestPhone || req.body.customerPhone;
 
     if (!customerPhone) {
@@ -659,15 +757,27 @@ export async function trackOrderPublic(req: Request, res: Response): Promise<voi
       return;
     }
 
-    // Project safe non-PII tracking data only
+    // Project safe tracking data with technician and address details
     sendSuccess(res, {
       id: booking.id,
       status: booking.status,
       serviceTitle: booking.serviceSnapshot?.title || '',
+      serviceSnapshot: booking.serviceSnapshot,
+      category: booking.category,
       date: booking.date,
       time: booking.time,
+      scheduledStart: booking.scheduledStart,
+      scheduledEnd: booking.scheduledEnd,
+      serviceDurationMinutes: booking.serviceDurationMinutes,
+      travelTimeMinutes: booking.travelTimeMinutes,
+      totalOccupiedMinutes: booking.totalOccupiedMinutes,
       timeline: booking.timeline,
       finalPrice: booking.finalPrice,
+      basePrice: booking.basePrice,
+      address: booking.address,
+      technician: booking.technician,
+      packageSnapshot: booking.packageSnapshot,
+      addons: booking.addons,
       createdAt: booking.createdAt,
     });
   } catch (err: any) {
@@ -710,6 +820,8 @@ export async function getAllBookingsAdmin(req: AuthenticatedAdminRequest, res: R
       serviceId,
       technicianId,
       search,
+      bookingDateFrom,
+      bookingDateTo,
       sortBy = 'createdAt',
       sortOrder = 'desc',
       page = '1',
@@ -719,7 +831,18 @@ export async function getAllBookingsAdmin(req: AuthenticatedAdminRequest, res: R
     const filter: any = {};
     if (status && status !== 'all') filter.status = status;
     if (category && category !== 'all') filter.category = category;
-    if (date) filter.date = date;
+
+    // Appointment / Booking Date filter
+    const bFrom = (bookingDateFrom || req.query.bookingDateFrom) as string;
+    const bTo = (bookingDateTo || req.query.bookingDateTo) as string;
+    if (bFrom || bTo) {
+      filter.date = {};
+      if (bFrom) filter.date.$gte = String(bFrom);
+      if (bTo) filter.date.$lte = String(bTo);
+    } else if (date) {
+      filter.date = date;
+    }
+
     if (serviceId && serviceId !== 'all') filter.serviceId = serviceId;
 
     if (!isTechUser && technicianId && technicianId !== 'all') {
@@ -838,7 +961,7 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
     const { id } = req.params;
     const { status, note } = req.body;
 
-    const validStatuses: BookingStatus[] = ['pending', 'confirmed', 'assigned', 'in_progress', 'completed', 'cancelled'];
+    const validStatuses: BookingStatus[] = ['pending', 'confirmed', 'assigned', 'on_the_way', 'in_progress', 'completed', 'cancelled'];
     if (!validStatuses.includes(status)) {
       sendError(res, 'حالة الحجز غير صالحة', 422);
       return;
@@ -1016,9 +1139,22 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
           return;
         }
       } else if (prevStatus === 'assigned') {
+        if (status !== 'on_the_way' && status !== 'in_progress') {
+          if (status === 'completed') {
+            sendError(res, 'لا يمكن إكمال الطلب مباشرة من مرحلة التعيين. يجب تحرك الفني أو بدء التنفيذ أولاً', 422);
+          } else {
+            sendError(res, 'انتقال غير صالح لحالة الطلب', 422);
+          }
+          return;
+        }
+        if (!booking.assignedTechnicianId && !booking.technician?.id) {
+          sendError(res, 'لا يمكن تحرك الفني أو بدء التنفيذ دون وجود فني معين للطلب', 422);
+          return;
+        }
+      } else if (prevStatus === 'on_the_way') {
         if (status !== 'in_progress') {
           if (status === 'completed') {
-            sendError(res, 'لا يمكن إكمال الطلب مباشرة من مرحلة التعيين. يجب بدء التنفيذ (قيد التنفيذ) أولاً', 422);
+            sendError(res, 'لا يمكن إكمال الطلب مباشرة من مرحلة الطريق. يجب بدء التنفيذ (قيد التنفيذ) أولاً', 422);
           } else {
             sendError(res, 'انتقال غير صالح لحالة الطلب', 422);
           }
@@ -1057,6 +1193,7 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
       pending: 'قيد الانتظار',
       confirmed: 'تم استلام الطلب',
       assigned: 'تم تعيين الفني المختص',
+      on_the_way: 'الفني في الطريق إلى الموقع',
       in_progress: 'بدء تنفيذ الخدمة',
       completed: 'تم الانتهاء واكتمال الطلب بنجاح',
       cancelled: 'تم إلغاء الطلب',
@@ -1066,6 +1203,7 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
       pending: 'Pending',
       confirmed: 'Order Received',
       assigned: 'Technician Assigned',
+      on_the_way: 'Technician on the way',
       in_progress: 'In Progress',
       completed: 'Completed Successfully',
       cancelled: 'Cancelled',
@@ -1212,82 +1350,177 @@ export async function assignTechnicianToBooking(req: AuthenticatedAdminRequest, 
       return;
     }
 
+    if (!technicianId) {
+      booking.assignedTechnicianId = null;
+      booking.technician = null;
+      await booking.save();
+      sendSuccess(res, booking, 'تم إلغاء تعيين الفني بنجاح');
+      return;
+    }
+
     const tech = await Technician.findOne({ id: technicianId });
     if (!tech) {
       sendError(res, 'الفني غير موجود', 404);
       return;
     }
 
-    const prevStatus = booking.status;
-    const prevTechId = booking.assignedTechnicianId;
-    (req as any).auditBefore = { status: prevStatus, assignedTechnicianId: prevTechId };
+    // Concurrency Lock per (technicianId, booking.date) to prevent race conditions
+    const lockKey = `tech_assign_${tech.id}_${booking.date}`;
+    await withBookingLock(lockKey, async () => {
+      // Re-fetch latest booking state inside lock
+      const freshBooking = await Booking.findOne({ id });
+      if (!freshBooking) {
+        sendError(res, 'الحجز غير موجود', 404);
+        return;
+      }
+      if (freshBooking.status === 'completed' || freshBooking.status === 'cancelled') {
+        sendError(res, 'لا يمكن تعيين فني لطلب مكتمل أو ملغي', 422);
+        return;
+      }
 
-    booking.assignedTechnicianId = tech.id;
-    booking.technician = {
-      id: tech.id,
-      name: tech.name,
-      phone: tech.phone,
-      avatar: tech.avatar,
-      rating: tech.rating,
-      specialty: tech.specialty,
-    };
+      // Authoritative Schedule overlap prevention check:
+      const currentInterval = getBookingTimeInterval(freshBooking);
 
-    // Transition from confirmed to assigned; if already in_progress, remain in_progress
-    if (booking.status === 'confirmed') {
-      booking.status = 'assigned';
-    }
-
-    (req as any).auditAfter = { status: booking.status, assignedTechnicianId: tech.id, technicianName: tech.name };
-    (req as any).auditAction = 'assign_technician';
-
-    booking.timeline.push({
-      status: 'assigned',
-      label: `تم تعيين الفني: ${tech.name}`,
-      labelEn: `Technician assigned: ${tech.name}`,
-      timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
-      completed: true,
-      description: `تم إسناد تنفيذ الطلب إلى الفني المختص (${tech.name})`,
-      descriptionEn: `Order assigned to technician (${tech.name})`,
-      changedBy: req.admin?.name || 'admin',
-    });
-
-    await booking.save();
-
-    // Increment technician assigned counter
-    tech.assignedOrders = (tech.assignedOrders || 0) + 1;
-    await tech.save();
-
-    // Automatic Notification Dispatches for Technician Assignment
-    try {
-      await Notification.create({
-        target: 'admin',
-        title: 'إسناد فني لميدان العمل',
-        titleEn: 'Technician Assigned',
-        message: `تم إسناد الطلب #${booking.id} إلى الفني الكابتن ${tech.name} (${tech.specialty || 'فني ميداني'}).`,
-        messageEn: `Order #${booking.id} assigned to technician ${tech.name}.`,
-        type: 'technician',
-        read: false,
-        link: `/admin/orders/${booking.id}`,
+      // 1. Check other active regular bookings assigned to this technician on the same date
+      const conflictingBookings = await prisma.booking.findMany({
+        where: {
+          id: { not: freshBooking.id },
+          date: freshBooking.date,
+          status: { not: 'cancelled' },
+          OR: [
+            { assignedTechnicianId: tech.id },
+            { technician: { path: ['id'], equals: tech.id } },
+          ],
+        },
       });
 
-      if (booking.customerId) {
-        await Notification.create({
-          target: 'customer',
-          userId: booking.customerId.toString(),
-          title: '🚗 تم تعيين الفني المختص',
-          titleEn: 'Technician Assigned',
-          message: `تم إسناد طلبك #${booking.id} إلى الكابتن ${tech.name}، وجارٍ التجهيز للانطلاق.`,
-          messageEn: `Technician ${tech.name} has been assigned to your order.`,
-          type: 'order',
-          read: false,
-          link: `/account/orders/${booking.id}`,
-        });
+      for (const conflict of conflictingBookings) {
+        const conflictInterval = getBookingTimeInterval(conflict);
+        if (isTimeIntervalOverlapping(currentInterval, conflictInterval)) {
+          sendError(
+            res,
+            'هذا العامل غير متاح في هذا الوقت لوجود حجز آخر متداخل.',
+            409,
+            'TECHNICIAN_SCHEDULE_OVERLAP'
+          );
+          return;
+        }
       }
-    } catch (notifErr) {
-      console.warn('Non-critical: Technician assign notification dispatch error:', notifErr);
-    }
 
-    sendSuccess(res, booking, `تم تعيين الفني (${tech.name}) للحجز بنجاح`);
+      // 2. Check other active subscription visits assigned to this technician on the same date
+      try {
+        const conflictingVisits = await prisma.subscriptionVisit.findMany({
+          where: {
+            date: freshBooking.date,
+            status: { not: 'cancelled' },
+            OR: [
+              { assignedTechnicianId: tech.id },
+              { technician: { path: ['id'], equals: tech.id } },
+            ],
+          },
+        });
+
+        for (const visit of conflictingVisits) {
+          const visitInterval = getBookingTimeInterval(visit);
+          if (isTimeIntervalOverlapping(currentInterval, visitInterval)) {
+            sendError(
+              res,
+              'هذا العامل غير متاح في هذا الوقت لوجود حجز آخر متداخل.',
+              409,
+              'TECHNICIAN_SCHEDULE_OVERLAP'
+            );
+            return;
+          }
+        }
+      } catch {
+        // Prisma fallback
+      }
+
+      const prevStatus = freshBooking.status;
+      const prevTechId = freshBooking.assignedTechnicianId;
+      (req as any).auditBefore = { status: prevStatus, assignedTechnicianId: prevTechId };
+
+      freshBooking.assignedTechnicianId = tech.id;
+      freshBooking.technician = {
+        id: tech.id,
+        name: tech.name,
+        phone: tech.phone,
+        avatar: tech.avatar,
+        rating: tech.rating,
+        specialty: tech.specialty,
+      };
+
+      // Transition from confirmed to assigned; if already in_progress, remain in_progress
+      if (freshBooking.status === 'confirmed') {
+        freshBooking.status = 'assigned';
+      }
+
+      (req as any).auditAfter = { status: freshBooking.status, assignedTechnicianId: tech.id, technicianName: tech.name };
+      (req as any).auditAction = 'assign_technician';
+
+      freshBooking.timeline.push({
+        status: 'assigned',
+        label: `تم تعيين الفني: ${tech.name}`,
+        labelEn: `Technician assigned: ${tech.name}`,
+        timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
+        completed: true,
+        description: `تم إسناد تنفيذ الطلب إلى الفني المختص (${tech.name})`,
+        descriptionEn: `Order assigned to technician (${tech.name})`,
+        changedBy: req.admin?.name || 'admin',
+      });
+
+      await freshBooking.save();
+
+      // Explicitly persist assignedTechnicianId and technician in PostgreSQL
+      try {
+        await prisma.booking.update({
+          where: { id: freshBooking.id },
+          data: {
+            assignedTechnicianId: tech.id,
+            technician: freshBooking.technician,
+            status: freshBooking.status,
+          },
+        });
+      } catch (dbErr) {
+        console.warn('Prisma explicit booking technician sync note:', dbErr);
+      }
+
+      // Increment technician assigned counter
+      tech.assignedOrders = (tech.assignedOrders || 0) + 1;
+      await tech.save();
+
+      // Automatic Notification Dispatches for Technician Assignment
+      try {
+        await Notification.create({
+          target: 'admin',
+          title: 'إسناد فني لميدان العمل',
+          titleEn: 'Technician Assigned',
+          message: `تم إسناد الطلب #${freshBooking.id} إلى الفني الكابتن ${tech.name} (${tech.specialty || 'فني ميداني'}).`,
+          messageEn: `Order #${freshBooking.id} assigned to technician ${tech.name}.`,
+          type: 'technician',
+          read: false,
+          link: `/admin/orders/${freshBooking.id}`,
+        });
+
+        if (freshBooking.customerId) {
+          await Notification.create({
+            target: 'customer',
+            userId: freshBooking.customerId.toString(),
+            title: '🚗 تم تعيين الفني المختص',
+            titleEn: 'Technician Assigned',
+            message: `تم إسناد طلبك #${freshBooking.id} إلى الكابتن ${tech.name}، وجارٍ التجهيز للانطلاق.`,
+            messageEn: `Technician ${tech.name} has been assigned to your order.`,
+            type: 'order',
+            read: false,
+            link: `/account/orders/${freshBooking.id}`,
+          });
+        }
+      } catch (notifErr) {
+        console.warn('Non-critical: Technician assign notification dispatch error:', notifErr);
+      }
+
+      sendSuccess(res, freshBooking, `تم تعيين الفني (${tech.name}) للحجز بنجاح`);
+    });
   } catch (err: any) {
     sendError(res, err.message, 500);
   }

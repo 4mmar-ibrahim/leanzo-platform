@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ZoCanvas } from './3d/ZoCanvas';
 import { LiveZoCharacter } from './LiveZoCharacter';
 import { ZoSpeechBubble } from './ZoSpeechBubble';
 import {
@@ -142,7 +141,7 @@ export function ZoCharacter({
   };
 
   const hasMessage = Boolean(message && message.trim().length > 0);
-  const activeImageUrl = originalImageUrl || customImage;
+  const activeImageUrl = originalImageUrl || customImage || '/brand/zo/zo-approved.png';
 
   return (
     <div
@@ -154,6 +153,7 @@ export function ZoCharacter({
       {/* Optional Speech Bubble positioned above Zo */}
       {hasMessage && (
         <div
+          onClick={(e) => e.stopPropagation()}
           className={cn(
             'absolute bottom-[104%] mb-2 z-40 transition-all duration-200 ease-out',
             bubbleAlignment === 'right'
@@ -204,55 +204,37 @@ export function ZoCharacter({
         </div>
       )}
 
-      {/* Live Character Renderer: Original Image Preserved + Non-destructive 2D/3D-like Animation */}
-      {activeImageUrl ? (
-        <div
-          style={{
-            width: `${pixelSize}px`,
-          }}
-          className="relative flex items-center justify-center pointer-events-auto"
-        >
-          <LiveZoCharacter
-            imageUrl={activeImageUrl}
-            animation={internalAnimation}
-            animationSpeed={animationSpeed}
-            animationIntensity={animationIntensity}
-            size={pixelSize}
-            shadow={shadow}
-            glow={glow}
-            lookAtCursor={lookAtCursor}
-            interactive={interactive}
-            onClick={handleClick}
-          />
-        </div>
-      ) : (
-        /* Fallback to WebGL procedural scene or Mascot illustration */
-        <div
-          style={{
-            width: `${pixelSize}px`,
-            height: `${Math.round(pixelSize * 1.25)}px`,
-          }}
-          className="relative flex items-center justify-center"
-        >
-          <ZoCanvas
-            expression={internalExpression}
-            pose={internalPose}
-            animation={internalAnimation}
-            animationSpeed={animationSpeed}
-            autoBlink={autoBlink}
-            eyeMovement={eyeMovement}
-            scale={scale}
-            rotationY={rotationY}
-            opacity={opacity}
-            shadow={shadow}
-            glow={glow}
-            allowOrbit={allowOrbit}
-            lookAtCursor={lookAtCursor}
-            onCharacterClick={handleClick}
-            className="w-full h-full"
-          />
-        </div>
-      )}
+      {/* Live Character Renderer: Strictly renders the authentic approved artwork without 3D conversion */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={handleClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleClick();
+          }
+        }}
+        aria-label="مساعد زو الذكي - اضغط لعرض أو إخفاء الرسالة"
+        style={{
+          width: `${pixelSize}px`,
+          touchAction: 'manipulation',
+        }}
+        className="relative flex items-center justify-center pointer-events-auto cursor-pointer select-none active:scale-95 focus-visible:ring-2 focus-visible:ring-[#0866C6] focus-visible:ring-offset-2 rounded-2xl transition-all duration-200"
+        title="اضغط لعرض أو إخفاء رسالة المساعد"
+      >
+        <LiveZoCharacter
+          imageUrl={activeImageUrl}
+          animation={internalAnimation}
+          animationSpeed={animationSpeed}
+          animationIntensity={animationIntensity}
+          size={pixelSize}
+          shadow={shadow}
+          glow={glow}
+          lookAtCursor={lookAtCursor}
+          interactive={false}
+        />
+      </div>
     </div>
   );
 }

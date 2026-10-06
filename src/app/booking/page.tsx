@@ -29,6 +29,7 @@ import { Order, OrderStatus, ServiceCategory } from '@/types';
 import { toast } from 'sonner';
 import { useZoStudioStore } from '@/store/useZoStudioStore';
 import { validateEgyptianPhone } from '@/lib/validation/phoneValidation';
+import { validateCustomerName } from '@/lib/validation/nameValidation';
 import { useCustomerStore } from '@/store/useCustomerStore';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { isSameService, isSameTime } from '@/lib/bookingEngine';
@@ -57,9 +58,12 @@ function BookingContent() {
     notes,
     promoCode,
     getBasePrice,
+    getOriginalPrice,
+    getCatalogSavings,
     getDiscountAmount,
     getServiceFee,
     getFinalPrice,
+    getItemizedPricing,
     resetBooking,
     guestName,
     guestPhone,
@@ -102,20 +106,27 @@ function BookingContent() {
   const canProceed = () => {
     if (currentStep === 1) return isServiceValid;
     if (currentStep === 2) return !!selectedDate && !!selectedTime;
-    if (currentStep === 3) return !!selectedAddress;
+    if (currentStep === 3) {
+      if (!selectedAddress) return false;
+      const effectiveName = (!isAuthenticated ? guestName : (user?.name || guestName || '')).trim();
+      return validateCustomerName(effectiveName, isAr).isValid;
+    }
     return true;
   };
 
   // Step Guards: Protect direct URLs, refresh, and state corruption
   useEffect(() => {
+    const effectiveName = (!isAuthenticated ? guestName : (user?.name || guestName || '')).trim();
+    const isNameValid = validateCustomerName(effectiveName, isAr).isValid;
+
     if (currentStep > 1 && !isServiceValid) {
       setStep(1);
     } else if (currentStep > 2 && (!selectedDate || !selectedTime)) {
       setStep(2);
-    } else if (currentStep > 3 && !selectedAddress) {
+    } else if (currentStep > 3 && (!selectedAddress || !isNameValid)) {
       setStep(3);
     }
-  }, [currentStep, isServiceValid, selectedDate, selectedTime, selectedAddress, setStep]);
+  }, [currentStep, isServiceValid, selectedDate, selectedTime, selectedAddress, isAuthenticated, user?.name, guestName, isAr, setStep]);
 
   const handleNext = () => {
     if (!canProceed()) {
@@ -135,7 +146,15 @@ function BookingContent() {
         }
       }
       if (currentStep === 2) toast.error(isAr ? 'يرجى اختيار التاريخ والوقت' : 'Please select date and time');
-      if (currentStep === 3) toast.error(isAr ? 'يرجى اختيار عنوان الخدمة' : 'Please select a service address');
+      if (currentStep === 3) {
+        const effectiveName = (!isAuthenticated ? guestName : (user?.name || guestName || '')).trim();
+        const nameVal = validateCustomerName(effectiveName, isAr);
+        if (!selectedAddress) {
+          toast.error(isAr ? 'يرجى اختيار وتأكيد عنوان الخدمة' : 'Please select and confirm service address');
+        } else if (!nameVal.isValid) {
+          toast.error(nameVal.message || (isAr ? 'يرجى إدخال اسم العميل للمتابعة' : 'Please enter customer name to proceed'));
+        }
+      }
       return;
     }
     const next = currentStep + 1;
@@ -201,7 +220,14 @@ function BookingContent() {
     setIsSubmitting(true);
 
     try {
-      const effectiveName = user?.name || guestName || undefined;
+      const rawName = (!isAuthenticated ? guestName : (user?.name || guestName || '')).trim();
+      const nameVal = validateCustomerName(rawName, isAr);
+      if (!nameVal.isValid) {
+        toast.error(nameVal.message || (isAr ? 'يرجى إدخال اسم العميل للمتابعة.' : 'Please provide customer name to proceed.'));
+        setIsSubmitting(false);
+        return;
+      }
+      const effectiveName = rawName;
       const effectivePhone = user?.phone || guestPhone || selectedAddress?.customerPhone || undefined;
 
       // Validate guest phone if user is not authenticated
@@ -491,79 +517,165 @@ function BookingContent() {
                     </div>
                   </div>
 
-                  {/* Service Price & Package Breakdown */}
-                  <div className="pt-2 border-t border-slate-100 dark:border-[#133B61]/80 space-y-1.5 text-xs">
-                    {selectedPackage ? (
+                  {/* Service Price & Package Breakdown (Authoritative Itemized Pricing Engine) */}
+                  {(() => {
+                    const pricing = getItemizedPricing();
+                    return (
                       <>
-                        <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
-                          <span>{isAr ? 'الباقة المختارة:' : 'Package:'}</span>
-                          <span className="font-bold text-[#0866C6] dark:text-[#3894ec]">
-                            {selectedPackage.name}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
-                          <span>{isAr ? 'سعر الباقة:' : 'Package Price:'}</span>
-                          <span className="font-semibold text-slate-900 dark:text-white font-mono">
-                            {selectedPackage.price} {isAr ? 'ج.م' : 'EGP'}
-                          </span>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
-                          <span>{isAr ? 'السعر الأساسي:' : 'Base Price:'}</span>
-                          <span className="font-semibold text-slate-900 dark:text-white font-mono">
-                            {selectedService.price} {isAr ? 'ج.م' : 'EGP'}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
-                          <span>{isAr ? 'الباقة:' : 'Package:'}</span>
-                          <span className="text-slate-400 dark:text-slate-500">
-                            {isAr ? 'بدون باقة' : 'None (Base)'}
-                          </span>
-                        </div>
-                      </>
-                    )}
+                        <div className="pt-2 border-t border-slate-100 dark:border-[#133B61]/80 space-y-1.5 text-xs">
+                          {selectedPackage ? (
+                            <>
+                              <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                                <span>{isAr ? 'الباقة المختارة:' : 'Package:'}</span>
+                                <span className="font-bold text-[#0866C6] dark:text-[#3894ec]">
+                                  {selectedPackage.name}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                                <span>{isAr ? 'سعر الباقة:' : 'Package Price:'}</span>
+                                <div className="flex items-center gap-1.5 font-mono">
+                                  {pricing.catalogDiscount > 0 && (
+                                    <span className="text-[11px] text-slate-400 line-through">
+                                      {pricing.baseOriginalPrice} {isAr ? 'ج.م' : 'EGP'}
+                                    </span>
+                                  )}
+                                  <span className="font-semibold text-slate-900 dark:text-white">
+                                    {pricing.baseSellingPrice} {isAr ? 'ج.م' : 'EGP'}
+                                  </span>
+                                </div>
+                              </div>
+                              {pricing.catalogDiscount > 0 && (
+                                <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 text-[11px] font-bold">
+                                  <span>{isAr ? 'وفّرت في الباقة:' : 'Package Savings:'}</span>
+                                  <span className="font-mono">
+                                    -{pricing.catalogDiscount} {isAr ? 'ج.م' : 'EGP'}
+                                  </span>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                                <span>
+                                  {pricing.catalogDiscount > 0
+                                    ? isAr
+                                      ? 'السعر الأصلي للخدمة:'
+                                      : 'Original Price:'
+                                    : isAr
+                                    ? 'السعر الأساسي:'
+                                    : 'Base Price:'}
+                                </span>
+                                <div className="flex items-center gap-1.5 font-mono">
+                                  {pricing.catalogDiscount > 0 && (
+                                    <span className="text-[11px] text-slate-400 line-through">
+                                      {pricing.baseOriginalPrice} {isAr ? 'ج.م' : 'EGP'}
+                                    </span>
+                                  )}
+                                  <span className="font-semibold text-slate-900 dark:text-white">
+                                    {pricing.baseSellingPrice} {isAr ? 'ج.م' : 'EGP'}
+                                  </span>
+                                </div>
+                              </div>
+                              {pricing.catalogDiscount > 0 && (
+                                <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 text-[11px] font-bold">
+                                  <span>
+                                    {isAr ? 'وفرت بالعرض المباشر:' : 'Catalog Savings:'}
+                                    {pricing.catalogDiscountPercent > 0 ? ` (${pricing.catalogDiscountPercent}%)` : ''}
+                                  </span>
+                                  <span className="font-mono">
+                                    -{pricing.catalogDiscount} {isAr ? 'ج.م' : 'EGP'}
+                                  </span>
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
+                                <span>{isAr ? 'الباقة:' : 'Package:'}</span>
+                                <span className="text-slate-400 dark:text-slate-500">
+                                  {isAr ? 'بدون باقة (السعر الأساسي)' : 'None (Base Service)'}
+                                </span>
+                              </div>
+                            </>
+                          )}
 
-                    {selectedAddons && selectedAddons.length > 0 && (
-                      <div className="pt-1.5 border-t border-dashed border-slate-100 dark:border-slate-800 space-y-1">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">
-                          {isAr ? 'الإضافات:' : 'Add-ons:'}
-                        </span>
-                        {selectedAddons.map((addon) => (
-                          <div key={addon.id} className="flex items-center justify-between text-[11px] text-amber-700 dark:text-amber-400">
-                            <span className="truncate max-w-[130px]">+{isAr ? addon.name : addon.nameEn || addon.name}</span>
-                            <span className="font-mono font-bold">+{addon.price} {isAr ? 'ج.م' : 'EGP'}</span>
+                          {selectedAddons && selectedAddons.length > 0 && (
+                            <div className="pt-1.5 border-t border-dashed border-slate-100 dark:border-slate-800 space-y-1">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase">
+                                {isAr ? 'الإضافات:' : 'Add-ons:'}
+                              </span>
+                              {selectedAddons.map((addon) => (
+                                <div key={addon.id} className="flex items-center justify-between text-[11px] text-amber-700 dark:text-amber-400">
+                                  <span className="truncate max-w-[130px]">+{isAr ? addon.name : addon.nameEn || addon.name}</span>
+                                  <span className="font-mono font-bold">+{addon.price} {isAr ? 'ج.م' : 'EGP'}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {(selectedAddons.length > 0 || pricing.catalogDiscount > 0) && (
+                            <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-dashed border-slate-100 dark:border-slate-800">
+                              <span>{isAr ? 'المجموع الفرعي:' : 'Subtotal:'}</span>
+                              <span className="font-bold font-mono text-slate-700 dark:text-slate-300">
+                                {pricing.subtotal} {isAr ? 'ج.م' : 'EGP'}
+                              </span>
+                            </div>
+                          )}
+
+                          {pricing.couponDiscount > 0 && (
+                            <div className="flex items-center justify-between text-[11px] text-emerald-600 dark:text-emerald-400 font-bold pt-1.5 border-t border-dashed border-slate-100 dark:border-slate-800">
+                              <span>
+                                {pricing.appliedCouponCode
+                                  ? isAr
+                                    ? `خصم الكوبون (${pricing.appliedCouponCode}):`
+                                    : `Coupon (${pricing.appliedCouponCode}):`
+                                  : isAr
+                                  ? 'خصم الكوبون:'
+                                  : 'Coupon Discount:'}
+                              </span>
+                              <span className="font-mono">-{pricing.couponDiscount} {isAr ? 'ج.م' : 'EGP'}</span>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-1">
+                            <span>{isAr ? 'رسوم الخدمة والانتقال:' : 'Service Fee:'}</span>
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                              {pricing.serviceFee > 0 ? `${pricing.serviceFee} ${isAr ? 'ج.م' : 'EGP'}` : isAr ? 'مجاناً' : 'Free'}
+                            </span>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                        </div>
 
-                  {selectedDate && (
-                    <div className="pt-2 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
-                      <span>{isAr ? 'الموعد:' : 'Schedule:'}</span>
-                      <span className="font-semibold text-slate-900 dark:text-white">
-                        {selectedDate} • {selectedTime || '--:--'}
-                      </span>
-                    </div>
-                  )}
+                        {selectedDate && (
+                          <div className="pt-2 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+                            <span>{isAr ? 'الموعد:' : 'Schedule:'}</span>
+                            <span className="font-semibold text-slate-900 dark:text-white">
+                              {selectedDate} • {selectedTime || '--:--'}
+                            </span>
+                          </div>
+                        )}
 
-                  {selectedAddress && (
-                    <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
-                      <span>{isAr ? 'العنوان:' : 'Address:'}</span>
-                      <span className="font-semibold text-slate-900 dark:text-white truncate max-w-[150px]">
-                        {selectedAddress.city}
-                      </span>
-                    </div>
-                  )}
+                        {selectedAddress && (
+                          <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+                            <span>{isAr ? 'العنوان:' : 'Address:'}</span>
+                            <span className="font-semibold text-slate-900 dark:text-white truncate max-w-[150px]">
+                              {selectedAddress.city}
+                            </span>
+                          </div>
+                        )}
 
-                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-baseline justify-between">
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                      {isAr ? 'الإجمالي المتوقع' : 'Total'}
-                    </span>
-                    <PriceDisplay price={getFinalPrice()} size="md" />
-                  </div>
+                        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-baseline justify-between">
+                          <div>
+                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                              {isAr ? 'المبلغ النهائي المستحق' : 'Final Total'}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              {isAr ? 'شامل الضريبة والمصاريف' : 'VAT inclusive'}
+                            </span>
+                          </div>
+                          <span className="text-base font-black text-[#0866C6] dark:text-sky-400 font-mono">
+                            {pricing.finalPrice} {isAr ? 'ج.م' : 'EGP'}
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               ) : (
                 <p className="text-xs text-slate-400">

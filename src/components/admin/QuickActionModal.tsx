@@ -9,6 +9,11 @@ import { useTechnicianStore } from '@/store/useTechnicianStore';
 import { useAdminStore } from '@/store/useAdminStore';
 import { useActivityLogStore } from '@/store/useActivityLogStore';
 import { toast } from 'sonner';
+import {
+  normalizePhoneInput,
+  validateEgyptianPhone,
+  CANONICAL_PHONE_ERROR_MESSAGE,
+} from '@/lib/validation/phoneValidation';
 
 interface QuickActionModalProps {
   type: 'order' | 'service' | 'offer' | 'technician' | null;
@@ -180,11 +185,20 @@ export function QuickActionModal({ type, onClose }: QuickActionModalProps) {
 
   const handleCreateTechnician = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!techName || !techPhone) return;
+    if (!techName.trim()) {
+      toast.error('يرجى إدخال اسم الفني');
+      return;
+    }
+
+    const phoneVal = validateEgyptianPhone(techPhone);
+    if (!phoneVal.isValid) {
+      toast.error(phoneVal.message || CANONICAL_PHONE_ERROR_MESSAGE);
+      return;
+    }
 
     addTechnician({
-      name: techName,
-      phone: techPhone,
+      name: techName.trim(),
+      phone: techPhone.trim(),
       avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=256&q=80',
       specialty: techSpecialty,
       status: 'available',
@@ -242,11 +256,13 @@ export function QuickActionModal({ type, onClose }: QuickActionModalProps) {
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">رقم الهاتف</label>
                 <input
                   type="tel"
+                  dir="ltr"
                   required
                   placeholder="010XXXXXXXX"
                   value={orderPhone}
-                  onChange={(e) => setOrderPhone(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-[#133B61] bg-slate-50 dark:bg-[#041728] text-[#07345C] dark:text-white font-mono focus:outline-hidden focus:border-[#0866C6] transition-colors"
+                  onChange={(e) => setOrderPhone(normalizePhoneInput(e.target.value))}
+                  style={{ direction: 'ltr', textAlign: 'left', unicodeBidi: 'isolate' }}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-[#133B61] bg-slate-50 dark:bg-[#041728] text-[#07345C] dark:text-white font-mono text-left [direction:ltr] [unicode-bidi:isolate] focus:outline-hidden focus:border-[#0866C6] transition-colors"
                 />
               </div>
             </div>
@@ -448,11 +464,13 @@ export function QuickActionModal({ type, onClose }: QuickActionModalProps) {
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">رقم الهاتف</label>
                 <input
                   type="tel"
+                  dir="ltr"
                   required
                   placeholder="010XXXXXXXX"
                   value={techPhone}
-                  onChange={(e) => setTechPhone(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-[#133B61] bg-slate-50 dark:bg-[#041728] text-[#07345C] dark:text-white font-mono focus:outline-hidden focus:border-[#0866C6] transition-colors"
+                  onChange={(e) => setTechPhone(normalizePhoneInput(e.target.value))}
+                  style={{ direction: 'ltr', textAlign: 'left', unicodeBidi: 'isolate' }}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-[#133B61] bg-slate-50 dark:bg-[#041728] text-[#07345C] dark:text-white font-mono text-left [direction:ltr] [unicode-bidi:isolate] focus:outline-hidden focus:border-[#0866C6] transition-colors"
                 />
               </div>
               <div>

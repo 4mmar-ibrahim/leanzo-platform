@@ -38,6 +38,7 @@ import { formatDuration } from '@/lib/utils';
 import { toast } from 'sonner';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { CleanzoImage } from '@/components/common/CleanzoImage';
+import { calculateItemizedPricing } from '@/lib/pricing';
 import { Service, ServiceCategory, ServicePackage, ServiceAddon } from '@/types';
 
 interface ServiceDetailViewProps {
@@ -137,17 +138,35 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
     );
   };
 
-  const displayPrice = selectedPkg
-    ? selectedPkg.price + selectedAddonsList.reduce((s, a) => s + (Number(a.price) || 0), 0)
-    : service
-    ? service.price + selectedAddonsList.reduce((s, a) => s + (Number(a.price) || 0), 0)
-    : 0;
+  const itemizedPricing = service
+    ? calculateItemizedPricing({
+        service: {
+          id: service.id,
+          price: Number(service.price) || 0,
+          originalPrice: service.originalPrice,
+          discount: service.discount,
+        },
+        selectedPackage: selectedPkg
+          ? {
+              id: selectedPkg.id,
+              name: selectedPkg.name,
+              price: Number(selectedPkg.price) || 0,
+              originalPrice: selectedPkg.originalPrice,
+            }
+          : null,
+        addons: selectedAddonsList.map((a) => ({
+          id: a.id,
+          name: a.name,
+          price: Number(a.price) || 0,
+        })),
+      })
+    : null;
 
-  const displayOriginalPrice = selectedPkg?.originalPrice
-    ? selectedPkg.originalPrice + selectedAddonsList.reduce((s, a) => s + (Number(a.price) || 0), 0)
-    : service?.originalPrice
-    ? service.originalPrice + selectedAddonsList.reduce((s, a) => s + (Number(a.price) || 0), 0)
-    : undefined;
+  const displayPrice = itemizedPricing ? itemizedPricing.finalPrice : 0;
+  const displayOriginalPrice =
+    itemizedPricing && itemizedPricing.catalogDiscount > 0
+      ? itemizedPricing.originalTotal
+      : undefined;
 
   const displayDuration = selectedPkg
     ? Number(selectedPkg.durationMinutes) + selectedAddonsList.reduce((s, a) => s + (Number(a.durationMinutes) || 0), 0)

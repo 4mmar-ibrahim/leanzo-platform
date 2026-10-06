@@ -19,14 +19,18 @@ export interface BookingDateOption {
   reason?: string;
 }
 
-function timeStringToMinutes(timeStr: string): number {
+export function timeStringToMinutes(timeStr: string): number {
   if (!timeStr) return 0;
-  const clean = timeStr.trim().toUpperCase();
-  const isPM = clean.includes('PM');
-  const isAM = clean.includes('AM');
+  const raw = String(timeStr).trim();
+  // If given a range or hyphenated string, extract the first segment
+  const firstSegment = raw.split(/[-–—]/)[0].trim();
+  const clean = firstSegment.toUpperCase();
+  const isPM = clean.includes('PM') || clean.includes('مساء');
+  const isAM = clean.includes('AM') || clean.includes('صباح');
 
-  const timePart = clean.replace(/(AM|PM)/g, '').trim();
-  const [hourStr, minuteStr] = timePart.split(':');
+  const timePart = clean.replace(/(AM|PM|مساءً|مساء|صباحاً|صباح)/g, '').trim();
+  const cleanNumbers = timePart.replace(/[^0-9:]/g, '');
+  const [hourStr, minuteStr] = cleanNumbers.split(':');
   let hours = parseInt(hourStr || '0', 10);
   const minutes = parseInt(minuteStr || '0', 10);
 
@@ -36,14 +40,140 @@ function timeStringToMinutes(timeStr: string): number {
   return hours * 60 + (isNaN(minutes) ? 0 : minutes);
 }
 
-function minutesTo24H(totalMinutes: number): string {
+export function minutesTo24H(totalMinutes: number): string {
   const normalized = Math.max(0, Math.min(1439, totalMinutes));
   const hours = Math.floor(normalized / 60);
   const mins = normalized % 60;
   return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 }
 
-function minutesToDisplayTime(totalMinutes: number): { time12Ar: string; time12En: string } {
+export function getBookingTimeInterval(b?: {
+  time?: string;
+  duration?: number;
+  serviceDurationMinutes?: number;
+  travelTimeMinutes?: number;
+  totalOccupiedMinutes?: number;
+  scheduledStart?: string;
+  scheduledEnd?: string;
+  service?: { duration?: number };
+  serviceSnapshot?: { duration?: number };
+} | null): { startMin: number; endMin: number; display: string } {
+  if (!b) return { startMin: 0, endMin: 60, display: '—' };
+
+  const timeStr = String(b.time || '').trim();
+  const fullDuration =
+    b.totalOccupiedMinutes ||
+    (b.serviceDurationMinutes ? b.serviceDurationMinutes + (b.travelTimeMinutes || 0) : undefined) ||
+    b.duration ||
+    b.service?.duration ||
+    b.serviceSnapshot?.duration ||
+    60;
+
+  // 1. Explicit scheduledStart & scheduledEnd
+  if (b.scheduledStart && b.scheduledEnd) {
+    const sMin = timeStringToMinutes(b.scheduledStart);
+    const eMin = timeStringToMinutes(b.scheduledEnd);
+    if (sMin > 0 && eMin > sMin) {
+      return {
+        startMin: sMin,
+        endMin: Math.max(eMin, sMin + fullDuration),
+        display: timeStr || `${b.scheduledStart} – ${b.scheduledEnd}`,
+      };
+    }
+  }
+
+  // 2. Range strings with dash/hyphen
+  if (timeStr.includes('–') || timeStr.includes('-') || timeStr.includes('—')) {
+    const parts = timeStr.split(/[-–—]/).map((p) => p.trim());
+    if (parts.length >= 2) {
+      const min1 = timeStringToMinutes(parts[0]);
+      const min2 = timeStringToMinutes(parts[1]);
+
+      if (min1 > 0 && min2 > 0) {
+        // Robust against both LTR and RTL string ordering:
+        const startMin = Math.min(min1, min2);
+        const endMin = Math.max(Math.max(min1, min2), startMin + fullDuration);
+        return {
+          startMin,
+          endMin,
+          display: timeStr,
+        };
+      } else if (min1 > 0) {
+        return {
+          startMin: min1,
+          endMin: min1 + fullDuration,
+          display: timeStr,
+        };
+      }
+    }
+  }
+
+  // 3. Single start time
+  const rawStart = b.scheduledStart || timeStr;
+  const startMin = timeStringToMinutes(rawStart);
+  const endMin = startMin + fullDuration;
+
+  return {
+    startMin,
+    endMin,
+    display: timeStr || `${Math.floor(startMin / 60).toString().padStart(2, '0')}:${(startMin % 60).toString().padStart(2, '0')}`,
+  };
+}
+
+export function isTimeIntervalOverlapping(
+  intA: { startMin: number; endMin: number },
+  intB: { startMin: number; endMin: number }
+): boolean {
+  return intA.startMin < intB.endMin && intB.startMin < intA.endMin;
+}
+
+export function findConflictingOrder(
+  targetOrder: any,
+  technicianId: string,
+  allOrders: any[] = [],
+  subscriptionVisits: any[] = []
+): any | undefined {
+  if (!targetOrder || !technicianId) return undefined;
+  const currentInterval = getBookingTimeInterval(targetOrder);
+
+  // 1. Check regular bookings
+  const regularConflict = allOrders.find((o) => {
+    if (!o) return false;
+    if (o.id === targetOrder.id) return false;
+    if (o.status === 'cancelled') return false;
+    if (o.date !== targetOrder.date) return false;
+
+    const assignedId = o.technician?.id || o.assignedTechnicianId || (o.technician as any)?.technicianId;
+    if (assignedId !== technicianId) return false;
+
+    const otherInterval = getBookingTimeInterval(o);
+    return isTimeIntervalOverlapping(currentInterval, otherInterval);
+  });
+
+  if (regularConflict) return regularConflict;
+
+  // 2. Check subscription visits
+  if (subscriptionVisits && subscriptionVisits.length > 0) {
+    const visitConflict = subscriptionVisits.find((v) => {
+      if (!v) return false;
+      if (v.id === targetOrder.id) return false;
+      if (v.status === 'cancelled') return false;
+      if (v.date !== targetOrder.date) return false;
+
+      const assignedId = v.technician?.id || v.assignedTechnicianId || (v.technician as any)?.technicianId;
+      if (assignedId !== technicianId) return false;
+
+      const otherInterval = getBookingTimeInterval(v);
+      return isTimeIntervalOverlapping(currentInterval, otherInterval);
+    });
+
+    if (visitConflict) return visitConflict;
+  }
+
+  return undefined;
+}
+
+export function minutesToDisplayTime(totalMinutes: number): { time12Ar: string; time12En: string } {
   const normalized = Math.max(0, Math.min(1439, totalMinutes));
   const hours = Math.floor(normalized / 60);
   const mins = normalized % 60;
@@ -57,6 +187,110 @@ function minutesToDisplayTime(totalMinutes: number): { time12Ar: string; time12E
   return {
     time12En: `${hours12Str}:${minsStr} ${period}`,
     time12Ar: `${hours12Str}:${minsStr} ${periodAr}`,
+  };
+}
+
+export interface FormattedReservationSchedule {
+  rawDate: string;
+  formattedDateAr: string;
+  formattedDateEn: string;
+  dayNameAr: string;
+  dayNameEn: string;
+  dayName: string;
+  startMinutes: number;
+  endMinutes: number;
+  startTime12Ar: string;
+  startTime12En: string;
+  endTime12Ar: string;
+  endTime12En: string;
+  timeRangeDisplayAr: string;
+  timeRangeDisplayEn: string;
+  displayTime: string;
+  startTime: string;
+  endTime: string;
+}
+
+export function formatReservationSchedule(order?: {
+  date?: string;
+  time?: string;
+  scheduledStart?: string;
+  scheduledEnd?: string;
+  duration?: number;
+  serviceDurationMinutes?: number;
+  totalOccupiedMinutes?: number;
+  service?: { duration?: number };
+  serviceSnapshot?: { duration?: number };
+} | null): FormattedReservationSchedule {
+  if (!order) {
+    return {
+      rawDate: '',
+      formattedDateAr: '—',
+      formattedDateEn: '—',
+      dayNameAr: '',
+      dayNameEn: '',
+      dayName: '',
+      startMinutes: 0,
+      endMinutes: 0,
+      startTime12Ar: '—',
+      startTime12En: '—',
+      endTime12Ar: '—',
+      endTime12En: '—',
+      timeRangeDisplayAr: '—',
+      timeRangeDisplayEn: '—',
+      displayTime: '—',
+      startTime: '—',
+      endTime: '—',
+    };
+  }
+
+  const rawDate = order.date || '';
+  let formattedDateAr = rawDate;
+  let formattedDateEn = rawDate;
+  let dayNameAr = '';
+  let dayNameEn = '';
+
+  if (rawDate) {
+    try {
+      const parts = rawDate.split('-');
+      if (parts.length === 3) {
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const d = parseInt(parts[2], 10);
+        const dateObj = new Date(y, m, d);
+        if (!isNaN(dateObj.getTime())) {
+          dayNameAr = dateObj.toLocaleDateString('ar-EG', { weekday: 'long' });
+          dayNameEn = dateObj.toLocaleDateString('en-GB', { weekday: 'long' });
+          formattedDateAr = dateObj.toLocaleDateString('ar-EG', { day: '2-digit', month: 'long', year: 'numeric' });
+          formattedDateEn = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+        }
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  const interval = getBookingTimeInterval(order);
+  const startDisp = minutesToDisplayTime(interval.startMin);
+  const endDisp = minutesToDisplayTime(interval.endMin);
+
+  return {
+    rawDate,
+    formattedDateAr: formattedDateAr || rawDate || '—',
+    formattedDateEn: formattedDateEn || rawDate || '—',
+    dayNameAr,
+    dayNameEn,
+    dayName: dayNameAr || dayNameEn || '',
+    startMinutes: interval.startMin,
+    endMinutes: interval.endMin,
+    startTime12Ar: startDisp.time12Ar,
+    startTime12En: startDisp.time12En,
+    endTime12Ar: endDisp.time12Ar,
+    endTime12En: endDisp.time12En,
+    timeRangeDisplayAr: `${startDisp.time12Ar} – ${endDisp.time12Ar}`,
+    timeRangeDisplayEn: `${startDisp.time12En} – ${endDisp.time12En}`,
+    displayTime: `${startDisp.time12En} – ${endDisp.time12En}`,
+    startTime: startDisp.time12En,
+    endTime: endDisp.time12En,
   };
 }
 
@@ -237,16 +471,12 @@ export function getTimeSlotsForDate(
     const slotStart = cursor;
     const slotEnd = cursor + totalOccupancy;
 
-    // Check break overlap: if slot overlaps break, skip to end of break
-    if (
+    // Check break overlap: mark slot unavailable instead of silently skipping
+    const isBreak =
       breakStartMin !== null &&
       breakEndMin !== null &&
       slotStart < breakEndMin &&
-      slotEnd > breakStartMin
-    ) {
-      cursor = breakEndMin;
-      continue;
-    }
+      slotEnd > breakStartMin;
 
     const start24 = minutesTo24H(slotStart);
     const end24 = minutesTo24H(slotEnd);
@@ -258,11 +488,11 @@ export function getTimeSlotsForDate(
       continue;
     }
 
-    let isAvailable = true;
-    let reason: string | undefined;
+    let isAvailable = !isBreak;
+    let reason: string | undefined = isBreak ? 'استراحة عمل' : undefined;
 
     // Check overlap with active orders
-    if (existingOrders && existingOrders.length > 0) {
+    if (existingOrders && existingOrders.length > 0 && isAvailable) {
       const isBooked = existingOrders.some((o) => {
         if (o.status === 'cancelled') return false;
         if (o.date !== dateString) return false;
@@ -277,7 +507,7 @@ export function getTimeSlotsForDate(
 
       if (isBooked) {
         isAvailable = false;
-        reason = 'محجوز';
+        reason = 'محجوز بالكامل';
       }
     }
 

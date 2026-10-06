@@ -26,14 +26,17 @@ import {
   Search,
   UserCheck,
   PlayCircle,
+  Car,
 } from 'lucide-react';
 import { useOrderStore } from '@/store/useOrderStore';
 import { useTechnicianStore } from '@/store/useTechnicianStore';
 import { useAdminStore } from '@/store/useAdminStore';
 import { useActivityLogStore } from '@/store/useActivityLogStore';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
+import { apiGet } from '@/lib/api';
 import { Order, OrderStatus } from '@/types';
 import { generateOfficialInvoiceHtml, printHtmlDocument } from '@/lib/printUtils';
+import { findConflictingOrder, formatReservationSchedule } from '@/lib/bookingEngine';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -45,6 +48,8 @@ export default function AdminOrderDetailPage() {
   const updateOrderStatusApi = useOrderStore((s) => s.updateOrderStatusApi);
   const assignTechnician = useOrderStore((s) => s.assignTechnician);
   const updateOrderNotes = useOrderStore((s) => s.updateOrderNotes);
+  const orders = useOrderStore((s) => s.orders);
+  const fetchAdminOrders = useOrderStore((s) => s.fetchAdminOrders);
   const technicians = useTechnicianStore((s) => s.technicians);
   const fetchTechnicians = useTechnicianStore((s) => s.fetchTechnicians);
   const isLoadingTechnicians = useTechnicianStore((s) => s.isLoading);
@@ -63,14 +68,24 @@ export default function AdminOrderDetailPage() {
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [techSearch, setTechSearch] = useState('');
   const [assigningTechId, setAssigningTechId] = useState<string | null>(null);
+  const [subscriptionVisits, setSubscriptionVisits] = useState<any[]>([]);
 
   const handleOpenAssignModal = async () => {
     setTechSearch('');
     setAssignModalOpen(true);
-    // Always fetch fresh technicians when opening the modal and await completion
+    // Always fetch fresh technicians, orders, and subscription visits when opening the modal
     setIsFetchingTechs(true);
     try {
-      await fetchTechnicians();
+      const [, , visitsRes] = await Promise.all([
+        fetchTechnicians(),
+        fetchAdminOrders(),
+        apiGet('/subscriptions/admin/visits/all?limit=200').catch(() => null),
+      ]);
+      if (visitsRes && (visitsRes as any).data) {
+        const payload = (visitsRes as any).data;
+        const list = Array.isArray(payload) ? payload : payload.visits || [];
+        setSubscriptionVisits(list);
+      }
     } finally {
       setIsFetchingTechs(false);
     }
@@ -108,8 +123,9 @@ export default function AdminOrderDetailPage() {
     if (orderId) {
       fetchOrder();
     }
-    // Pre-fetch technicians on mount so they're ready when modal opens
+    // Pre-fetch technicians and orders on mount
     fetchTechnicians();
+    fetchAdminOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId]);
 
@@ -169,6 +185,7 @@ export default function AdminOrderDetailPage() {
         pending: 'قيد المراجعة',
         confirmed: 'مؤكد',
         assigned: 'تم تعيين فني',
+        on_the_way: 'الفني في الطريق',
         in_progress: 'قيد التنفيذ',
         completed: 'مكتمل بنجاح',
         cancelled: 'ملغي',
@@ -189,8 +206,18 @@ export default function AdminOrderDetailPage() {
   };
 
   const handleAssignTech = async (tech: typeof technicians[0]) => {
+    if (!order) return;
     if (!canEditOrders) {
       toast.error('ليس لديك صلاحية لتعيين الفنيين');
+      return;
+    }
+
+    // Overlap prevention check
+    const conflict = findConflictingOrder(order, tech.id, orders, subscriptionVisits);
+    if (conflict) {
+      toast.error(
+        `تعذر إسناد الطلب للفني (${tech.name}): الفني مرتبط بالفعل بحجز آخر متعارض في نفس التاريخ (${order.date}) في الفترة من ${conflict.time} (${conflict.type === 'visit' ? 'زيارة اشتراك' : 'طلب'} #${conflict.id}). يرجى اختيار فني آخر غير متعارض.`
+      );
       return;
     }
 
@@ -215,6 +242,7 @@ export default function AdminOrderDetailPage() {
       });
       toast.success(`تم إسناد الطلب للفني ${tech.name} بنجاح!`);
       await fetchOrder();
+      await fetchAdminOrders();
       setAssignModalOpen(false);
     } catch (err: any) {
       toast.error(err?.message || 'فشل إسناد الفني على الخادم');
@@ -229,12 +257,24 @@ export default function AdminOrderDetailPage() {
   };
 
   const coupon = order.couponSnapshot || (order as any).coupon;
-  const discountAmt = coupon?.discountAmount || coupon?.actualDiscountAmount || order.discount;
+  const totalDiscount = Number(order.discount) || 0;
+  const couponDiscount = Number(coupon?.actualDiscountAmount || coupon?.discountAmount) || 0;
+  const catalogDiscount = Math.max(0, totalDiscount - couponDiscount);
+
+  const durationMinutes =
+    order.service?.duration ||
+    (order as any).serviceSnapshot?.duration ||
+    (order.service as any)?.serviceDurationMinutes ||
+    order.serviceDurationMinutes ||
+    order.duration ||
+    60;
+
+  const schedule = formatReservationSchedule(order);
 
   return (
     <div className="space-y-6">
       {/* Back button & Breadcrumb */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <Link
           href="/admin/orders"
           className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-sky-500 transition-colors"
@@ -242,7 +282,7 @@ export default function AdminOrderDetailPage() {
           <ArrowRight className="w-4 h-4" />
           <span>العودة لكافة الطلبات</span>
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
             onClick={() => {
@@ -265,9 +305,6 @@ export default function AdminOrderDetailPage() {
           >
             <RefreshCw className={cn('w-3.5 h-3.5', (isLoading || isUpdating) && 'animate-spin text-sky-500')} />
           </button>
-          <span className="text-xs font-mono text-slate-400">
-            تاريخ الحجز: {order.date} — {order.time}
-          </span>
         </div>
       </div>
 
@@ -347,11 +384,41 @@ export default function AdminOrderDetailPage() {
             </button>
           )}
 
-          {/* Step 3: Assigned -> بدء التنفيذ + تغيير الفني */}
+          {/* Step 3: Assigned -> الفني في الطريق أو بدء التنفيذ + تغيير الفني */}
           {order.status === 'assigned' && (
             <>
               <button
+                onClick={() => handleStatusChange('on_the_way', 'تحرك الفني إلى موقع العميل')}
+                disabled={!canEditOrders || isUpdating}
+                className="px-4 py-2 rounded-xl text-xs font-black bg-sky-600 hover:bg-sky-700 text-white transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                <Car className="w-4 h-4" />
+                <span>الفني في الطريق</span>
+              </button>
+              <button
                 onClick={() => handleStatusChange('in_progress', 'بدء تنفيذ الخدمة')}
+                disabled={!canEditOrders || isUpdating}
+                className="px-4 py-2 rounded-xl text-xs font-black bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                <PlayCircle className="w-4 h-4" />
+                <span>بدء التنفيذ</span>
+              </button>
+              <button
+                onClick={handleOpenAssignModal}
+                disabled={!canEditOrders || isUpdating}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                <HardHat className="w-3.5 h-3.5" />
+                <span>تغيير الفني</span>
+              </button>
+            </>
+          )}
+
+          {/* Step 3.5: On the way -> بدء التنفيذ + تغيير الفني */}
+          {order.status === 'on_the_way' && (
+            <>
+              <button
+                onClick={() => handleStatusChange('in_progress', 'وصل الفني إلى الموقع وبدأ التنفيذ')}
                 disabled={!canEditOrders || isUpdating}
                 className="px-4 py-2 rounded-xl text-xs font-black bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
               >
@@ -394,10 +461,72 @@ export default function AdminOrderDetailPage() {
         </div>
       </div>
 
+      {/* Prominent Reservation Date & Exact Start/End Time Banner (Single Source of Truth) */}
+      <div className="p-5 sm:p-6 rounded-3xl bg-linear-to-r from-sky-50 via-white to-indigo-50/50 dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/30 border-2 border-sky-500/30 dark:border-sky-500/20 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-5">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-[#0866C6] text-white flex items-center justify-center shadow-md shadow-[#0866C6]/20 shrink-0">
+            <Calendar className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-black uppercase tracking-wider text-sky-600 dark:text-sky-400">
+                Reservation • بيانات موعد الحجز المعتمدة
+              </span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300">
+                المصدر المعتمد
+              </span>
+            </div>
+            <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white mt-0.5">
+              موعد وتوقيت تنفيذ الخدمة
+            </h2>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 md:min-w-[480px]">
+          {/* Reservation Date */}
+          <div className="p-4 rounded-2xl bg-white dark:bg-slate-800/90 border border-sky-100 dark:border-slate-700/80 shadow-2xs space-y-1">
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <span className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-200">
+                <Calendar className="w-4 h-4 text-sky-500" />
+                <span>Reservation Date:</span>
+              </span>
+              <span className="text-[11px] font-mono text-slate-400">{order.date || '—'}</span>
+            </div>
+            <p className="text-base sm:text-lg font-black text-slate-900 dark:text-white font-mono">
+              {schedule.formattedDateEn}
+            </p>
+            <div className="flex items-center gap-1.5 text-xs text-sky-600 dark:text-sky-400 font-semibold">
+              <span>{schedule.formattedDateAr}</span>
+              {schedule.dayNameAr && <span>• {schedule.dayNameAr}</span>}
+            </div>
+          </div>
+
+          {/* Time: [start time] – [end time] */}
+          <div className="p-4 rounded-2xl bg-white dark:bg-slate-800/90 border border-indigo-100 dark:border-slate-700/80 shadow-2xs space-y-1">
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <span className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-200">
+                <Clock className="w-4 h-4 text-indigo-500" />
+                <span>Time:</span>
+              </span>
+              <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">
+                {durationMinutes} دقيقة
+              </span>
+            </div>
+            <p className="text-base sm:text-lg font-black text-slate-900 dark:text-white font-mono" dir="ltr">
+              {schedule.startTime12En} – {schedule.endTime12En}
+            </p>
+            <div className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-semibold" dir="rtl">
+              <span>{schedule.startTime12Ar} – {schedule.endTime12Ar}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Grid: Order Info & Timeline */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Details */}
         <div className="lg:col-span-2 space-y-6">
+
           {/* Service & Price Breakdown */}
           <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 space-y-4">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -489,13 +618,33 @@ export default function AdminOrderDetailPage() {
                 <span className="font-semibold text-slate-900 dark:text-white">{order.basePrice} ج.م</span>
               </div>
 
-              {discountAmt > 0 && (
+              {catalogDiscount > 0 && (
                 <div className="py-2.5 flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
                   <span className="flex items-center gap-1.5">
                     <Tag className="w-3.5 h-3.5" />
-                    <span>الخصم المطبق {coupon?.couponCode ? `(كوبون: ${coupon.couponCode})` : ''}</span>
+                    <span>خصم الخدمة المباشر</span>
                   </span>
-                  <span>-{discountAmt} ج.م</span>
+                  <span>-{catalogDiscount} ج.م</span>
+                </div>
+              )}
+
+              {couponDiscount > 0 && (
+                <div className="py-2.5 flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
+                  <span className="flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5" />
+                    <span>خصم الكوبون {coupon?.couponCode ? `(${coupon.couponCode})` : ''}</span>
+                  </span>
+                  <span>-{couponDiscount} ج.م</span>
+                </div>
+              )}
+
+              {catalogDiscount === 0 && couponDiscount === 0 && totalDiscount > 0 && (
+                <div className="py-2.5 flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
+                  <span className="flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5" />
+                    <span>الخصم المطبق</span>
+                  </span>
+                  <span>-{totalDiscount} ج.م</span>
                 </div>
               )}
 
@@ -748,17 +897,39 @@ export default function AdminOrderDetailPage() {
                 );
               }
 
+              // Sort technicians: available workers first, conflicting ones below
+              const sorted = [...filtered].sort((a, b) => {
+                const confA = findConflictingOrder(order, a.id, orders, subscriptionVisits);
+                const confB = findConflictingOrder(order, b.id, orders, subscriptionVisits);
+                if (!confA && confB) return -1;
+                if (confA && !confB) return 1;
+                return 0;
+              });
+
               return (
-                <div className="space-y-2 max-h-80 overflow-y-auto pe-1">
-                  {filtered.map((t) => {
+                <div className="space-y-2.5 max-h-80 overflow-y-auto pe-1">
+                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 text-xs flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-sky-500" />
+                      <span>موعد الطلب: <strong className="font-mono text-slate-900 dark:text-white">{order.date}</strong> ({schedule.displayTime})</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-semibold">استبعاد التعارض تلقائياً</span>
+                  </div>
+
+                  {sorted.map((t) => {
                     const isCurrent = order.technician?.id === t.id || (order as any).assignedTechnicianId === t.id;
                     const isAssigningThis = assigningTechId === t.id;
+                    const conflictingOrder = findConflictingOrder(order, t.id, orders, subscriptionVisits);
+                    const isConflicting = !!conflictingOrder;
+
                     return (
                       <div
                         key={t.id}
                         className={cn(
                           'p-3 rounded-2xl border transition-all flex items-center justify-between gap-3',
-                          isCurrent
+                          isConflicting
+                            ? 'border-rose-200 dark:border-rose-900/40 bg-rose-50/20 dark:bg-rose-950/10 opacity-80'
+                            : isCurrent
                             ? 'border-sky-500/50 bg-sky-50/40 dark:bg-sky-950/20 shadow-xs'
                             : 'border-slate-200 dark:border-slate-800 hover:border-sky-400 bg-white dark:bg-slate-900'
                         )}
@@ -767,10 +938,13 @@ export default function AdminOrderDetailPage() {
                           <img
                             src={t.avatar || '/images/cleanzo-logo.png'}
                             alt={t.name}
-                            className="w-11 h-11 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                            className={cn(
+                              "w-11 h-11 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0",
+                              isConflicting && "grayscale-30"
+                            )}
                           />
                           <div className="text-xs min-w-0 space-y-0.5">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <p className="font-bold text-slate-900 dark:text-white truncate">{t.name}</p>
                               {isCurrent && (
                                 <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-sky-500 text-white shrink-0">
@@ -781,38 +955,60 @@ export default function AdminOrderDetailPage() {
                             <p className="text-[11px] text-slate-400 truncate">
                               {t.specialty || 'فني ميداني'} • {t.phone}
                             </p>
-                            <div className="flex items-center gap-2 pt-0.5">
-                              <span
-                                className={cn(
-                                  'text-[10px] font-semibold px-2 py-0.5 rounded-md',
-                                  t.status === 'available'
-                                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400'
-                                    : 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400'
-                                )}
-                              >
-                                {t.status === 'available' ? 'متاح' : t.status === 'busy' ? 'في مهمة' : t.status || 'متاح'}
-                              </span>
-                              {t.rating ? (
-                                <span className="text-[10px] text-amber-500 font-bold">
-                                  ★ {t.rating}
+                            
+                            {/* Availability and Conflict Indicators */}
+                            {isConflicting ? (
+                              <div className="pt-0.5 space-y-0.5">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                                  <AlertCircle className="w-3 h-3 text-rose-500 shrink-0" />
+                                  <span>غير متاح (تعارض في المواعيد)</span>
                                 </span>
-                              ) : null}
-                            </div>
+                                <p className="text-[10px] text-rose-600 dark:text-rose-400 font-medium">
+                                  مرتبط بـ {conflictingOrder.type === 'visit' ? 'زيارة اشتراك' : 'الطلب'} #{conflictingOrder.id} ({conflictingOrder.time})
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 pt-0.5">
+                                <span
+                                  className={cn(
+                                    'text-[10px] font-semibold px-2 py-0.5 rounded-md',
+                                    t.status === 'available'
+                                      ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400'
+                                      : 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400'
+                                  )}
+                                >
+                                  {t.status === 'available' ? 'متاح' : t.status === 'busy' ? 'في مهمة' : t.status || 'متاح'}
+                                </span>
+                                {t.rating ? (
+                                  <span className="text-[10px] text-amber-500 font-bold">
+                                    ★ {t.rating}
+                                  </span>
+                                ) : null}
+                              </div>
+                            )}
                           </div>
                         </div>
 
                         <button
+                          type="button"
                           onClick={() => handleAssignTech(t)}
-                          disabled={isAssigningThis}
+                          disabled={isAssigningThis || isConflicting}
+                          title={
+                            isConflicting
+                              ? `غير متاح لوجود تعارض مع ${conflictingOrder.type === 'visit' ? 'زيارة اشتراك' : 'الطلب'} #${conflictingOrder.id} (${conflictingOrder.time})`
+                              : undefined
+                          }
                           className={cn(
-                            'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50',
-                            isCurrent
-                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-sky-500 hover:text-white'
-                              : 'bg-sky-500 hover:bg-sky-600 text-white shadow-xs'
+                            'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0',
+                            isConflicting
+                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border border-slate-200 dark:border-slate-700'
+                              : isCurrent
+                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-sky-500 hover:text-white cursor-pointer'
+                              : 'bg-sky-500 hover:bg-sky-600 text-white shadow-xs cursor-pointer'
                           )}
                         >
                           {isAssigningThis && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                          <span>{isCurrent ? 'إعادة الإسناد' : 'إسناد'}</span>
+                          <span>{isConflicting ? 'متعارض' : isCurrent ? 'إعادة الإسناد' : 'إسناد'}</span>
                         </button>
                       </div>
                     );

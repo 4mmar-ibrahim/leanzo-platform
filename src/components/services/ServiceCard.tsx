@@ -11,6 +11,7 @@ import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { Button } from '@/components/ui/Button';
 import { formatDuration } from '@/lib/utils';
 import { CleanzoImage } from '@/components/common/CleanzoImage';
+import { getServiceDisplayPrice } from '@/lib/pricing';
 
 interface ServiceCardProps {
   service: Service;
@@ -23,6 +24,7 @@ export function ServiceCard({ service, featured = false }: ServiceCardProps) {
   const { selectService } = useBookingStore();
   const isAr = locale === 'ar';
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
+  const pricing = getServiceDisplayPrice(service);
 
   const handleBookNow = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -120,7 +122,7 @@ export function ServiceCard({ service, featured = false }: ServiceCardProps) {
             <span className="text-[10px] text-slate-400 font-medium">
               {isAr ? 'يبدأ من' : 'Starting from'}
             </span>
-            <PriceDisplay price={service.price} originalPrice={service.originalPrice} size="sm" />
+            <PriceDisplay price={pricing.sellingPrice} originalPrice={pricing.hasDiscount ? pricing.originalPrice : undefined} size="sm" />
           </div>
 
           <div className="flex items-center gap-2">

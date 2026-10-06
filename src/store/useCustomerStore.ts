@@ -48,13 +48,13 @@ export const useCustomerStore = create<CustomerState>((set, get) => ({
       addCustomer: (data) => {
         const newCustomer: CustomerProfile = {
           ...data,
-          id: `usr-${Date.now().toString().slice(-4)}`,
-          createdAt: new Date().toISOString().split('T')[0],
-          totalSpent: 0,
-          ordersCount: 0,
-          completedOrdersCount: 0,
-          cancelledOrdersCount: 0,
-          notes: [],
+          id: (data as any).id || `usr-${Date.now().toString().slice(-4)}`,
+          createdAt: (data as any).createdAt || new Date().toISOString().split('T')[0],
+          totalSpent: (data as any).totalSpent || 0,
+          ordersCount: (data as any).ordersCount || 0,
+          completedOrdersCount: (data as any).completedOrdersCount || 0,
+          cancelledOrdersCount: (data as any).cancelledOrdersCount || 0,
+          notes: (data as any).notes || [],
         };
         set((state) => ({
           customers: [newCustomer, ...state.customers],
