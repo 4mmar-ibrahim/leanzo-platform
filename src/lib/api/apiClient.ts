@@ -285,24 +285,29 @@ export async function apiRequest<T = any>(
 ): Promise<T> {
   const { isAdmin = false, _isRetry = false, headers = {}, ...rest } = options;
 
+  // Explicit or implicit admin endpoint detection
+  const isAdminExplicitOrPath =
+    isAdmin ||
+    endpoint.includes('/admin') ||
+    endpoint.startsWith('/admin') ||
+    endpoint.includes('/audit-logs');
+
   // Public endpoints should never be treated as admin endpoints
   const isPublicEndpoint =
-    endpoint.includes('/public') ||
-    endpoint.startsWith('/public') ||
-    endpoint === '/settings/public' ||
-    endpoint.startsWith('/auth/customer') ||
-    endpoint.startsWith('/services') ||
-    endpoint.startsWith('/portfolio') ||
-    endpoint.startsWith('/offers') ||
-    endpoint.startsWith('/reviews');
+    !isAdminExplicitOrPath &&
+    (endpoint.includes('/public') ||
+      endpoint.startsWith('/public') ||
+      endpoint === '/settings/public' ||
+      endpoint.startsWith('/auth/customer') ||
+      (endpoint.startsWith('/services') && !endpoint.includes('/admin')) ||
+      (endpoint.startsWith('/portfolio') && !endpoint.includes('/admin')) ||
+      (endpoint.startsWith('/offers') && !endpoint.includes('/admin')) ||
+      (endpoint.startsWith('/reviews') && !endpoint.includes('/admin')));
 
   // Auto-detect admin context from route or path
   const isEffectiveAdmin =
     !isPublicEndpoint &&
-    (isAdmin ||
-      endpoint.includes('/admin') ||
-      endpoint.startsWith('/admin') ||
-      endpoint.includes('/audit-logs') ||
+    (isAdminExplicitOrPath ||
       (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')));
 
   const token = isEffectiveAdmin ? getAdminAuthToken() : getCustomerAuthToken();
