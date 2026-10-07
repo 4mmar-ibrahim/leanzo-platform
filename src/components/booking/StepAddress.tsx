@@ -101,7 +101,7 @@ export function StepAddress() {
     const rawVal = e.target.value;
 
     if (/[^0-9]/.test(rawVal)) {
-      setPhoneError('يرجى إدخال أرقام فقط.');
+      setPhoneError(isAr ? 'يرجى إدخال أرقام فقط.' : 'Please enter numbers only.');
     } else {
       setPhoneError(null);
     }
@@ -112,30 +112,40 @@ export function StepAddress() {
     if (digits.length >= 3) {
       const prefix = digits.slice(0, 3);
       if (!VALID_EGYPTIAN_PREFIXES.includes(prefix as any)) {
-        setPhoneError('رقم الهاتف يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015.');
+        setPhoneError(
+          isAr
+            ? 'رقم الهاتف يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015.'
+            : 'Phone number must start with 010, 011, 012, or 015.'
+        );
       } else if (digits.length === 11) {
         setPhoneError(null);
       } else if (phoneTouched) {
-        setPhoneError('رقم الهاتف يجب أن يتكون من 11 رقمًا.');
+        setPhoneError(
+          isAr
+            ? 'رقم الهاتف يجب أن يتكون من 11 رقمًا.'
+            : 'Phone number must be 11 digits.'
+        );
       }
-    } else if (digits.length === 0) {
-      setPhoneError(null);
+    } else if (digits.length === 0 && phoneTouched) {
+      setPhoneError(
+        isAr ? 'يرجى إدخال رقم الهاتف للتواصل.' : 'Please enter contact phone number.'
+      );
     } else {
-      if (!/[^0-9]/.test(rawVal)) {
-        setPhoneError(null);
-      }
+      setPhoneError(null);
     }
   };
 
   const handleGuestPhoneBlur = () => {
     setPhoneTouched(true);
-    if (!guestPhoneInput) {
-      setPhoneError(null);
+    if (!guestPhoneInput.trim()) {
+      setPhoneError(
+        isAr ? 'يرجى إدخال رقم الهاتف للتواصل.' : 'Please enter contact phone number.'
+      );
       return;
     }
     const val = validateEgyptianPhone(guestPhoneInput);
     if (!val.isValid) {
-      setPhoneError(val.message || 'يرجى إدخال رقم هاتف مصري صحيح.');
+      setPhoneError(val.message || (isAr ? 'يرجى إدخال رقم هاتف مصري صحيح.' : 'Please enter a valid Egyptian phone number.'));
     } else {
       setPhoneError(null);
     }
@@ -300,31 +310,38 @@ export function StepAddress() {
     }
 
     // Customer name validation (mandatory)
-    // When unauthenticated, always strictly validate what the guest typed in guestNameInput
     const activeName = (!isAuthenticated ? guestNameInput : (guestNameInput || user?.name || '')).trim();
     const nameVal = validateCustomerName(activeName, isAr);
     if (!nameVal.isValid) {
       setNameTouched(true);
-      setNameError(nameVal.message || (isAr ? 'يرجى إدخال اسم العميل' : 'Please enter customer name'));
-      toast.error(nameVal.message || (isAr ? 'يرجى إدخال اسم العميل' : 'Please enter customer name'));
+      setNameError(nameVal.message || (isAr ? 'يرجى إدخال اسم العميل.' : 'Please enter customer name.'));
+      toast.error(nameVal.message || (isAr ? 'يرجى إدخال اسم العميل.' : 'Please enter customer name.'));
       return;
     }
     setNameError(null);
     const effectiveName = activeName;
 
+    // Contact phone validation (mandatory)
+    const activePhone = (!isAuthenticated ? guestPhoneInput : (guestPhoneInput || user?.phone || '')).trim();
+    if (!activePhone) {
+      setPhoneTouched(true);
+      setPhoneError(isAr ? 'يرجى إدخال رقم الهاتف للتواصل.' : 'Please enter contact phone number.');
+      toast.error(isAr ? 'يرجى إدخال رقم الهاتف للتواصل.' : 'Please enter contact phone number.');
+      return;
+    }
+    const phoneVal = validateEgyptianPhone(activePhone);
+    if (!phoneVal.isValid) {
+      setPhoneTouched(true);
+      setPhoneError(phoneVal.message || (isAr ? 'يرجى إدخال رقم هاتف مصري صحيح.' : 'Please enter a valid Egyptian phone number.'));
+      toast.error(phoneVal.message || (isAr ? 'يرجى إدخال رقم هاتف مصري صحيح.' : 'Please enter a valid Egyptian phone number.'));
+      return;
+    }
+    setPhoneError(null);
+    const effectivePhone = activePhone;
+
     if (!area.trim()) {
       toast.error(isAr ? 'يرجى إدخال اسم المنطقة أو الشارع' : 'Please enter the street or area details');
       return;
-    }
-
-    if (!user?.phone && guestPhoneInput.trim()) {
-      const phoneVal = validateEgyptianPhone(guestPhoneInput.trim());
-      if (!phoneVal.isValid) {
-        setPhoneTouched(true);
-        setPhoneError(phoneVal.message || 'يرجى إدخال رقم هاتف مصري صحيح.');
-        toast.error(phoneVal.message || 'يرجى إدخال رقم هاتف مصري صحيح.');
-        return;
-      }
     }
 
     setIsSubmitting(true);
@@ -578,20 +595,21 @@ export function StepAddress() {
           {!isAuthenticated && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
               <Input
-                label={isAr ? 'رقم الهاتف للتواصل (اختياري)' : 'Contact Phone (Optional)'}
+                label={isAr ? 'رقم الهاتف للتواصل' : 'Contact Phone'}
                 type="tel"
                 inputMode="numeric"
                 maxLength={11}
                 dir="ltr"
-                placeholder="01012345678"
+                placeholder={isAr ? 'مثال: 01012345678' : 'e.g. 01012345678'}
                 value={guestPhoneInput}
                 onChange={handleGuestPhoneChange}
                 onBlur={handleGuestPhoneBlur}
                 error={phoneError || undefined}
+                required
               />
               <Input
                 label={isAr ? 'اسم العميل' : 'Customer Name'}
-                placeholder={isAr ? 'أحمد عبد الله' : 'Customer Name'}
+                placeholder={isAr ? 'مثال: أحمد عبد الله' : 'e.g. Ahmed Abdallah'}
                 value={guestNameInput}
                 onChange={handleGuestNameChange}
                 onBlur={handleGuestNameBlur}

@@ -47,6 +47,8 @@ export function StepReview() {
     getDiscountAmount,
     getServiceFee,
     getFinalPrice,
+    guestName,
+    guestPhone,
     getItemizedPricing,
   } = useBookingStore();
   const user = useAuthStore((s) => s.user);
@@ -198,6 +200,16 @@ export function StepReview() {
                     .join(', ')}
                 </p>
               )}
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                <p>
+                  <span className="font-bold text-slate-700 dark:text-slate-300">{isAr ? 'اسم العميل: ' : 'Customer: '}</span>
+                  {guestName || user?.name || (isAr ? 'غير محدد' : 'N/A')}
+                </p>
+                <p>
+                  <span className="font-bold text-slate-700 dark:text-slate-300">{isAr ? 'رقم الهاتف: ' : 'Phone: '}</span>
+                  <span className="font-mono dir-ltr inline-block">{guestPhone || user?.phone || selectedAddress?.customerPhone || (isAr ? 'غير محدد' : 'N/A')}</span>
+                </p>
+              </div>
             </div>
           ) : (
             <p className="text-xs text-rose-500">{isAr ? 'لم يتم تحديد عنوان' : 'No address selected'}</p>

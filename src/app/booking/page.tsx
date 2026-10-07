@@ -109,7 +109,10 @@ function BookingContent() {
     if (currentStep === 3) {
       if (!selectedAddress) return false;
       const effectiveName = (!isAuthenticated ? guestName : (user?.name || guestName || '')).trim();
-      return validateCustomerName(effectiveName, isAr).isValid;
+      const isNameValid = validateCustomerName(effectiveName, isAr).isValid;
+      const effectivePhone = (!isAuthenticated ? guestPhone : (user?.phone || guestPhone || selectedAddress?.customerPhone || '')).trim();
+      const isPhoneValid = validateEgyptianPhone(effectivePhone).isValid;
+      return isNameValid && isPhoneValid;
     }
     return true;
   };
@@ -118,15 +121,17 @@ function BookingContent() {
   useEffect(() => {
     const effectiveName = (!isAuthenticated ? guestName : (user?.name || guestName || '')).trim();
     const isNameValid = validateCustomerName(effectiveName, isAr).isValid;
+    const effectivePhone = (!isAuthenticated ? guestPhone : (user?.phone || guestPhone || selectedAddress?.customerPhone || '')).trim();
+    const isPhoneValid = validateEgyptianPhone(effectivePhone).isValid;
 
     if (currentStep > 1 && !isServiceValid) {
       setStep(1);
     } else if (currentStep > 2 && (!selectedDate || !selectedTime)) {
       setStep(2);
-    } else if (currentStep > 3 && (!selectedAddress || !isNameValid)) {
+    } else if (currentStep > 3 && (!selectedAddress || !isNameValid || !isPhoneValid)) {
       setStep(3);
     }
-  }, [currentStep, isServiceValid, selectedDate, selectedTime, selectedAddress, isAuthenticated, user?.name, guestName, isAr, setStep]);
+  }, [currentStep, isServiceValid, selectedDate, selectedTime, selectedAddress, isAuthenticated, user?.name, user?.phone, guestName, guestPhone, isAr, setStep]);
 
   const handleNext = () => {
     if (!canProceed()) {
@@ -149,10 +154,14 @@ function BookingContent() {
       if (currentStep === 3) {
         const effectiveName = (!isAuthenticated ? guestName : (user?.name || guestName || '')).trim();
         const nameVal = validateCustomerName(effectiveName, isAr);
+        const effectivePhone = (!isAuthenticated ? guestPhone : (user?.phone || guestPhone || selectedAddress?.customerPhone || '')).trim();
+        const phoneVal = validateEgyptianPhone(effectivePhone);
         if (!selectedAddress) {
           toast.error(isAr ? 'يرجى اختيار وتأكيد عنوان الخدمة' : 'Please select and confirm service address');
         } else if (!nameVal.isValid) {
           toast.error(nameVal.message || (isAr ? 'يرجى إدخال اسم العميل للمتابعة' : 'Please enter customer name to proceed'));
+        } else if (!phoneVal.isValid) {
+          toast.error(phoneVal.message || (isAr ? 'يرجى إدخال رقم الهاتف للتواصل للمتابعة' : 'Please enter contact phone number to proceed'));
         }
       }
       return;
@@ -228,17 +237,30 @@ function BookingContent() {
         return;
       }
       const effectiveName = rawName;
-      const effectivePhone = user?.phone || guestPhone || selectedAddress?.customerPhone || undefined;
+      const rawPhone = (user?.phone || guestPhone || selectedAddress?.customerPhone || '').trim();
 
-      // Validate guest phone if user is not authenticated
-      if (!user?.phone && effectivePhone) {
-        const phoneVal = validateEgyptianPhone(effectivePhone.trim());
-        if (!phoneVal.isValid) {
-          toast.error(phoneVal.message || 'يرجى إدخال رقم هاتف مصري صحيح.');
-          setIsSubmitting(false);
-          return;
-        }
+      if (!rawPhone) {
+        toast.error(
+          isAr
+            ? 'يرجى إدخال رقم الهاتف للتواصل لإتمام الحجز.'
+            : 'Please enter contact phone number to complete booking.'
+        );
+        setIsSubmitting(false);
+        return;
       }
+
+      const phoneVal = validateEgyptianPhone(rawPhone);
+      if (!phoneVal.isValid) {
+        toast.error(
+          phoneVal.message ||
+            (isAr
+              ? 'يرجى إدخال رقم هاتف مصري صحيح (11 رقم يبدأ بـ 010 أو 011 أو 012 أو 015).'
+              : 'Please enter a valid Egyptian phone number.')
+        );
+        setIsSubmitting(false);
+        return;
+      }
+      const effectivePhone = rawPhone;
 
       // Check if customer account is deactivated by admin
       if (effectivePhone) {
