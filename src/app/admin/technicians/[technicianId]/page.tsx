@@ -41,7 +41,7 @@ import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { useTechnicianStore } from '@/store/useTechnicianStore';
 import { useAdminStore } from '@/store/useAdminStore';
 import { useActivityLogStore } from '@/store/useActivityLogStore';
-import { cn } from '@/lib/utils';
+import { cn, formatTimeTo12Hour } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
   TechnicianExtended,
@@ -771,7 +771,7 @@ export default function TechnicianProfileDashboardPage() {
                         dateStyle: 'short',
                         timeStyle: 'short',
                       })
-                    : order.timeSlotStart || order.time || 'قيد الجدولة';
+                    : formatTimeTo12Hour(order.timeSlotStart || order.time) || 'قيد الجدولة';
 
                   return (
                     <tr
@@ -814,7 +814,7 @@ export default function TechnicianProfileDashboardPage() {
                       {/* Booking Date & Time */}
                       <td className="py-3 px-4">
                         <div className="text-slate-900 dark:text-white font-medium">{order.date}</div>
-                        <div className="text-[11px] text-slate-400">{order.time}</div>
+                        <div className="text-[11px] text-slate-400">{formatTimeTo12Hour(order.time)}</div>
                       </td>
 
                       {/* Execution Time */}

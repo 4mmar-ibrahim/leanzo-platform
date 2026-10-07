@@ -1,4 +1,7 @@
 import { BookingSettings, Order } from '@/types';
+import { formatTimeTo12Hour, formatSingleTimeTo12Hour, formatStartTimeTo12Hour } from './timeUtils';
+
+export { formatTimeTo12Hour, formatSingleTimeTo12Hour, formatStartTimeTo12Hour };
 
 export interface BookingSlot {
   time: string;
@@ -511,10 +514,11 @@ export function getTimeSlotsForDate(
       }
     }
 
+    const time12 = formatTimeTo12Hour(start24);
     slots.push({
-      time: intervalLabel,
-      label: intervalLabel,
-      labelEn: intervalLabel,
+      time: time12,
+      label: time12,
+      labelEn: time12,
       isAvailable,
       reason,
     });

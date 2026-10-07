@@ -6,6 +6,7 @@
  */
 
 import { Order } from '@/types';
+import { formatTimeTo12Hour } from './timeUtils';
 
 /**
  * Triggers printing of an HTML string inside a dedicated hidden iframe.
@@ -732,7 +733,7 @@ export function generateOfficialInvoiceHtml(order: Order, companySettings?: any)
           <td>
             <div class="detail-heading">تفاصيل الحجز والتنفيذ</div>
             <div class="detail-row"><strong>تاريخ الفاتورة:</strong> ${invoiceDate}</div>
-            <div class="detail-row"><strong>موعد الخدمة المحدد:</strong> ${order.date} — ${order.time}</div>
+            <div class="detail-row"><strong>موعد الخدمة المحدد:</strong> ${order.date} — ${formatTimeTo12Hour(order.time)}</div>
             <div class="detail-row"><strong>الفني المسؤول:</strong> ${techName}</div>
             <div class="detail-row"><strong>طريقة الدفع:</strong> ${paymentMethod === 'card' ? 'بطاقة ائتمانية' : paymentMethod === 'wallet' ? 'محفظة إلكترونية' : 'دفع نقدي عند الاستلام (كاش)'}</div>
           </td>

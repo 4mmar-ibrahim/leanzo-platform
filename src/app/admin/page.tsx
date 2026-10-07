@@ -28,6 +28,7 @@ import { useTechnicianStore } from '@/store/useTechnicianStore';
 import { useAnalyticsResetStore } from '@/store/useAnalyticsResetStore';
 import { ClearStatsButton } from '@/components/admin/ClearStatsButton';
 import { OrderStatus } from '@/types';
+import { formatTimeTo12Hour } from '@/lib/timeUtils';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { AdminTour } from '@/components/admin/AdminTour';
@@ -460,7 +461,7 @@ export default function AdminDashboardPage() {
                       </td>
                       <td className="py-3 px-3">
                         <div className="text-slate-800 dark:text-slate-200">{order.date}</div>
-                        <span className="text-[10px] text-slate-400">{order.time}</span>
+                        <span className="text-[10px] text-slate-400">{formatTimeTo12Hour(order.time)}</span>
                       </td>
                       <td className="py-3 px-3 text-slate-600 dark:text-slate-300 max-w-[150px] truncate">
                         {order.address?.area || 'الرياض'}

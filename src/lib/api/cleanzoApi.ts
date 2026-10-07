@@ -227,7 +227,8 @@ export const cleanzoApi = {
   // Bookings & Orders
   bookings: {
     create: (bookingData: {
-      serviceId: string;
+      serviceId?: string;
+      services?: Array<{ serviceId: string; packageId?: string; addonIds?: string[] }>;
       packageId?: string;
       addonIds?: string[];
       category?: ServiceCategory;
@@ -248,7 +249,8 @@ export const cleanzoApi = {
     trackOrder: (id: string, phone?: string) =>
       apiRequest<Order>(`/bookings/track/${id}${phone ? `?phone=${phone}` : ''}`),
     calculatePrice: (options: {
-      serviceId: string;
+      serviceId?: string;
+      services?: Array<{ serviceId: string; packageId?: string; addonIds?: string[] }>;
       packageId?: string;
       addonIds?: string[];
       promoCode?: string;

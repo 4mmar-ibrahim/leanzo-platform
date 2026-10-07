@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { toast } from 'sonner';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
+import { formatTimeTo12Hour } from '@/lib/timeUtils';
 
 export default function OrderDetailsPage() {
   const params = useParams();
@@ -245,7 +246,7 @@ export default function OrderDetailsPage() {
             </div>
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-[#0866C6] shrink-0" />
-              <span>{order.time}</span>
+              <span>{formatTimeTo12Hour(order.time)}</span>
             </div>
             <div className="flex items-start gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <MapPin className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
@@ -258,6 +259,44 @@ export default function OrderDetailsPage() {
           </div>
         </div>
       </div>
+
+      {/* Multi-Service Itemized List if multiple services exist */}
+      {Array.isArray((order as any).serviceSnapshot?.services) && (order as any).serviceSnapshot.services.length > 1 && (
+        <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            {isAr ? `الخدمات المشمولة بالطلب (${(order as any).serviceSnapshot.services.length})` : `Included Services (${(order as any).serviceSnapshot.services.length})`}
+          </h3>
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {(order as any).serviceSnapshot.services.map((subSrv: any, idx: number) => (
+              <div key={idx} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                <div>
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    #{idx + 1} {isAr ? subSrv.title : (subSrv.titleEn || subSrv.title)}
+                  </span>
+                  {subSrv.package && (
+                    <span className="text-sky-600 dark:text-sky-400 block text-[11px]">
+                      {isAr ? `باقة: ${subSrv.package.name}` : `Package: ${subSrv.package.name}`}
+                    </span>
+                  )}
+                  {subSrv.addons && subSrv.addons.length > 0 && (
+                    <span className="text-amber-600 dark:text-amber-400 block text-[10px]">
+                      +{subSrv.addons.length} {isAr ? 'إضافات' : 'add-ons'}
+                    </span>
+                  )}
+                </div>
+                <div className="text-end font-mono">
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    {subSrv.subtotal || subSrv.price} {isAr ? 'ج.م' : 'EGP'}
+                  </span>
+                  <span className="block text-[10px] text-slate-400">
+                    {subSrv.duration} {isAr ? 'دقيقة' : 'min'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Financial Summary */}
       <div className="p-6 rounded-3xl bg-slate-100 dark:bg-slate-800/60 space-y-3">

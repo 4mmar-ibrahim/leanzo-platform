@@ -12,6 +12,8 @@ import {
   ShieldCheck,
   Clock,
   Loader2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useBookingStore } from '@/store/useBookingStore';
@@ -46,6 +48,7 @@ function BookingContent() {
     setStep,
     nextStep,
     prevStep,
+    selectedServices,
     selectedService,
     selectedPackage,
     selectedAddons,
@@ -88,6 +91,7 @@ function BookingContent() {
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isMobileSummaryOpen, setIsMobileSummaryOpen] = useState(false);
 
   const steps = [
     { num: 1, label: t.booking.step1, icon: Sparkles },
@@ -96,15 +100,15 @@ function BookingContent() {
     { num: 4, label: t.booking.step4, icon: CheckCircle2 },
   ];
 
-  const isServiceValid =
+  const hasServices = (selectedServices && selectedServices.length > 0) || (
     !!selectedService &&
-    selectedService.category === category &&
     selectedService.available !== false &&
     !(selectedService as any).isArchived &&
-    (selectedService as any).active !== false;
+    (selectedService as any).active !== false
+  );
 
   const canProceed = () => {
-    if (currentStep === 1) return isServiceValid;
+    if (currentStep === 1) return hasServices;
     if (currentStep === 2) return !!selectedDate && !!selectedTime;
     if (currentStep === 3) {
       if (!selectedAddress) return false;
@@ -117,6 +121,15 @@ function BookingContent() {
     return true;
   };
 
+  // Scroll to top whenever step changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    }
+  }, [currentStep]);
+
   // Step Guards: Protect direct URLs, refresh, and state corruption
   useEffect(() => {
     const effectiveName = (!isAuthenticated ? guestName : (user?.name || guestName || '')).trim();
@@ -124,14 +137,14 @@ function BookingContent() {
     const effectivePhone = (!isAuthenticated ? guestPhone : (user?.phone || guestPhone || selectedAddress?.customerPhone || '')).trim();
     const isPhoneValid = validateEgyptianPhone(effectivePhone).isValid;
 
-    if (currentStep > 1 && !isServiceValid) {
+    if (currentStep > 1 && !hasServices) {
       setStep(1);
     } else if (currentStep > 2 && (!selectedDate || !selectedTime)) {
       setStep(2);
     } else if (currentStep > 3 && (!selectedAddress || !isNameValid || !isPhoneValid)) {
       setStep(3);
     }
-  }, [currentStep, isServiceValid, selectedDate, selectedTime, selectedAddress, isAuthenticated, user?.name, user?.phone, guestName, guestPhone, isAr, setStep]);
+  }, [currentStep, hasServices, selectedDate, selectedTime, selectedAddress, isAuthenticated, user?.name, user?.phone, guestName, guestPhone, isAr, setStep]);
 
   const handleNext = () => {
     if (!canProceed()) {
@@ -200,28 +213,35 @@ function BookingContent() {
   const executeOrderCreation = async () => {
     // Duplicate submission guard (Idempotency)
     if (isSubmitting) return;
-    if (!selectedService || !selectedAddress) return;
 
-    if (selectedService.category !== category) {
-      toast.error(isAr ? 'الخدمة المختارة لا تنتمي إلى تصنيف الحجز المطلوب' : 'Service does not belong to selected category');
+    const allItems = selectedServices && selectedServices.length > 0
+      ? selectedServices
+      : selectedService
+      ? [{ service: selectedService, selectedPackage, selectedAddons }]
+      : [];
+
+    if (allItems.length === 0 || !selectedAddress) {
+      toast.error(isAr ? 'يرجى تحديد الخدمات وعنوان تقديم الخدمة' : 'Please select services and address');
       return;
     }
 
+    const primaryService = allItems[0].service;
+
     // Per-Service Slot Conflict Prevention:
-    // Disallow booking if an active order already exists for this same service at the chosen date and time
+    // Disallow booking if an active order already exists for any of these services at the chosen date and time
     const existingOrders = useOrderStore.getState().orders || [];
     const isAlreadyBooked = existingOrders.some((o) => {
       if (o.status === 'cancelled') return false;
       if (o.date !== selectedDate) return false;
-      if (!isSameService(o, selectedService.id, selectedService.title)) return false;
-      return isSameTime(o.time, selectedTime);
+      const matchesAny = allItems.some((item) => isSameService(o, item.service.id, item.service.title));
+      return matchesAny && isSameTime(o.time, selectedTime);
     });
 
     if (isAlreadyBooked) {
       toast.error(
         isAr
-          ? `عذراً، موعد (${selectedTime}) محجوز بالفعل لهذه الخدمة. يرجى اختيار موعد آخر.`
-          : `Sorry, (${selectedTime}) is already booked for this service. Please choose another time.`
+          ? `عذراً، موعد (${selectedTime}) محجوز بالفعل لإحدى الخدمات المختارة. يرجى اختيار موعد آخر.`
+          : `Sorry, (${selectedTime}) is already booked for one of the selected services. Please choose another time.`
       );
       return;
     }
@@ -281,11 +301,18 @@ function BookingContent() {
         }
       }
 
+      const servicesPayload = allItems.map((item) => ({
+        serviceId: item.service.id,
+        packageId: item.selectedPackage?.id,
+        addonIds: item.selectedAddons?.map((a) => a.id) || [],
+      }));
+
       const createdBooking = await cleanzoApi.bookings.create({
-        serviceId: selectedService.id,
-        packageId: selectedPackage?.id,
-        addonIds: selectedAddons.map((a) => a.id),
-        category: category,
+        serviceId: primaryService.id,
+        services: servicesPayload,
+        packageId: allItems[0]?.selectedPackage?.id,
+        addonIds: allItems[0]?.selectedAddons?.map((a) => a.id) || [],
+        category: primaryService.category || category,
         date: selectedDate,
         time: selectedTime,
         address: selectedAddress,
@@ -332,15 +359,15 @@ function BookingContent() {
   };
 
   return (
-    <div className="py-10 bg-slate-50 dark:bg-[#0B1120] min-h-screen">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+    <div className="py-3 sm:py-8 pb-32 sm:pb-16 bg-slate-50 dark:bg-[#0B1120] min-h-screen">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 space-y-3.5 sm:space-y-6">
         {/* Wizard Header & Progress Bar */}
-        <div className="space-y-6">
-          <div className="text-center space-y-2">
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
+        <div className="space-y-2.5 sm:space-y-4">
+          <div className="text-center space-y-1 sm:space-y-1.5">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 dark:text-white">
               {t.booking.wizardTitle}
             </h1>
-            <p className="text-xs sm:text-sm text-slate-500">
+            <p className="text-[11px] sm:text-xs text-slate-500">
               {isAr
                 ? 'أكمل الخطوات التالية لتثبيت موعد الخدمة بكل سهولة وسرعة'
                 : 'Complete the steps below to secure your appointment'}
@@ -349,7 +376,7 @@ function BookingContent() {
 
           {/* Stepper Indicator */}
           <div className="relative">
-            <div className="grid grid-cols-4 gap-2 sm:gap-4 max-w-2xl mx-auto">
+            <div className="grid grid-cols-4 gap-1 sm:gap-3 max-w-xl mx-auto">
               {steps.map((step) => {
                 const Icon = step.icon;
                 const isCompleted = currentStep > step.num;
@@ -363,14 +390,14 @@ function BookingContent() {
                       if (step.num < currentStep) {
                         setStep(step.num);
                       } else if (step.num > currentStep) {
-                        if (!isServiceValid) {
+                        if (!hasServices) {
                           toast.error(isAr ? 'من فضلك اختر خدمة أولًا للمتابعة.' : 'Please select a service to continue.');
                         } else if (currentStep === 1) {
                           handleNext();
                         }
                       }
                     }}
-                    className={`flex flex-col items-center gap-2 p-2 rounded-2xl transition-all ${
+                    className={`flex flex-col items-center gap-1 sm:gap-1.5 p-1 sm:p-2 rounded-xl transition-all ${
                       isCurrent
                         ? 'text-sky-600 dark:text-sky-400 font-bold'
                         : isCompleted
@@ -379,17 +406,17 @@ function BookingContent() {
                     }`}
                   >
                     <div
-                      className={`w-9 h-9 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center transition-all ${
+                      className={`w-8 h-8 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all ${
                         isCurrent
-                          ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/30 scale-105'
+                          ? 'bg-sky-500 text-white shadow-md shadow-sky-500/30 scale-105'
                           : isCompleted
                           ? 'bg-[#0866C6] text-white'
                           : 'bg-slate-200 dark:bg-slate-800 text-slate-400'
                       }`}
                     >
-                      {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : <Icon className="w-5 h-5" />}
+                      {isCompleted ? <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5" /> : <Icon className="w-4 h-4 sm:w-5 sm:h-5" />}
                     </div>
-                    <span className="text-[11px] sm:text-xs text-center line-clamp-1">
+                    <span className="text-[10px] sm:text-xs text-center line-clamp-1 font-medium">
                       {step.label}
                     </span>
                   </button>
@@ -400,18 +427,18 @@ function BookingContent() {
         </div>
 
         {/* Wizard Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-8 items-start">
           {/* Active Step Panel */}
-          <div className="lg:col-span-8 p-6 sm:p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
+          <div className="lg:col-span-8 p-3 sm:p-6 lg:p-7 rounded-2xl sm:rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
             {currentStep === 1 && <StepService />}
             {currentStep === 2 && <StepDateTime />}
             {currentStep === 3 && <StepAddress />}
             {currentStep === 4 && <StepReview />}
 
             {/* Stepper Action Buttons */}
-            <div className="pt-8 mt-8 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-4">
+            <div className="pt-4 mt-4 sm:pt-6 sm:mt-6 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
               {currentStep > 1 ? (
-                <Button type="button" variant="outline" onClick={prevStep}>
+                <Button type="button" variant="outline" size="sm" onClick={prevStep} className="h-10 sm:h-11 px-3 sm:px-5 rounded-xl text-xs sm:text-sm font-semibold">
                   <ArrowBack className="w-4 h-4" />
                   <span>{t.booking.back}</span>
                 </Button>
@@ -431,9 +458,10 @@ function BookingContent() {
                   <Button
                     type="button"
                     variant="primary"
+                    size="sm"
                     disabled={!canProceed()}
                     onClick={handleNext}
-                    className={`shadow-md font-bold transition-all ${
+                    className={`h-10 sm:h-11 px-4 sm:px-6 rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all ${
                       !canProceed()
                         ? 'opacity-40 cursor-not-allowed bg-slate-300 dark:bg-slate-700 text-slate-500 shadow-none pointer-events-none'
                         : 'shadow-sky-500/20 bg-[#0866C6] hover:bg-[#07345C] text-white'
@@ -447,9 +475,10 @@ function BookingContent() {
                 <Button
                   type="button"
                   variant="primary"
+                  size="sm"
                   isLoading={isSubmitting}
                   onClick={handleFinalConfirm}
-                  className="shadow-xl shadow-[#0866C6]/30 font-bold bg-[#F0444C] hover:bg-[#c91219] text-white"
+                  className="h-10 sm:h-11 px-4 sm:px-6 rounded-xl text-xs sm:text-sm shadow-xl shadow-[#0866C6]/30 font-bold bg-[#F0444C] hover:bg-[#c91219] text-white"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>{t.booking.confirmBooking}</span>
@@ -459,7 +488,7 @@ function BookingContent() {
           </div>
 
           {/* Persistent Mini Summary & Mascot Guide (Right Rail on Desktop) */}
-          <div className="lg:col-span-4 space-y-4">
+          <div className="lg:col-span-4 space-y-3 sm:space-y-4">
             
             {/* Interactive Step Guide with Living Zo Character */}
             {bookingConfig?.enabled !== false && (() => {
@@ -493,16 +522,16 @@ function BookingContent() {
               const StepIcon = steps[currentStep - 1]?.icon || Sparkles;
 
               return (
-                <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-[#0866C6]/10 via-white to-[#F0444C]/5 dark:from-[#082845] dark:via-[#07345C] dark:to-[#041728] border-2 border-[#0866C6]/25 shadow-lg flex items-center gap-4 text-start">
-                  <div className="w-11 h-11 rounded-2xl bg-[#0866C6]/15 dark:bg-[#0866C6]/30 text-[#0866C6] dark:text-[#3894ec] flex items-center justify-center shrink-0 shadow-sm border border-[#0866C6]/30">
-                    <StepIcon className="w-5 h-5" />
+                <div className="p-3 sm:p-4 rounded-2xl bg-gradient-to-br from-[#0866C6]/10 via-white to-[#F0444C]/5 dark:from-[#082845] dark:via-[#07345C] dark:to-[#041728] border border-[#0866C6]/25 shadow-sm flex items-center gap-3 text-start">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#0866C6]/15 dark:bg-[#0866C6]/30 text-[#0866C6] dark:text-[#3894ec] flex items-center justify-center shrink-0 shadow-xs border border-[#0866C6]/30">
+                    <StepIcon className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
-                  <div className="space-y-1">
-                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#0866C6]/10 text-[#0866C6] dark:text-[#3894ec] text-[10px] font-black">
-                      <Sparkles className="w-2.5 h-2.5" />
+                  <div className="space-y-0.5">
+                    <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-[#0866C6]/10 text-[#0866C6] dark:text-[#3894ec] text-[9px] font-black">
+                      <Sparkles className="w-2 h-2" />
                       <span>{isAr ? `خطوة ${currentStep} من 4` : `Step ${currentStep} of 4`}</span>
                     </div>
-                    <p className="text-xs font-bold text-[#07345C] dark:text-white leading-relaxed">
+                    <p className="text-[11px] sm:text-xs font-bold text-[#07345C] dark:text-white leading-snug">
                       {zoStepConfig.message}
                     </p>
                   </div>
@@ -510,10 +539,44 @@ function BookingContent() {
               );
             })()}
 
-            <div className="p-6 rounded-3xl bg-white dark:bg-[#082845] border border-slate-200/80 dark:border-[#133B61] shadow-xs space-y-4 text-start">
-              <h3 className="text-sm font-bold text-[#07345C] dark:text-white pb-3 border-b border-slate-100 dark:border-[#133B61]/80">
-                {t.booking.summaryTitle}
-              </h3>
+            <div className="p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-white dark:bg-[#082845] border border-slate-200/80 dark:border-[#133B61] shadow-xs space-y-2.5 sm:space-y-3.5 text-start">
+              <div className="flex items-center justify-between pb-2 sm:pb-2.5 border-b border-slate-100 dark:border-[#133B61]/80">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs sm:text-sm font-bold text-[#07345C] dark:text-white">
+                    {t.booking.summaryTitle}
+                  </h3>
+                  {selectedService && (
+                    <span className="lg:hidden text-xs font-black text-[#0866C6] dark:text-sky-400 font-mono">
+                      • {getItemizedPricing().finalPrice} {isAr ? 'ج.م' : 'EGP'}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMobileSummaryOpen((prev) => !prev)}
+                  className="lg:hidden text-[11px] font-semibold text-[#0866C6] dark:text-sky-400 flex items-center gap-1 px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                >
+                  <span>{isMobileSummaryOpen ? (isAr ? 'إخفاء' : 'Hide') : (isAr ? 'التفاصيل' : 'Details')}</span>
+                  {isMobileSummaryOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+              </div>
+
+              <div className={`${isMobileSummaryOpen ? 'block' : 'hidden lg:block'} space-y-2.5 sm:space-y-3`}>
+                {selectedServices && selectedServices.length > 1 && (
+                  <div className="space-y-1.5 pb-2 border-b border-slate-100 dark:border-[#133B61]/80">
+                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
+                      {isAr ? 'الخدمات المختارة' : 'Selected Services'} ({selectedServices.length}):
+                    </span>
+                    <div className="space-y-1">
+                      {selectedServices.map((item) => (
+                        <div key={item.service.id} className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400">
+                          <span className="truncate max-w-[150px]">• {isAr ? item.service.title : item.service.titleEn}</span>
+                          <span className="font-mono font-semibold text-slate-900 dark:text-white">{item.service.price} {isAr ? 'ج.م' : 'EGP'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
               {selectedService ? (
                 <div className="space-y-3">
@@ -682,7 +745,7 @@ function BookingContent() {
                           </div>
                         )}
 
-                        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-baseline justify-between">
+                        <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-baseline justify-between">
                           <div>
                             <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
                               {isAr ? 'المبلغ النهائي المستحق' : 'Final Total'}
@@ -691,7 +754,7 @@ function BookingContent() {
                               {isAr ? 'شامل الضريبة والمصاريف' : 'VAT inclusive'}
                             </span>
                           </div>
-                          <span className="text-base font-black text-[#0866C6] dark:text-sky-400 font-mono">
+                          <span className="text-sm sm:text-base font-black text-[#0866C6] dark:text-sky-400 font-mono">
                             {pricing.finalPrice} {isAr ? 'ج.م' : 'EGP'}
                           </span>
                         </div>
@@ -704,14 +767,15 @@ function BookingContent() {
                   {isAr ? 'لم يتم اختيار خدمة بعد' : 'No service selected'}
                 </p>
               )}
+              </div>
             </div>
 
             {/* Quick Guarantee Badge (Cleanzo Livery colors) */}
-            <div className="p-4 rounded-2xl bg-[#0866C6]/5 dark:bg-[#0866C6]/10 border border-[#0866C6]/20 flex items-center gap-3 text-xs text-[#0866C6] dark:text-[#3B82F6]">
-              <div className="w-8 h-8 rounded-xl bg-[#F0444C]/10 text-[#F0444C] flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-5 h-5 stroke-[2.5]" />
+            <div className="p-3 sm:p-3.5 rounded-2xl bg-[#0866C6]/5 dark:bg-[#0866C6]/10 border border-[#0866C6]/20 flex items-center gap-2.5 text-xs text-[#0866C6] dark:text-[#3B82F6]">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-[#F0444C]/10 text-[#F0444C] flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
               </div>
-              <span className="text-slate-700 dark:text-slate-200 font-medium">
+              <span className="text-[11px] sm:text-xs text-slate-700 dark:text-slate-200 font-medium leading-relaxed">
                 {isAr
                   ? 'ضمان كلينزو الذهبي 100%: لا تدفع إلا بعد فحص ومعاينة النتيجة النهائية بنفسك.'
                   : 'Cleanzo 100% Gold Guarantee: You only pay after inspecting the finished result.'}

@@ -28,6 +28,7 @@ import { generateOfficialInvoiceHtml, printHtmlDocument } from '@/lib/printUtils
 import { OrderStatus, ServiceCategory } from '@/types';
 import { Sparkles, ShoppingBag } from 'lucide-react';
 import { apiGet } from '@/lib/api';
+import { formatTimeTo12Hour } from '@/lib/timeUtils';
 import { SubscriptionVisitDetailsModal } from '@/components/admin/orders/SubscriptionVisitDetailsModal';
 import GlobalFilterEngine, {
   GlobalFilterValues,
@@ -539,7 +540,7 @@ export default function AdminOrdersPage() {
 
                   <div className="flex items-center justify-between text-[11px] text-slate-500">
                     <span>
-                      {order.date} — {order.time} ({order.area})
+                      {order.date} — {formatTimeTo12Hour(order.time)} ({order.area})
                     </span>
                     <span className="font-bold text-sky-600 dark:text-sky-400 font-mono">
                       {order.price} ج.م {isSub && <span className="text-[9px] font-normal text-slate-400">(زيارة)</span>}
@@ -703,7 +704,7 @@ export default function AdminOrdersPage() {
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="text-slate-800 dark:text-slate-200">{order.date}</div>
-                        <span className="text-[10px] text-slate-400">{order.time}</span>
+                        <span className="text-[10px] text-slate-400">{formatTimeTo12Hour(order.time)}</span>
                       </td>
                       <td className="py-3.5 px-4 max-w-[160px] truncate text-slate-600 dark:text-slate-300">
                         {order.area}

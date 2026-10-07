@@ -143,8 +143,6 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
         service: {
           id: service.id,
           price: Number(service.price) || 0,
-          originalPrice: service.originalPrice,
-          discount: service.discount,
         },
         selectedPackage: selectedPkg
           ? {
@@ -358,14 +356,19 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
 
             {/* Clean Circular Service Image Presentation — No Overlays */}
             <div className="p-8 sm:p-12 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col items-center justify-center">
-              <div className="relative w-56 h-56 sm:w-72 sm:h-72 lg:w-80 lg:h-80 rounded-full overflow-hidden border-4 border-slate-100 dark:border-slate-800 shadow-xl bg-slate-100 dark:bg-slate-800 shrink-0">
+              <div
+                style={{ borderRadius: '50%' }}
+                className="relative w-56 h-56 sm:w-72 sm:h-72 lg:w-80 lg:h-80 rounded-full overflow-hidden shadow-xl shrink-0 bg-transparent"
+              >
                 <CleanzoImage
                   src={service.image}
                   alt={isAr ? service.title : service.titleEn}
                   fit="cover"
                   position="center"
                   priority
+                  containerClassName="rounded-full !bg-transparent"
                   className="w-full h-full object-cover rounded-full"
+                  style={{ borderRadius: '50%', objectFit: 'cover' }}
                 />
               </div>
 

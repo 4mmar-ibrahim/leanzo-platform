@@ -207,6 +207,8 @@ export async function createService(req: Request, res: Response): Promise<void> 
         image: serviceData.image || defaultServiceImage,
         order: serviceData.order ?? count,
         isArchived: false,
+        originalPrice: null,
+        discount: 0,
       });
 
       const createdPackages: any[] = [];
@@ -281,6 +283,9 @@ export async function updateService(req: Request, res: Response): Promise<void> 
   try {
     const { id } = req.params;
     const { packages: incomingPackages, addons: incomingAddons, ...serviceUpdates } = req.body;
+
+    serviceUpdates.originalPrice = null;
+    serviceUpdates.discount = 0;
 
     if (serviceUpdates.category) {
       serviceUpdates.category = String(serviceUpdates.category).trim();

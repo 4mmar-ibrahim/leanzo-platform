@@ -471,13 +471,13 @@ export function StepAddress() {
         </div>
 
         {/* Confirmed Address Card */}
-        <div className="p-6 rounded-3xl border-2 border-sky-500 bg-sky-50/50 dark:bg-sky-950/30 shadow-md ring-1 ring-sky-500/40 space-y-3">
+        <div className="p-3.5 sm:p-5 rounded-2xl border-2 border-sky-500 bg-sky-50/50 dark:bg-sky-950/30 shadow-xs ring-1 ring-sky-500/40 space-y-2.5">
           <div className="flex items-center justify-between">
-            <span className="inline-flex items-center gap-2 text-sm font-black text-slate-900 dark:text-white">
-              <Home className="w-4 h-4 text-sky-500" />
+            <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+              <Home className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-500" />
               {selectedAddress.label || 'المنزل'}
             </span>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-500 text-white">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500 text-white">
               {isAr ? 'العنوان المعتمد للطلب' : 'Selected for Booking'}
             </span>
           </div>
@@ -510,7 +510,7 @@ export function StepAddress() {
           )}
 
           {(selectedAddress.landmark || selectedAddress.notes || selectedAddress.details) && (
-            <p className="text-xs text-slate-500 dark:text-slate-400 italic bg-white dark:bg-slate-900/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
+            <p className="text-xs text-slate-500 dark:text-slate-400 italic bg-white dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
               "{selectedAddress.landmark || selectedAddress.notes || selectedAddress.details}"
             </p>
           )}
@@ -521,14 +521,14 @@ export function StepAddress() {
 
   if (addresses.length === 0) {
     return (
-      <div className="space-y-6 text-start">
-        <div className="p-4 rounded-2xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800/60 flex items-start gap-3">
-          <MapPin className="w-5 h-5 text-sky-600 dark:text-sky-400 mt-0.5 shrink-0" />
-          <div>
-            <h4 className="text-sm font-bold text-sky-900 dark:text-sky-100">
+      <div className="space-y-4 sm:space-y-6 text-start">
+        <div className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-sky-50/80 dark:bg-sky-950/40 border border-sky-200/80 dark:border-sky-800/60 flex items-center gap-2.5 sm:gap-3">
+          <MapPin className="w-4 h-4 sm:w-5 sm:h-5 text-sky-600 dark:text-sky-400 shrink-0" />
+          <div className="min-w-0">
+            <h4 className="text-xs sm:text-sm font-bold text-sky-900 dark:text-sky-100 truncate">
               {isAr ? 'إضافة عنوان جديد للحجز' : 'Add New Service Address'}
             </h4>
-            <p className="text-xs text-sky-700 dark:text-sky-300 mt-0.5">
+            <p className="text-[11px] sm:text-xs text-sky-700 dark:text-sky-300 mt-0.5 line-clamp-1 sm:line-clamp-none">
               {isAr
                 ? 'أدخل موقع تقديم الخدمة بدقة وسنقوم بحفظه لراحتك في طلباتك القادمة.'
                 : 'Enter your service location details. We will save it for your next bookings.'}
@@ -536,17 +536,10 @@ export function StepAddress() {
           </div>
         </div>
 
-        <form onSubmit={handleSaveAddress} noValidate className="space-y-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input
-              label={isAr ? 'تسمية العنوان (مثل: المنزل، العمل، الشاليه)' : 'Address Label'}
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder={isAr ? 'المنزل' : 'Home'}
-              required
-            />
-
-            <div className="grid grid-cols-2 gap-2">
+        <form onSubmit={handleSaveAddress} noValidate className="space-y-3 sm:space-y-4 bg-white dark:bg-slate-900 p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-2xs">
+          <div className="space-y-2 sm:space-y-2.5">
+            {/* Row 1: Governorate & City */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
               <Select
                 label={isAr ? 'المحافظة' : 'Governorate'}
                 value={governorateId}
@@ -555,7 +548,7 @@ export function StepAddress() {
                 required
               >
                 {activeGovernorates.length === 0 ? (
-                  <option value="">{isAr ? 'جاري تحميل المحافظات...' : 'Loading governorates...'}</option>
+                  <option value="">{isAr ? 'جاري التحميل...' : 'Loading...'}</option>
                 ) : (
                   activeGovernorates.map((gov) => {
                     const gId = gov.id || (gov as any)._id;
@@ -576,7 +569,7 @@ export function StepAddress() {
                 required
               >
                 {activeCities.length === 0 ? (
-                  <option value="">{isAr ? 'لا توجد مناطق متاحة' : 'No areas available'}</option>
+                  <option value="">{isAr ? 'اختر المحافظة أولاً' : 'Select gov first'}</option>
                 ) : (
                   activeCities.map((city) => {
                     const cId = city.id || (city as any)._id;
@@ -589,22 +582,14 @@ export function StepAddress() {
                 )}
               </Select>
             </div>
-          </div>
 
-          {/* Guest Contact Info if unauthenticated */}
-          {!isAuthenticated && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+            {/* Row 2: تسمية العنوان (المنزل) و اسم العميل جنب بعض */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
               <Input
-                label={isAr ? 'رقم الهاتف للتواصل' : 'Contact Phone'}
-                type="tel"
-                inputMode="numeric"
-                maxLength={11}
-                dir="ltr"
-                placeholder={isAr ? 'مثال: 01012345678' : 'e.g. 01012345678'}
-                value={guestPhoneInput}
-                onChange={handleGuestPhoneChange}
-                onBlur={handleGuestPhoneBlur}
-                error={phoneError || undefined}
+                label={isAr ? 'تسمية العنوان (مثل: المنزل)' : 'Address Label'}
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder={isAr ? 'المنزل' : 'Home'}
                 required
               />
               <Input
@@ -617,64 +602,82 @@ export function StepAddress() {
                 required
               />
             </div>
-          )}
 
-          <Input
-            label={isAr ? 'اسم الشارع / الحي / المنطقة بالتفصيل' : 'Street / Area Details'}
-            placeholder={isAr ? 'شارع النصر، متفرع من عباس العقاد' : 'Street name, district'}
-            value={area}
-            onChange={(e) => setArea(e.target.value)}
-            required
-          />
+            {/* Row 3: رقم الهاتف و اسم الشارع جنب بعض */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+              <Input
+                label={isAr ? 'رقم الهاتف للتواصل' : 'Contact Phone'}
+                type="tel"
+                inputMode="numeric"
+                maxLength={11}
+                dir="ltr"
+                placeholder={isAr ? 'مثال: 01012345678' : '01012345678'}
+                value={guestPhoneInput}
+                onChange={handleGuestPhoneChange}
+                onBlur={handleGuestPhoneBlur}
+                error={phoneError || undefined}
+                required
+              />
+              <Input
+                label={isAr ? 'اسم الشارع / الحي / المنطقة بالتفصيل' : 'Street / Area Details'}
+                placeholder={isAr ? 'شارع النصر، متفرع من عباس العقاد' : 'Street name, district'}
+                value={area}
+                onChange={(e) => setArea(e.target.value)}
+                required
+              />
+            </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <Input
-              label={isAr ? 'رقم العمارة / المبنى' : 'Building'}
-              placeholder="14"
-              value={building}
-              onChange={(e) => setBuilding(e.target.value)}
-            />
-            <Input
-              label={isAr ? 'الطابق' : 'Floor'}
-              placeholder="3"
-              value={floor}
-              onChange={(e) => setFloor(e.target.value)}
-            />
-            <Input
-              label={isAr ? 'رقم الشقة' : 'Apartment'}
-              placeholder="7"
-              value={apartment}
-              onChange={(e) => setApartment(e.target.value)}
-            />
+            {/* Row 4: رقم العمارة و الطابق و الشقة جنب بعض */}
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+              <Input
+                label={isAr ? 'رقم العمارة' : 'Building'}
+                placeholder="14"
+                value={building}
+                onChange={(e) => setBuilding(e.target.value)}
+              />
+              <Input
+                label={isAr ? 'الطابق' : 'Floor'}
+                placeholder="3"
+                value={floor}
+                onChange={(e) => setFloor(e.target.value)}
+              />
+              <Input
+                label={isAr ? 'رقم الشقة' : 'Apartment'}
+                placeholder="7"
+                value={apartment}
+                onChange={(e) => setApartment(e.target.value)}
+              />
+            </div>
+
+            {/* Row 5: علامة مميزة و ملاحظات للفني جنب بعض */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+              <Input
+                label={isAr ? 'علامة مميزة (اختياري)' : 'Landmark (Optional)'}
+                placeholder={isAr ? 'بجوار صيدلية النور' : 'Near landmark'}
+                value={landmark}
+                onChange={(e) => setLandmark(e.target.value)}
+              />
+              <Input
+                label={isAr ? 'ملاحظات للفني أو الحارس' : 'Notes for Technician'}
+                placeholder={isAr ? 'يرجى الاتصال عند البوابة' : 'Call on arrival'}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input
-              label={isAr ? 'علامة مميزة (اختياري)' : 'Landmark (Optional)'}
-              placeholder={isAr ? 'بجوار صيدلية النور' : 'Near landmark'}
-              value={landmark}
-              onChange={(e) => setLandmark(e.target.value)}
-            />
-            <Input
-              label={isAr ? 'ملاحظات للفني أو حارس العقار' : 'Notes for Technician'}
-              placeholder={isAr ? 'يرجى الاتصال عند البوابة' : 'Call on arrival'}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </div>
-
-          <div className="pt-2">
+          <div className="pt-1.5 sm:pt-2">
             <Button
               type="submit"
               variant="primary"
-              className="w-full h-12 text-sm font-bold shadow-lg shadow-sky-500/20"
+              className="w-full h-10 sm:h-11 text-xs sm:text-sm font-bold shadow-md shadow-sky-500/20 rounded-xl"
               disabled={isSubmitting}
             >
               {isSubmitting ? (
-                <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+                <Loader2 className="w-4 h-4 animate-spin mx-auto" />
               ) : (
                 <>
-                  <CheckCircle2 className="w-4 h-4 ml-2" />
+                  <CheckCircle2 className="w-4 h-4 ml-1.5" />
                   {isAr ? 'تأكيد واستخدام هذا العنوان' : 'Confirm & Use Address'}
                 </>
               )}
@@ -853,15 +856,8 @@ export function StepAddress() {
             : 'Select governorate, city and enter detailed address'
         }
       >
-        <form onSubmit={handleSaveAddress} className="space-y-4">
-          <Input
-            label={isAr ? 'تسمية العنوان (مثل: المنزل، العمل، الشاليه)' : 'Address Label'}
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            required
-          />
-
-          <div className="grid grid-cols-2 gap-3">
+        <form onSubmit={handleSaveAddress} className="space-y-3">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3">
             <Select
               label={isAr ? 'المحافظة' : 'Governorate'}
               value={governorateId}
@@ -869,7 +865,7 @@ export function StepAddress() {
               required
             >
               {activeGovernorates.length === 0 ? (
-                <option value="">{isAr ? 'جاري تحميل المحافظات...' : 'Loading governorates...'}</option>
+                <option value="">{isAr ? 'جاري التحميل...' : 'Loading...'}</option>
               ) : (
                 activeGovernorates.map((gov) => {
                   const gId = gov.id || (gov as any)._id;
@@ -890,7 +886,7 @@ export function StepAddress() {
               required
             >
               {activeCities.length === 0 ? (
-                <option value="">{isAr ? 'لا توجد مناطق متاحة' : 'No areas available'}</option>
+                <option value="">{isAr ? 'اختر المحافظة أولاً' : 'Select gov first'}</option>
               ) : (
                 activeCities.map((city) => {
                   const cId = city.id || (city as any)._id;
@@ -904,54 +900,89 @@ export function StepAddress() {
             </Select>
           </div>
 
-          <Input
-            label={isAr ? 'الشارع / الحي بالتفصيل' : 'Street / Area Details'}
-            value={area}
-            onChange={(e) => setArea(e.target.value)}
-            placeholder={isAr ? 'اسم الشارع والحي' : 'Street name and district'}
-            required
-          />
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+              <Input
+                label={isAr ? 'تسمية العنوان (مثل: المنزل)' : 'Address Label'}
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder={isAr ? 'المنزل' : 'Home'}
+                required
+              />
+              <Input
+                label={isAr ? 'اسم العميل' : 'Customer Name'}
+                placeholder={isAr ? 'مثال: أحمد عبد الله' : 'e.g. Ahmed Abdallah'}
+                value={guestNameInput}
+                onChange={handleGuestNameChange}
+                onBlur={handleGuestNameBlur}
+                error={nameError || undefined}
+                required
+              />
+            </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <Input
-              label={isAr ? 'المبنى' : 'Building'}
-              placeholder="14"
-              value={building}
-              onChange={(e) => setBuilding(e.target.value)}
-            />
-            <Input
-              label={isAr ? 'الطابق' : 'Floor'}
-              placeholder="3"
-              value={floor}
-              onChange={(e) => setFloor(e.target.value)}
-            />
-            <Input
-              label={isAr ? 'الشقة' : 'Apartment'}
-              placeholder="7"
-              value={apartment}
-              onChange={(e) => setApartment(e.target.value)}
-            />
-          </div>
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+              <Input
+                label={isAr ? 'رقم الهاتف للتواصل' : 'Contact Phone'}
+                type="tel"
+                inputMode="numeric"
+                maxLength={11}
+                dir="ltr"
+                placeholder={isAr ? 'مثال: 01012345678' : '01012345678'}
+                value={guestPhoneInput}
+                onChange={handleGuestPhoneChange}
+                onBlur={handleGuestPhoneBlur}
+                error={phoneError || undefined}
+                required
+              />
+              <Input
+                label={isAr ? 'الشارع / الحي بالتفصيل' : 'Street / Area Details'}
+                value={area}
+                onChange={(e) => setArea(e.target.value)}
+                placeholder={isAr ? 'اسم الشارع والحي' : 'Street name and district'}
+                required
+              />
+            </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input
-              label={isAr ? 'علامة مميزة' : 'Landmark'}
-              placeholder={isAr ? 'بجوار صيدلية...' : 'Near landmark...'}
-              value={landmark}
-              onChange={(e) => setLandmark(e.target.value)}
-            />
-            <Input
-              label={isAr ? 'ملاحظات للفني' : 'Notes'}
-              placeholder={isAr ? 'ملاحظات إضافية' : 'Extra notes'}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </div>
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+              <Input
+                label={isAr ? 'المبنى' : 'Building'}
+                placeholder="14"
+                value={building}
+                onChange={(e) => setBuilding(e.target.value)}
+              />
+              <Input
+                label={isAr ? 'الطابق' : 'Floor'}
+                placeholder="3"
+                value={floor}
+                onChange={(e) => setFloor(e.target.value)}
+              />
+              <Input
+                label={isAr ? 'الشقة' : 'Apartment'}
+                placeholder="7"
+                value={apartment}
+                onChange={(e) => setApartment(e.target.value)}
+              />
+            </div>
 
-          <div className="pt-3 flex justify-end gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+              <Input
+                label={isAr ? 'علامة مميزة' : 'Landmark'}
+                placeholder={isAr ? 'بجوار صيدلية...' : 'Near landmark...'}
+                value={landmark}
+                onChange={(e) => setLandmark(e.target.value)}
+              />
+              <Input
+                label={isAr ? 'ملاحظات للفني' : 'Notes'}
+                placeholder={isAr ? 'ملاحظات إضافية' : 'Extra notes'}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </div>
+
+          <div className="pt-2 flex justify-end gap-2">
             <Button
               type="button"
               variant="ghost"
+              size="sm"
               onClick={() => {
                 setIsModalOpen(false);
                 resetForm();
@@ -959,7 +990,7 @@ export function StepAddress() {
             >
               {t.common.cancel}
             </Button>
-            <Button type="submit" variant="primary" disabled={isSubmitting || !area.trim()}>
+            <Button type="submit" variant="primary" size="sm" disabled={isSubmitting || !area.trim()}>
               {isSubmitting ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : editingAddressId ? (

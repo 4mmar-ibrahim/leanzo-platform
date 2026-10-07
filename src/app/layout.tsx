@@ -47,6 +47,7 @@ export const metadata: Metadata = {
 };
 
 import { CentralZoEngine } from '@/components/mascot/CentralZoEngine';
+import { ScrollToTopOnNavigate } from '@/components/common/ScrollToTopOnNavigate';
 
 export default function RootLayout({
   children,
@@ -57,6 +58,7 @@ export default function RootLayout({
     <html lang="ar" dir="rtl" suppressHydrationWarning className={`${cairo.variable} ${inter.variable} overflow-x-hidden max-w-full`}>
       <body suppressHydrationWarning className="font-sans antialiased min-h-screen flex flex-col overflow-x-hidden max-w-full w-full bg-[#F5F8FC] dark:bg-[#041728] text-[#0F172A] dark:text-[#F8FAFC] selection:bg-[#0866C6] selection:text-white">
         <Providers>
+          <ScrollToTopOnNavigate />
           <TopAnnouncementBanner />
           <Header />
           <main className="flex-1 flex flex-col pb-28 lg:pb-0">{children}</main>

@@ -1,6 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { Service, ServicePackage, ServiceAddon, ServiceCategory, Address, CouponDiscountType } from '@/types';
 import { useServiceStore } from '@/store/useServiceStore';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
@@ -15,8 +16,33 @@ export interface AppliedCouponState {
   finalPrice: number;
 }
 
+export interface SelectedServiceItem {
+  service: Service;
+  selectedPackage: ServicePackage | null;
+  selectedAddons: ServiceAddon[];
+}
+
+export interface ItemizedServiceBreakdown {
+  serviceId: string;
+  title: string;
+  titleEn: string;
+  category: ServiceCategory;
+  image: string;
+  baseOriginalPrice: number;
+  baseSellingPrice: number;
+  catalogDiscount: number;
+  selectedPackage: ServicePackage | null;
+  selectedAddons: ServiceAddon[];
+  addonsTotal: number;
+  durationMinutes: number;
+  itemSubtotal: number;
+  itemOriginalTotal: number;
+}
+
 interface BookingState {
   category: ServiceCategory;
+  selectedServices: SelectedServiceItem[];
+  // Legacy aliases synced to selectedServices[0] for backward compatibility
   selectedService: Service | null;
   selectedPackage: ServicePackage | null;
   selectedAddons: ServiceAddon[];
@@ -31,11 +57,22 @@ interface BookingState {
   guestPhone: string;
 
   setCategory: (cat: ServiceCategory) => void;
+  // Multi-service actions
+  addService: (service: Service) => void;
+  removeService: (serviceId: string) => void;
+  toggleService: (service: Service) => void;
+  isServiceSelected: (serviceId: string) => boolean;
+  selectPackageForService: (serviceId: string, pkg: ServicePackage | null) => void;
+  toggleAddonForService: (serviceId: string, addon: ServiceAddon) => void;
+  clearServices: () => void;
+
+  // Single-service backward compatible aliases
   selectService: (service: Service) => void;
   selectServiceById: (serviceId: string) => void;
   selectPackage: (pkg: ServicePackage | null) => void;
   toggleAddon: (addon: ServiceAddon) => void;
   clearAddons: () => void;
+
   setDate: (date: string) => void;
   setTime: (time: string) => void;
   setAddress: (address: Address) => void;
@@ -49,7 +86,6 @@ interface BookingState {
     customerPhone?: string
   ) => Promise<{ success: boolean; message: string; discountAmount: number }>;
   removeCoupon: () => void;
-  // Legacy aliases
   applyPromoCode: (code: string) => Promise<{ success: boolean; message: string; discountPercent: number }>;
   removePromoCode: () => void;
   resetBooking: () => void;
@@ -65,10 +101,24 @@ interface BookingState {
   getServiceFee: () => number;
   getFinalPrice: () => number;
   getItemizedPricing: () => ItemizedPricingCalculation;
+  getItemizedServicesList: () => ItemizedServiceBreakdown[];
 }
 
-export const useBookingStore = create<BookingState>((set, get) => ({
+function syncLegacy(items: SelectedServiceItem[]) {
+  const primary = items[0] || null;
+  return {
+    selectedServices: items,
+    selectedService: primary ? primary.service : null,
+    selectedPackage: primary ? primary.selectedPackage : null,
+    selectedAddons: primary ? primary.selectedAddons : [],
+  };
+}
+
+export const useBookingStore = create<BookingState>()(
+  persist(
+    (set, get) => ({
       category: 'car',
+      selectedServices: [],
       selectedService: null,
       selectedPackage: null,
       selectedAddons: [],
@@ -85,41 +135,109 @@ export const useBookingStore = create<BookingState>((set, get) => ({
       setGuestInfo: (name, phone) => set({ guestName: name, guestPhone: phone }),
 
       setCategory: (cat) => {
-        const prevCategory = get().category;
-        const currentService = get().selectedService;
+        // Switching category tabs allows browsing other services without clearing chosen services
         set({ category: cat });
-        // If category changed or the currently selected service doesn't belong to the new category,
-        // strictly clear downstream state! No auto-selection.
-        if (prevCategory !== cat || (currentService && currentService.category !== cat)) {
-          set({
-            selectedService: null,
-            selectedPackage: null,
-            selectedAddons: [],
-            selectedDate: '',
-            selectedTime: '',
-            appliedCoupon: null,
-            promoCode: '',
-          });
+      },
+
+      addService: (service) => {
+        if (!service || service.available === false || (service as any).isArchived || (service as any).active === false) {
+          return;
+        }
+        const current = get().selectedServices || [];
+        if (current.some((item) => item.service.id === service.id)) {
+          return; // already added
+        }
+        const updated = [...current, { service, selectedPackage: null, selectedAddons: [] }];
+        set({
+          ...syncLegacy(updated),
+          appliedCoupon: null,
+          promoCode: '',
+        });
+      },
+
+      removeService: (serviceId) => {
+        const current = get().selectedServices || [];
+        const updated = current.filter((item) => item.service.id !== serviceId);
+        set({
+          ...syncLegacy(updated),
+          appliedCoupon: null,
+          promoCode: '',
+        });
+      },
+
+      toggleService: (service) => {
+        if (!service || service.available === false || (service as any).isArchived || (service as any).active === false) {
+          return;
+        }
+        const current = get().selectedServices || [];
+        const exists = current.some((item) => item.service.id === service.id);
+        if (exists) {
+          get().removeService(service.id);
+        } else {
+          get().addService(service);
         }
       },
 
-      selectService: (service) => {
-        if (!service || service.available === false || (service as any).isArchived || (service as any).active === false) {
-          set({
-            selectedService: null,
-            selectedPackage: null,
-            selectedAddons: [],
-            appliedCoupon: null,
-            promoCode: '',
-          });
-          return;
-        }
-        // Packages are strictly OPTIONAL alternative pricing tiers: default to null (base service active)
+      isServiceSelected: (serviceId) => {
+        const current = get().selectedServices || [];
+        return current.some((item) => item.service.id === serviceId);
+      },
+
+      selectPackageForService: (serviceId, pkg) => {
+        const current = get().selectedServices || [];
+        const updated = current.map((item) => {
+          if (item.service.id === serviceId) {
+            return { ...item, selectedPackage: pkg };
+          }
+          return item;
+        });
         set({
-          selectedService: service,
+          ...syncLegacy(updated),
+          appliedCoupon: null,
+          promoCode: '',
+        });
+      },
+
+      toggleAddonForService: (serviceId, addon) => {
+        const current = get().selectedServices || [];
+        const updated = current.map((item) => {
+          if (item.service.id === serviceId) {
+            const hasAddon = item.selectedAddons.some((a) => a.id === addon.id);
+            const newAddons = hasAddon
+              ? item.selectedAddons.filter((a) => a.id !== addon.id)
+              : [...item.selectedAddons, addon];
+            return { ...item, selectedAddons: newAddons };
+          }
+          return item;
+        });
+        set({
+          ...syncLegacy(updated),
+          appliedCoupon: null,
+          promoCode: '',
+        });
+      },
+
+      clearServices: () => {
+        set({
+          selectedServices: [],
+          selectedService: null,
           selectedPackage: null,
           selectedAddons: [],
+          appliedCoupon: null,
+          promoCode: '',
+        });
+      },
+
+      // Single-service backward compatible aliases
+      selectService: (service) => {
+        if (!service || service.available === false || (service as any).isArchived || (service as any).active === false) {
+          get().clearServices();
+          return;
+        }
+        const updated = [{ service, selectedPackage: null, selectedAddons: [] }];
+        set({
           category: service.category,
+          ...syncLegacy(updated),
           appliedCoupon: null,
           promoCode: '',
         });
@@ -136,18 +254,34 @@ export const useBookingStore = create<BookingState>((set, get) => ({
       },
 
       selectPackage: (pkg) => {
-        set({ selectedPackage: pkg, appliedCoupon: null, promoCode: '' });
+        const current = get().selectedServices;
+        if (current.length > 0) {
+          get().selectPackageForService(current[0].service.id, pkg);
+        } else {
+          set({ selectedPackage: pkg, appliedCoupon: null, promoCode: '' });
+        }
       },
 
       toggleAddon: (addon) => {
-        const current = get().selectedAddons || [];
-        const exists = current.some((a) => a.id === addon.id);
-        const updated = exists ? current.filter((a) => a.id !== addon.id) : [...current, addon];
-        set({ selectedAddons: updated, appliedCoupon: null, promoCode: '' });
+        const current = get().selectedServices;
+        if (current.length > 0) {
+          get().toggleAddonForService(current[0].service.id, addon);
+        } else {
+          const legacyAddons = get().selectedAddons || [];
+          const exists = legacyAddons.some((a) => a.id === addon.id);
+          const updated = exists ? legacyAddons.filter((a) => a.id !== addon.id) : [...legacyAddons, addon];
+          set({ selectedAddons: updated, appliedCoupon: null, promoCode: '' });
+        }
       },
 
       clearAddons: () => {
-        set({ selectedAddons: [], appliedCoupon: null, promoCode: '' });
+        const current = get().selectedServices;
+        if (current.length > 0) {
+          const updated = current.map((i) => ({ ...i, selectedAddons: [] }));
+          set({ ...syncLegacy(updated), appliedCoupon: null, promoCode: '' });
+        } else {
+          set({ selectedAddons: [], appliedCoupon: null, promoCode: '' });
+        }
       },
 
       setDate: (date) => set({ selectedDate: date }),
@@ -226,6 +360,7 @@ export const useBookingStore = create<BookingState>((set, get) => ({
       resetBooking: () => {
         set({
           category: 'car',
+          selectedServices: [],
           selectedService: null,
           selectedPackage: null,
           selectedAddons: [],
@@ -241,9 +376,47 @@ export const useBookingStore = create<BookingState>((set, get) => ({
         });
       },
 
+      getItemizedServicesList: () => {
+        const items = get().selectedServices || [];
+        return items.map((item) => {
+          const s = item.service;
+          const pkg = item.selectedPackage;
+          const addons = item.selectedAddons || [];
+
+          const baseSelling = pkg ? Number(pkg.price) || 0 : Number(s.price) || 0;
+          const baseOriginal = pkg
+            ? (pkg.originalPrice !== undefined && pkg.originalPrice !== null ? Number(pkg.originalPrice) : baseSelling)
+            : baseSelling;
+
+          const catalogDisc = Math.max(0, baseOriginal - baseSelling);
+          const addonsTot = addons.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+          const addonsDur = addons.reduce((sum, a) => sum + (Number(a.durationMinutes) || 0), 0);
+          const baseDur = pkg
+            ? Number(pkg.durationMinutes) || 45
+            : Number(s.serviceDurationMinutes || s.duration) || 45;
+
+          return {
+            serviceId: s.id,
+            title: s.title,
+            titleEn: s.titleEn || s.title,
+            category: s.category,
+            image: s.image,
+            baseOriginalPrice: baseOriginal,
+            baseSellingPrice: baseSelling,
+            catalogDiscount: catalogDisc,
+            selectedPackage: pkg,
+            selectedAddons: addons,
+            addonsTotal: addonsTot,
+            durationMinutes: baseDur + addonsDur,
+            itemSubtotal: baseSelling + addonsTot,
+            itemOriginalTotal: baseOriginal + addonsTot,
+          };
+        });
+      },
+
       getItemizedPricing: () => {
-        const s = get().selectedService;
-        if (!s) {
+        const list = get().getItemizedServicesList();
+        if (list.length === 0) {
           return {
             baseOriginalPrice: 0,
             catalogDiscount: 0,
@@ -263,39 +436,33 @@ export const useBookingStore = create<BookingState>((set, get) => ({
           };
         }
 
-        const pkg = get().selectedPackage;
-        const addons = get().selectedAddons || [];
-        const coupon = get().appliedCoupon
-          ? {
-              code: get().appliedCoupon!.code,
-              discountType: get().appliedCoupon!.discountType,
-              discountValue: get().appliedCoupon!.discountValue,
-            }
-          : null;
+        const combinedSubtotal = list.reduce((sum, i) => sum + i.itemSubtotal, 0);
+        const combinedOriginal = list.reduce((sum, i) => sum + i.itemOriginalTotal, 0);
+        const combinedCatalogDiscount = list.reduce((sum, i) => sum + i.catalogDiscount, 0);
+        const combinedAddons = list.reduce((sum, i) => sum + i.addonsTotal, 0);
 
-        return calculateItemizedPricing({
-          service: {
-            id: s.id,
-            price: Number(s.price) || 0,
-            originalPrice: s.originalPrice,
-            discount: s.discount,
-          },
-          selectedPackage: pkg
-            ? {
-                id: pkg.id,
-                name: pkg.name,
-                price: Number(pkg.price) || 0,
-                originalPrice: pkg.originalPrice,
-              }
-            : null,
-          addons: addons.map((a) => ({
-            id: a.id,
-            name: a.name,
-            price: Number(a.price) || 0,
-          })),
-          coupon,
+        const coupon = get().appliedCoupon;
+        const couponDisc = coupon ? coupon.actualDiscountAmount : 0;
+        const totalDisc = combinedCatalogDiscount + couponDisc;
+        const finalP = Math.max(0, combinedSubtotal - couponDisc);
+
+        return {
+          baseOriginalPrice: combinedOriginal,
+          catalogDiscount: combinedCatalogDiscount,
+          catalogDiscountPercent: combinedOriginal > 0 ? Math.round((combinedCatalogDiscount / combinedOriginal) * 100) : 0,
+          baseSellingPrice: combinedSubtotal,
+          isPackageSelected: list.some((i) => !!i.selectedPackage),
+          packagePrice: undefined,
+          packageOriginalPrice: undefined,
+          addonsTotal: combinedAddons,
+          originalTotal: combinedOriginal,
+          subtotal: combinedSubtotal,
+          couponDiscount: couponDisc,
+          appliedCouponCode: coupon?.code,
           serviceFee: 0,
-        });
+          totalDiscount: totalDisc,
+          finalPrice: finalP,
+        };
       },
 
       getPackageBasePrice: () => {
@@ -311,17 +478,9 @@ export const useBookingStore = create<BookingState>((set, get) => ({
       },
 
       getTotalDuration: () => {
-        const pkg = get().selectedPackage;
-        const s = get().selectedService;
-        const baseDuration =
-          pkg && Number(pkg.durationMinutes) > 0
-            ? Number(pkg.durationMinutes)
-            : Number(s?.serviceDurationMinutes || s?.duration) || 45;
-        const addonsDuration = (get().selectedAddons || []).reduce(
-          (sum, a) => sum + (Number(a.durationMinutes) || 0),
-          0
-        );
-        return baseDuration + addonsDuration;
+        const list = get().getItemizedServicesList();
+        if (list.length === 0) return 45;
+        return list.reduce((sum, i) => sum + i.durationMinutes, 0);
       },
 
       getOriginalPrice: () => {
@@ -343,5 +502,25 @@ export const useBookingStore = create<BookingState>((set, get) => ({
       getFinalPrice: () => {
         return get().getItemizedPricing().finalPrice;
       },
-    })
+    }),
+    {
+      name: 'cleanzo_booking_store',
+      partialize: (state) => ({
+        category: state.category,
+        selectedServices: state.selectedServices,
+        selectedService: state.selectedService,
+        selectedPackage: state.selectedPackage,
+        selectedAddons: state.selectedAddons,
+        selectedDate: state.selectedDate,
+        selectedTime: state.selectedTime,
+        selectedAddress: state.selectedAddress,
+        notes: state.notes,
+        currentStep: state.currentStep,
+        promoCode: state.promoCode,
+        appliedCoupon: state.appliedCoupon,
+        guestName: state.guestName,
+        guestPhone: state.guestPhone,
+      }),
+    }
+  )
 );

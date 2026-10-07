@@ -7,11 +7,12 @@ import { useBookingStore } from '@/store/useBookingStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useOrderStore } from '@/store/useOrderStore';
 import { getUpcomingBookingDates, getTimeSlotsForDate, BookingSlot, isSameService, isSameTime } from '@/lib/bookingEngine';
+import { formatTimeTo12Hour } from '@/lib/timeUtils';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 
 export function StepDateTime() {
   const { t, locale } = useLocaleStore();
-  const { selectedDate, setDate, selectedTime, setTime, selectedService } = useBookingStore();
+  const { selectedDate, setDate, selectedTime, setTime, selectedService, getTotalDuration } = useBookingStore();
   const bookingSettings = useSettingsStore((s) => s.settings.booking);
   const fetchPublicSettings = useSettingsStore((s) => s.fetchPublicSettings);
   const orders = useOrderStore((s) => s.orders);
@@ -36,23 +37,26 @@ export function StepDateTime() {
     }
   }, [selectedDate, dateOptions, setDate]);
 
-  // Query live availability from backend when date or selected service changes
+  // Query live availability from backend when date or selected services change
   useEffect(() => {
     if (!selectedDate) return;
     let isMounted = true;
-    const duration = selectedService?.serviceDurationMinutes || selectedService?.duration;
+    const duration = getTotalDuration() || selectedService?.serviceDurationMinutes || selectedService?.duration || 45;
     cleanzoApi.availability
       .checkDate(selectedDate, selectedService?.id, duration)
       .then((res) => {
         if (isMounted) {
           if (res?.slots && Array.isArray(res.slots)) {
-            const formattedSlots: BookingSlot[] = res.slots.map((slot: any) => ({
-              time: slot.label || slot.time,
-              label: slot.label || slot.time,
-              labelEn: slot.labelEn || slot.time,
-              isAvailable: slot.available,
-              reason: slot.reason,
-            }));
+            const formattedSlots: BookingSlot[] = res.slots.map((slot: any) => {
+              const label12 = formatTimeTo12Hour(slot.label || slot.time);
+              return {
+                time: label12,
+                label: label12,
+                labelEn: label12,
+                isAvailable: slot.available,
+                reason: slot.reason,
+              };
+            });
             setLiveSlots(formattedSlots);
           } else {
             setLiveSlots([]);
@@ -65,7 +69,7 @@ export function StepDateTime() {
     return () => {
       isMounted = false;
     };
-  }, [selectedDate, selectedService?.id, selectedService?.serviceDurationMinutes, selectedService?.duration]);
+  }, [selectedDate, selectedService?.id, getTotalDuration]);
 
   // Compute available time slots for the chosen date & service:
   // Strict Per-Service rule: If an active booking exists for THIS SAME SERVICE at date & time, mark slot closed!
@@ -121,15 +125,20 @@ export function StepDateTime() {
   }, [timeSlots, selectedTime, setTime]);
 
   return (
-    <div className="space-y-8 text-start">
+    <div className="space-y-4 sm:space-y-6 text-start">
       {/* 1. Date Selector */}
-      <div className="space-y-3">
-        <label className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-sky-500" />
-          <span>{t.booking.selectDate}</span>
+      <div className="space-y-2 sm:space-y-2.5">
+        <label className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center justify-between">
+          <span className="flex items-center gap-1.5">
+            <Calendar className="w-4 h-4 text-sky-500" />
+            <span>{t.booking.selectDate}</span>
+          </span>
+          <span className="text-[11px] font-normal text-slate-400">
+            {isAr ? 'اختر اليوم الأنسب' : 'Choose preferred date'}
+          </span>
         </label>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-1.5 sm:gap-2">
           {dateOptions.map((opt) => {
             const isSelected = selectedDate === opt.dateString;
             const isAvailable = opt.isAvailable;
@@ -140,26 +149,26 @@ export function StepDateTime() {
                 type="button"
                 disabled={!isAvailable}
                 onClick={() => isAvailable && setDate(opt.dateString)}
-                className={`p-3 rounded-2xl border-2 flex flex-col items-center justify-center gap-1 transition-all ${
+                className={`p-2 sm:p-2.5 rounded-xl border-2 flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer ${
                   !isAvailable
                     ? 'border-slate-200/50 dark:border-slate-800/40 bg-slate-100/60 dark:bg-slate-900/40 opacity-50 cursor-not-allowed text-slate-400'
                     : isSelected
-                    ? 'border-sky-500 bg-sky-50 dark:bg-sky-950/60 text-sky-900 dark:text-sky-200 shadow-md ring-1 ring-sky-500/50'
+                    ? 'border-sky-500 bg-sky-50 dark:bg-sky-950/60 text-sky-900 dark:text-sky-200 shadow-xs ring-1 ring-sky-500/50'
                     : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-slate-300'
                 }`}
               >
-                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                <span className="text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400">
                   {isAr ? opt.dayNameAr : opt.dayNameEn}
                 </span>
-                <span className="text-sm font-black text-slate-900 dark:text-white">
+                <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
                   {isAr ? opt.formattedDateAr : opt.formattedDateEn}
                 </span>
                 {opt.isToday ? (
-                  <span className="text-[10px] font-bold text-[#0866C6] dark:text-[#83AED0]">
+                  <span className="text-[9px] font-bold text-[#0866C6] dark:text-[#83AED0]">
                     {isAr ? 'اليوم' : 'Today'}
                   </span>
                 ) : !isAvailable && opt.reason ? (
-                  <span className="text-[9px] font-medium text-[#F0444C] truncate max-w-[80px]">
+                  <span className="text-[9px] font-medium text-[#F0444C] truncate max-w-[70px]">
                     {opt.reason}
                   </span>
                 ) : null}
@@ -170,32 +179,33 @@ export function StepDateTime() {
       </div>
 
       {/* 2. Time Slots Selector */}
-      <div className="space-y-3">
+      <div className="space-y-2 sm:space-y-2.5">
         <div className="flex items-center justify-between">
-          <label className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <label className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
             <Clock className="w-4 h-4 text-[#0866C6]" />
             <span>{t.booking.selectTime}</span>
           </label>
-          <span className="text-xs text-slate-400">
-            {isAr ? 'المواعيد بنظام الحجز الدقيق' : 'Precision scheduling'}
+          <span className="text-[11px] text-slate-400">
+            {isAr ? 'حجز الموعد بدقة' : 'Precision scheduling'}
           </span>
         </div>
 
         {timeSlots.length === 0 ? (
-          <div className="p-8 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-center space-y-2">
-            <Ban className="w-8 h-8 text-amber-500 mx-auto opacity-70" />
-            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+          <div className="p-6 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-center space-y-1.5">
+            <Ban className="w-6 h-6 text-amber-500 mx-auto opacity-70" />
+            <p className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200">
               {isAr ? 'لا توجد مواعيد متاحة لهذا اليوم' : 'No available slots for this date'}
             </p>
-            <p className="text-xs text-slate-400">
+            <p className="text-[11px] text-slate-400">
               {isAr ? 'يرجى اختيار يوم آخر للمتابعة' : 'Please select another date to proceed'}
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
             {timeSlots.map((slot) => {
-              const isSelected = selectedTime === slot.time;
+              const isSelected = selectedTime === slot.time || isSameTime(selectedTime, slot.time);
               const isAvailable = slot.isAvailable;
+              const displayLabel = formatTimeTo12Hour(isAr ? slot.label : slot.labelEn);
 
               return (
                 <button
@@ -203,18 +213,18 @@ export function StepDateTime() {
                   type="button"
                   disabled={!isAvailable}
                   onClick={() => isAvailable && setTime(slot.time)}
-                  className={`p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-1 transition-all ${
+                  className={`py-2 px-1.5 sm:py-2.5 sm:px-2 rounded-xl border-2 flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer ${
                     !isAvailable
                       ? 'border-slate-200/50 dark:border-slate-800/40 bg-slate-100/50 dark:bg-slate-950/40 opacity-50 cursor-not-allowed text-slate-400'
                       : isSelected
-                      ? 'border-[#0866C6] bg-blue-50 dark:bg-[#082845] text-[#0866C6] dark:text-white shadow-md ring-1 ring-[#0866C6]/50'
+                      ? 'border-[#0866C6] bg-blue-50 dark:bg-[#082845] text-[#0866C6] dark:text-white shadow-xs ring-1 ring-[#0866C6]/50'
                       : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  <span className="text-sm font-bold font-mono">
-                    {isAr ? slot.label : slot.labelEn}
+                  <span className="text-xs sm:text-sm font-bold font-mono">
+                    {displayLabel}
                   </span>
-                  <span className="text-[10px] font-medium">
+                  <span className="text-[9px] sm:text-[10px] font-medium">
                     {isAvailable ? (
                       <span className="text-[#0866C6] dark:text-[#83AED0] font-semibold">
                         {isAr ? 'متاح' : 'Available'}
@@ -233,9 +243,9 @@ export function StepDateTime() {
       </div>
 
       {/* Notice info */}
-      <div className="p-4 rounded-2xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-900 flex items-start gap-3 text-xs text-sky-800 dark:text-sky-300">
-        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-sky-600" />
-        <p className="leading-relaxed">
+      <div className="p-2.5 sm:p-3.5 rounded-xl bg-sky-50/70 dark:bg-sky-950/30 border border-sky-200/80 dark:border-sky-900/60 flex items-center gap-2.5 text-[11px] sm:text-xs text-sky-800 dark:text-sky-300">
+        <AlertCircle className="w-4 h-4 shrink-0 text-sky-600" />
+        <p className="leading-snug">
           {isAr
             ? 'تصل سيارة الخدمة المتنقلة في نافذة الموعد المحددة. سيصلك إشعار عند تحرك الفني نحو موقعك.'
             : 'Our mobile service unit arrives within the scheduled window. You will receive real-time updates when the technician is en route.'}

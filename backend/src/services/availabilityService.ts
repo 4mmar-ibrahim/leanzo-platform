@@ -134,7 +134,7 @@ export function minutesToDisplayTime(totalMinutes: number): {
   const periodEn = hours >= 12 ? 'PM' : 'AM';
   const periodAr = hours >= 12 ? (hours >= 17 ? 'مساءً' : 'ظهراً') : 'صباحاً';
   const hours12 = hours % 12 === 0 ? 12 : hours % 12;
-  const hours12Str = hours12.toString().padStart(2, '0');
+  const hours12Str = hours12.toString();
 
   const time12 = `${hours12Str}:${minsStr} ${periodEn}`;
   const time12Ar = `${hours12Str}:${minsStr} ${periodAr}`;
@@ -503,17 +503,14 @@ export async function getAvailableSlots(
         continue;
       }
 
-      const { time24: start24, time12Ar: start12Ar } = minutesToDisplayTime(slotStart);
-      const { time24: end24, time12Ar: end12Ar } = minutesToDisplayTime(slotEnd);
-
-      const intervalLabel = `${start24} – ${end24}`;
-      const intervalLabelEn = `${start24} – ${end24}`;
+      const { time24: start24, time12En: start12En } = minutesToDisplayTime(slotStart);
+      const { time24: end24, time12En: end12En } = minutesToDisplayTime(slotEnd);
 
       slots.push({
-        time: intervalLabel,
+        time: start12En,
         time24: start24,
-        label: intervalLabel,
-        labelEn: intervalLabelEn,
+        label: start12En,
+        labelEn: start12En,
         start: start24,
         end: end24,
         available: true,
@@ -542,17 +539,14 @@ export async function getAvailableSlots(
           continue;
         }
 
-        const { time24: start24, time12Ar: start12Ar } = minutesToDisplayTime(slotStart);
-        const { time24: end24, time12Ar: end12Ar } = minutesToDisplayTime(slotEnd);
-
-        const intervalLabel = `${start24} – ${end24}`;
-        const intervalLabelEn = `${start24} – ${end24}`;
+        const { time24: start24, time12En: start12En } = minutesToDisplayTime(slotStart);
+        const { time24: end24, time12En: end12En } = minutesToDisplayTime(slotEnd);
 
         slots.push({
-          time: intervalLabel,
+          time: start12En,
           time24: start24,
-          label: intervalLabel,
-          labelEn: intervalLabelEn,
+          label: start12En,
+          labelEn: start12En,
           start: start24,
           end: end24,
           available: false,
@@ -571,16 +565,14 @@ export async function getAvailableSlots(
       const slotEnd = slotStart + requiredDuration;
       if (slotEnd <= workEndMin) {
         if (!isToday || slotStart >= earliestAllowedMinutes) {
-          const { time24: start24 } = minutesToDisplayTime(slotStart);
-          const { time24: end24 } = minutesToDisplayTime(slotEnd);
-          const intervalLabel = `${start24} – ${end24}`;
-          const intervalLabelEn = `${start24} – ${end24}`;
+          const { time24: start24, time12En: start12En } = minutesToDisplayTime(slotStart);
+          const { time24: end24, time12En: end12En } = minutesToDisplayTime(slotEnd);
 
           slots.push({
-            time: intervalLabel,
+            time: start12En,
             time24: start24,
-            label: intervalLabel,
-            labelEn: intervalLabelEn,
+            label: start12En,
+            labelEn: start12En,
             start: start24,
             end: end24,
             available: false,

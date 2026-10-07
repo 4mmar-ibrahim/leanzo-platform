@@ -54,7 +54,7 @@ export interface ItemizedPricingCalculation {
 
 /**
  * Calculates authoritative display pricing for an individual service
- * Ensures Service Cards and Service Details display the exact same selling price as checkout.
+ * Strictly returns the exact Admin configured price without any auto-discount.
  */
 export function getServiceDisplayPrice(service: PricingServiceInput): {
   originalPrice: number;
@@ -64,44 +64,6 @@ export function getServiceDisplayPrice(service: PricingServiceInput): {
   hasDiscount: boolean;
 } {
   const configuredPrice = Number(service.price) || 0;
-  const configuredOrigPrice =
-    service.originalPrice !== undefined && service.originalPrice !== null
-      ? Number(service.originalPrice)
-      : null;
-  const configuredDiscount = Number(service.discount) || 0;
-
-  // Case 1: Service has explicit originalPrice > price (e.g. originalPrice = 260, price = 220)
-  // Here, `price` is ALREADY the discounted selling price.
-  if (configuredOrigPrice !== null && configuredOrigPrice > configuredPrice) {
-    const discountAmount = Math.max(0, configuredOrigPrice - configuredPrice);
-    const discountPercent =
-      configuredDiscount > 0
-        ? configuredDiscount
-        : Math.round((discountAmount / configuredOrigPrice) * 100);
-    return {
-      originalPrice: configuredOrigPrice,
-      sellingPrice: configuredPrice,
-      discountAmount,
-      discountPercent,
-      hasDiscount: discountAmount > 0,
-    };
-  }
-
-  // Case 2: Service has direct discount % configured on price (e.g. price = 220, discount = 15%, originalPrice is null or <= price)
-  // Here, `price` is the pre-discount base price, and 15% discount (33 EGP) yields selling price 187 EGP.
-  if (configuredDiscount > 0) {
-    const discountAmount = Math.round((configuredPrice * configuredDiscount) / 100);
-    const sellingPrice = Math.max(0, configuredPrice - discountAmount);
-    return {
-      originalPrice: configuredPrice,
-      sellingPrice,
-      discountAmount,
-      discountPercent: configuredDiscount,
-      hasDiscount: discountAmount > 0,
-    };
-  }
-
-  // Case 3: No discount
   return {
     originalPrice: configuredPrice,
     sellingPrice: configuredPrice,

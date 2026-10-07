@@ -534,24 +534,62 @@ export default function AdminOrderDetailPage() {
               <span>تفاصيل الخدمة والأسعار</span>
             </h3>
 
-            <div className="flex items-center gap-4 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50">
-              <img
-                src={order.service?.image || (order as any).serviceSnapshot?.image || '/images/cleanzo-logo.png'}
-                alt={order.service?.title || (order as any).serviceSnapshot?.title || 'خدمة كلينزو'}
-                className="w-16 h-16 rounded-xl object-cover border border-slate-200 dark:border-slate-700"
-              />
-              <div className="flex-1">
-                <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                  {order.service?.title || (order as any).serviceSnapshot?.title || 'خدمة كلينزو المتميزة'}
-                </h4>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  {order.service?.shortDescription || (order as any).serviceSnapshot?.titleEn || ''}
-                </p>
-                <span className="text-[10px] font-semibold text-sky-500 mt-1 inline-block">
-                  المدة التقديرية: {order.service?.duration || (order as any).serviceSnapshot?.duration || 60} دقيقة
+            {/* If Multi-Service booking */}
+            {Array.isArray((order as any).serviceSnapshot?.services) && (order as any).serviceSnapshot.services.length > 1 ? (
+              <div className="space-y-2.5">
+                <span className="text-[11px] font-bold text-slate-500 block">
+                  الخدمات المشمولة في الحجز ({(order as any).serviceSnapshot.services.length}):
                 </span>
+                <div className="space-y-2">
+                  {(order as any).serviceSnapshot.services.map((subSrv: any, idx: number) => (
+                    <div key={idx} className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between gap-3 text-xs">
+                      <div>
+                        <span className="font-bold text-slate-900 dark:text-white">
+                          #{idx + 1} {subSrv.title || subSrv.titleEn}
+                        </span>
+                        {subSrv.package && (
+                          <span className="text-sky-600 dark:text-sky-400 block text-[11px]">
+                            باقة: {subSrv.package.name} ({subSrv.package.price} ج.م)
+                          </span>
+                        )}
+                        {subSrv.addons && subSrv.addons.length > 0 && (
+                          <span className="text-amber-600 dark:text-amber-400 block text-[10px]">
+                            +{subSrv.addons.length} إضافات
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-end font-mono">
+                        <span className="font-bold text-slate-900 dark:text-white">
+                          {subSrv.subtotal || subSrv.price} ج.م
+                        </span>
+                        <span className="block text-[10px] text-slate-400">
+                          {subSrv.duration} دقيقة
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-center gap-4 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50">
+                <img
+                  src={order.service?.image || (order as any).serviceSnapshot?.image || '/images/cleanzo-logo.png'}
+                  alt={order.service?.title || (order as any).serviceSnapshot?.title || 'خدمة كلينزو'}
+                  className="w-16 h-16 rounded-xl object-cover border border-slate-200 dark:border-slate-700"
+                />
+                <div className="flex-1">
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                    {order.service?.title || (order as any).serviceSnapshot?.title || 'خدمة كلينزو المتميزة'}
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {order.service?.shortDescription || (order as any).serviceSnapshot?.titleEn || ''}
+                  </p>
+                  <span className="text-[10px] font-semibold text-sky-500 mt-1 inline-block">
+                    المدة التقديرية: {order.service?.duration || (order as any).serviceSnapshot?.duration || 60} دقيقة
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Selected Package Details */}
             {order.packageSnapshot && (

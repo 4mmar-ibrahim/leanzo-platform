@@ -4,6 +4,7 @@
  */
 
 import { Order, OrderStatus } from '@/types';
+import { formatTimeTo12Hour } from './timeUtils';
 import {
   Clock,
   CheckCircle2,
@@ -41,7 +42,7 @@ export const CANONICAL_TIMELINE_STEPS: TimelineStepConfig[] = [
     labelEn: 'Order Confirmed',
     descAr: (order) =>
       order.date && order.time
-        ? `تم تأكيد موعد الزيارة (${order.date} الساعة ${order.time}) وحجز وحدة الخدمة.`
+        ? `تم تأكيد موعد الزيارة (${order.date} الساعة ${formatTimeTo12Hour(order.time)}) وحجز وحدة الخدمة.`
         : 'تم تأكيد الموعد وحجز وحدة الخدمة المتنقلة.',
     descEn: () => 'Appointment confirmed and service unit reserved.',
     icon: CheckCircle2,
@@ -169,7 +170,7 @@ export function getAuthoritativeStatusBanner(order: Order, isAr: boolean = true)
         title: isAr ? 'تم تأكيد موعد طلبك بنجاح ✓' : 'Appointment Confirmed ✓',
         description: isAr
           ? order.date && order.time
-            ? `موعدك محجوز ليوم ${order.date} الساعة ${order.time}. جاري تجهيز فريق العمل ووحدة الخدمة.`
+            ? `موعدك محجوز ليوم ${order.date} الساعة ${formatTimeTo12Hour(order.time)}. جاري تجهيز فريق العمل ووحدة الخدمة.`
             : 'تم تأكيد موعدك بنجاح وجاري تجهيز فريق العمل ووحدة الخدمة المتنقلة.'
           : 'Your appointment is confirmed. The team and mobile unit are being prepared.',
         badge: isAr ? 'مؤكد' : 'Confirmed',

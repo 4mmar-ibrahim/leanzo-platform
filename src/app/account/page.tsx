@@ -20,6 +20,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { Button } from '@/components/ui/Button';
+import { formatTimeTo12Hour } from '@/lib/timeUtils';
 
 export default function AccountOverviewPage() {
   const { t, locale, direction } = useLocaleStore();
@@ -110,7 +111,7 @@ export default function AccountOverviewPage() {
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Clock className="w-4 h-4 text-[#83AED0]" />
-                  {upcomingOrder.time}
+                  {formatTimeTo12Hour(upcomingOrder.time)}
                 </span>
               </div>
               <p className="text-xs text-slate-400 pt-1">
@@ -171,7 +172,7 @@ export default function AccountOverviewPage() {
                       : order.service?.titleEn || (order as any).serviceSnapshot?.titleEn || (order as any).serviceNameEn || order.service?.title || 'Cleanzo Premium Service'}
                   </h4>
                   <p className="text-xs text-slate-400">
-                    {order.date} • {order.time}
+                    {order.date} • {formatTimeTo12Hour(order.time)}
                   </p>
                 </div>
               </div>

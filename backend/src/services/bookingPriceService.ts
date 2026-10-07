@@ -187,8 +187,8 @@ export async function calculateBookingPrice(
     service: {
       id: service.id,
       price: Number(service.price) || 0,
-      originalPrice: service.originalPrice !== undefined && service.originalPrice !== null ? Number(service.originalPrice) : null,
-      discount: service.discount !== undefined && service.discount !== null ? Number(service.discount) : null,
+      originalPrice: null,
+      discount: 0,
     },
     selectedPackage: selectedPackageForCalc,
     addons: addonsForCalc,
@@ -231,8 +231,8 @@ export async function calculateBookingPrice(
     service: {
       id: service.id,
       price: Number(service.price) || 0,
-      originalPrice: service.originalPrice !== undefined && service.originalPrice !== null ? Number(service.originalPrice) : null,
-      discount: service.discount !== undefined && service.discount !== null ? Number(service.discount) : null,
+      originalPrice: null,
+      discount: 0,
     },
     selectedPackage: selectedPackageForCalc,
     addons: addonsForCalc,
@@ -259,6 +259,151 @@ export async function calculateBookingPrice(
     packageId: resolvedPackageId,
     packageSnapshot,
     addons: addonsSnapshot,
+    promoCode: appliedCode,
+    couponSnapshot,
+  };
+}
+
+export interface ServiceBookingItemInput {
+  serviceId: string;
+  packageId?: string;
+  addonIds?: string[];
+}
+
+export interface ItemizedServicePriceResult {
+  serviceId: string;
+  title: string;
+  titleEn: string;
+  category: string;
+  image: string;
+  price: number;
+  originalPrice?: number;
+  duration: number;
+  packageId?: string;
+  packageSnapshot?: PriceCalculationResult['packageSnapshot'];
+  addons: PriceCalculationResult['addons'];
+  itemTotal: number;
+  itemOriginalTotal: number;
+  itemCatalogDiscount: number;
+}
+
+export interface MultiServicePriceCalculationResult extends PriceCalculationResult {
+  items: ItemizedServicePriceResult[];
+}
+
+/**
+ * Authoritative Server-Side Multi-Service Price & Duration Calculator
+ * Validates each service, package, and add-on independently.
+ */
+export async function calculateMultiServiceBookingPrice(
+  servicesInput: ServiceBookingItemInput[],
+  promoCode?: string,
+  customerPhone?: string
+): Promise<MultiServicePriceCalculationResult> {
+  if (!Array.isArray(servicesInput) || servicesInput.length === 0) {
+    throw new Error('يرجى اختيار خدمة واحدة على الأقل');
+  }
+
+  const items: ItemizedServicePriceResult[] = [];
+  let combinedDuration = 0;
+  let combinedSubtotal = 0;
+  let combinedOriginalTotal = 0;
+  let combinedCatalogDiscount = 0;
+  let combinedAddonsTotal = 0;
+
+  for (const itemInput of servicesInput) {
+    const singleResult = await calculateBookingPrice({
+      serviceId: itemInput.serviceId,
+      packageId: itemInput.packageId,
+      addonIds: itemInput.addonIds,
+      promoCode: undefined, // coupon evaluated on total order
+      customerPhone,
+    });
+
+    const serviceDoc = await Service.findOne({ id: itemInput.serviceId });
+    if (!serviceDoc) {
+      throw new Error(`الخدمة المطلوبة (${itemInput.serviceId}) غير موجودة`);
+    }
+
+    if (!serviceDoc.available || (serviceDoc as any).isArchived || (serviceDoc as any).active === false) {
+      throw new Error(`الخدمة (${serviceDoc.title}) غير متاحة حالياً أو تم إيقافها`);
+    }
+
+    const itemPrice = singleResult.subtotal;
+    const itemOriginalPrice = singleResult.originalPrice;
+    const itemCatalogDiscount = singleResult.catalogDiscount;
+
+    items.push({
+      serviceId: serviceDoc.id,
+      title: serviceDoc.title,
+      titleEn: serviceDoc.titleEn || serviceDoc.title,
+      category: serviceDoc.category,
+      image: serviceDoc.image,
+      price: itemPrice,
+      originalPrice: itemOriginalPrice,
+      duration: singleResult.totalServiceDuration,
+      packageId: singleResult.packageId,
+      packageSnapshot: singleResult.packageSnapshot,
+      addons: singleResult.addons,
+      itemTotal: itemPrice,
+      itemOriginalTotal: itemOriginalPrice,
+      itemCatalogDiscount,
+    });
+
+    combinedDuration += singleResult.totalServiceDuration;
+    combinedSubtotal += itemPrice;
+    combinedOriginalTotal += itemOriginalPrice;
+    combinedCatalogDiscount += itemCatalogDiscount;
+    combinedAddonsTotal += singleResult.addonsTotal;
+  }
+
+  // Validate coupon against combined subtotal
+  let couponSnapshot: PriceCalculationResult['couponSnapshot'] = undefined;
+  let appliedCode: string | undefined = undefined;
+  let couponDiscount = 0;
+
+  if (promoCode && promoCode.trim()) {
+    const primaryServiceId = servicesInput[0]?.serviceId;
+    const couponResult = await validateCoupon(promoCode.trim(), combinedSubtotal, customerPhone, primaryServiceId);
+    if (couponResult && couponResult.isValid) {
+      appliedCode = couponResult.code;
+      couponDiscount = couponResult.actualDiscountAmount;
+      couponSnapshot = {
+        couponId: couponResult.coupon._id ? couponResult.coupon._id.toString() : couponResult.coupon.id,
+        couponCode: couponResult.code,
+        discountType: couponResult.discountType,
+        discountValue: couponResult.discountValue,
+        discountAmount: couponDiscount,
+        actualDiscountAmount: couponDiscount,
+        originalPrice: combinedSubtotal,
+        finalPrice: Math.max(0, combinedSubtotal - couponDiscount),
+      };
+    }
+  }
+
+  const finalPrice = Math.max(0, combinedSubtotal - couponDiscount);
+  const totalDiscount = combinedCatalogDiscount + couponDiscount;
+
+  return {
+    items,
+    originalPrice: combinedOriginalTotal,
+    baseOriginalPrice: combinedOriginalTotal,
+    baseSellingPrice: combinedSubtotal,
+    basePrice: combinedOriginalTotal,
+    packagePrice: items[0]?.packageSnapshot?.price,
+    catalogDiscount: combinedCatalogDiscount,
+    catalogDiscountPercent: combinedOriginalTotal > 0 ? Math.round((combinedCatalogDiscount / combinedOriginalTotal) * 100) : 0,
+    addonsTotal: combinedAddonsTotal,
+    subtotal: combinedSubtotal,
+    discount: totalDiscount,
+    couponDiscount,
+    totalDiscount,
+    serviceFee: 0,
+    finalPrice,
+    totalServiceDuration: combinedDuration,
+    packageId: items[0]?.packageId,
+    packageSnapshot: items[0]?.packageSnapshot,
+    addons: items.flatMap((i) => i.addons),
     promoCode: appliedCode,
     couponSnapshot,
   };

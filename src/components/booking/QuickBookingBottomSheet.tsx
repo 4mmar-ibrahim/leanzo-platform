@@ -108,8 +108,6 @@ export function QuickBookingBottomSheet({
       service: {
         id: selectedService.id,
         price: Number(selectedService.price) || 0,
-        originalPrice: selectedService.originalPrice,
-        discount: selectedService.discount,
       },
       selectedPackage: selectedPkg
         ? {

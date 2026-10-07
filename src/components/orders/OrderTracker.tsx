@@ -23,6 +23,7 @@ import { useLocaleStore } from '@/store/useLocaleStore';
 import { useBookingStore } from '@/store/useBookingStore';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { formatTimeTo12Hour } from '@/lib/timeUtils';
 import { toast } from 'sonner';
 import {
   CANONICAL_TIMELINE_STEPS,
@@ -305,7 +306,7 @@ export function OrderTracker({ order, onOpenReview }: OrderTrackerProps) {
             </p>
             <p className="text-slate-500 flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 text-[#0866C6] shrink-0" />
-              <span>التاريخ: {order.date} — الوقت: {order.time}</span>
+              <span>التاريخ: {order.date} — الوقت: {formatTimeTo12Hour(order.time)}</span>
             </p>
           </div>
 

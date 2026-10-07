@@ -9,6 +9,7 @@ import { useOrderStore } from '@/store/useOrderStore';
 import { useServiceStore } from '@/store/useServiceStore';
 import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { Button } from '@/components/ui/Button';
+import { formatTimeTo12Hour } from '@/lib/timeUtils';
 
 function SuccessContent() {
   const searchParams = useSearchParams();
@@ -98,7 +99,7 @@ function SuccessContent() {
             <div className="flex items-center justify-between">
               <span className="text-slate-400">{isAr ? 'الموعد المحدد' : 'Date & Time'}</span>
               <span className="font-bold text-slate-900 dark:text-white">
-                {order.date || '—'} • {order.time || '—'}
+                {order.date || '—'} • {formatTimeTo12Hour(order.time)}
               </span>
             </div>
 

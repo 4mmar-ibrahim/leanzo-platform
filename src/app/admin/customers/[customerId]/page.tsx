@@ -52,7 +52,7 @@ import { useCustomerStore } from '@/store/useCustomerStore';
 import { useAdminStore } from '@/store/useAdminStore';
 import { useActivityLogStore } from '@/store/useActivityLogStore';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
-import { cn } from '@/lib/utils';
+import { cn, formatTimeTo12Hour } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
@@ -1208,7 +1208,7 @@ export default function AdminCustomerDetailPage() {
                           <td className="py-3.5 px-4">
                             <div className="space-y-0.5 font-mono text-slate-700 dark:text-slate-300">
                               <span>{order.date}</span>
-                              <span className="text-[10px] text-slate-400 block">{order.time}</span>
+                              <span className="text-[10px] text-slate-400 block">{formatTimeTo12Hour(order.time)}</span>
                             </div>
                           </td>
                           <td className="py-3.5 px-4">

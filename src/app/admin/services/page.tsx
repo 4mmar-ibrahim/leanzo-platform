@@ -121,7 +121,7 @@ export default function AdminServicesPage() {
             كتالوج الخدمات والتسعير
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            إدارة الأسعار، الخصومات، التوفر، والتفاصيل لجميع باقات كلينزو
+            إدارة الأسعار، التوفر، والتفاصيل لجميع خدمات وباقات كلينزو
           </p>
         </div>
 
@@ -256,8 +256,7 @@ export default function AdminServicesPage() {
               <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-slate-400 font-semibold">
                 <th className="py-3.5 px-4">الخدمة</th>
                 <th className="py-3.5 px-4">القطاع</th>
-                <th className="py-3.5 px-4">السعر الأساسي</th>
-                <th className="py-3.5 px-4">السعر النهائي</th>
+                <th className="py-3.5 px-4">السعر</th>
                 <th className="py-3.5 px-4">المدة</th>
                 <th className="py-3.5 px-4">الظهور بالموقع</th>
                 <th className="py-3.5 px-4 text-center">الإجراءات</th>
@@ -321,9 +320,6 @@ export default function AdminServicesPage() {
                         </span>
                       );
                     })()}
-                  </td>
-                  <td className="py-3.5 px-4 text-slate-500 line-through">
-                    {service.originalPrice ? `${service.originalPrice} ج.م` : '-'}
                   </td>
                   <td className="py-3.5 px-4 font-bold text-sky-600 dark:text-sky-400">
                     {service.price} ج.م

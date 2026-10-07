@@ -171,6 +171,7 @@ app.use('/api/technicians', technicianRoutes);
 app.use('/api/admin/backups', backupRoutes);
 app.use('/api/backups', backupRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/admin/subscriptions', subscriptionRoutes);
 
 // 404 Handler for undefined routes
 

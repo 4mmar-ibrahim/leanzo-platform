@@ -61,7 +61,7 @@ export function CleanzoImage({
 
   // Background style based on fit mode (contain mode preserves native alpha transparency without dark backdrops)
   const bgStyle =
-    fit === 'contain'
+    fit === 'contain' || containerClassName?.includes('bg-transparent')
       ? 'bg-transparent'
       : 'bg-slate-100 dark:bg-slate-950';
 

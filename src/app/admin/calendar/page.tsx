@@ -28,7 +28,7 @@ import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { useOrderStore } from '@/store/useOrderStore';
 import { useTechnicianStore } from '@/store/useTechnicianStore';
 import { Order, OrderStatus } from '@/types';
-import { cn } from '@/lib/utils';
+import { cn, formatTimeTo12Hour } from '@/lib/utils';
 import { toast } from 'sonner';
 
 const ARABIC_MONTHS = [
@@ -539,9 +539,10 @@ export default function AdminCalendarPage() {
                         o.service?.title ||
                         (o as any).serviceSnapshot?.title ||
                         'خدمة كلينزو';
-                      const startTime =
+                      const startTime = formatTimeTo12Hour(
                         o.scheduledStart ||
-                        (o.time ? o.time.split('–')[0].trim() : '--:--');
+                        (o.time ? o.time.split('–')[0].trim() : '--:--')
+                      );
 
                       return (
                         <div
@@ -645,7 +646,7 @@ export default function AdminCalendarPage() {
                           <div className="flex items-center justify-between gap-1">
                             <span className="font-black text-[11px] text-slate-900 dark:text-white flex items-center gap-1">
                               <Clock className="w-3 h-3 text-sky-500 inline" />
-                              {o.time || o.scheduledStart || '--:--'}
+                              {formatTimeTo12Hour(o.time || o.scheduledStart || '--:--')}
                             </span>
                             <span className={cn('text-[9px] px-1.5 py-0.5 rounded-full font-bold', cfg.badge)}>
                               {cfg.label}
@@ -729,8 +730,11 @@ export default function AdminCalendarPage() {
                       <div className="flex items-center gap-2">
                         <span className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
                           <Clock className="w-4 h-4 text-sky-500 inline" />
-                          {o.scheduledStart || o.time || '--:--'}
-                          {o.scheduledEnd ? ` – ${o.scheduledEnd}` : ''}
+                          {formatTimeTo12Hour(
+                            o.scheduledStart && o.scheduledEnd
+                              ? `${o.scheduledStart} – ${o.scheduledEnd}`
+                              : o.scheduledStart || o.time || '--:--'
+                          )}
                         </span>
                         <span className={cn('text-xs px-2 py-0.5 rounded-full font-bold', cfg.badge)}>
                           {cfg.label}
@@ -825,8 +829,11 @@ export default function AdminCalendarPage() {
                 <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/30">
                   <Clock className="w-3.5 h-3.5 text-sky-500 shrink-0" />
                   <span>
-                    {selectedBooking.scheduledStart || selectedBooking.time || '--:--'}
-                    {selectedBooking.scheduledEnd ? ` – ${selectedBooking.scheduledEnd}` : ''}
+                    {formatTimeTo12Hour(
+                      selectedBooking.scheduledStart && selectedBooking.scheduledEnd
+                        ? `${selectedBooking.scheduledStart} – ${selectedBooking.scheduledEnd}`
+                        : selectedBooking.scheduledStart || selectedBooking.time || '--:--'
+                    )}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/30">

@@ -11,6 +11,7 @@ export const ADMIN_MODULES = [
   { id: 'customers', nameAr: 'سجل العملاء CRM (Customers)', category: 'العمليات والتشغيل', path: '/admin/customers' },
   { id: 'technicians', nameAr: 'فريق الفنيين (Technicians)', category: 'العمليات والتشغيل', path: '/admin/technicians' },
   { id: 'locations', nameAr: 'المحافظات والمناطق (Locations)', category: 'العمليات والتشغيل', path: '/admin/locations' },
+  { id: 'subscriptions', nameAr: 'إدارة الاشتراكات (Subscriptions)', category: 'العمليات والتشغيل', path: '/admin/subscriptions' },
   { id: 'services', nameAr: 'الخدمات والتصنيفات (Services)', category: 'الخدمات والعروض', path: '/admin/services' },
   { id: 'offers', nameAr: 'العروض الترويجية (Offers)', category: 'الخدمات والعروض', path: '/admin/offers' },
   { id: 'coupons', nameAr: 'كوبونات الخصم (Coupons)', category: 'الخدمات والعروض', path: '/admin/coupons' },
@@ -90,6 +91,7 @@ export function getDefaultRolePermissions(roleId: string): Record<string, Permis
     perms['calendar'] = 'edit';
     perms['orders'] = 'edit';
     perms['customers'] = 'edit';
+    perms['subscriptions'] = 'edit';
     perms['technicians'] = 'view';
     perms['locations'] = 'view';
     perms['services'] = 'view';

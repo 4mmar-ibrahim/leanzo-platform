@@ -62,8 +62,6 @@ export default function AdminServiceEditPage() {
   const [desc, setDesc] = useState(existingService?.description || '');
   const [descEn, setDescEn] = useState(existingService?.descriptionEn || '');
   const [price, setPrice] = useState(existingService?.price?.toString() || '300');
-  const [originalPrice, setOriginalPrice] = useState(existingService?.originalPrice?.toString() || '350');
-  const [discount, setDiscount] = useState(existingService?.discount?.toString() || '15');
   const [serviceDurationMinutes, setServiceDurationMinutes] = useState(
     existingService?.serviceDurationMinutes?.toString() || existingService?.duration?.toString() || '45'
   );
@@ -108,8 +106,6 @@ export default function AdminServiceEditPage() {
       setDesc(existingService.description || '');
       setDescEn(existingService.descriptionEn || '');
       setPrice(existingService.price?.toString() || '300');
-      setOriginalPrice(existingService.originalPrice?.toString() || '');
-      setDiscount(existingService.discount?.toString() || '');
       setServiceDurationMinutes(
         existingService.serviceDurationMinutes?.toString() || existingService.duration?.toString() || '45'
       );
@@ -479,8 +475,6 @@ export default function AdminServiceEditPage() {
       return;
     }
     const numPrice = Number(price) || 100;
-    const numOriginal = originalPrice ? Number(originalPrice) : undefined;
-    const numDiscount = discount ? Number(discount) : undefined;
     const numServiceDuration = Math.max(1, Number(serviceDurationMinutes) || 45);
     const numTravelTime = Math.max(0, Number(travelTimeMinutes) || 0);
     const totalOccupancy = numServiceDuration + numTravelTime;
@@ -503,8 +497,8 @@ export default function AdminServiceEditPage() {
               ? 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=800&q=80'
               : 'https://images.unsplash.com/photo-1520340356584-f9917d1eea6f?auto=format&fit=crop&w=800&q=80'),
           price: numPrice,
-          originalPrice: numOriginal,
-          discount: numDiscount,
+          originalPrice: undefined,
+          discount: 0,
           duration: numServiceDuration,
           serviceDurationMinutes: numServiceDuration,
           travelTimeMinutes: numTravelTime,
@@ -560,8 +554,8 @@ export default function AdminServiceEditPage() {
           descriptionEn: descEn,
           image,
           price: numPrice,
-          originalPrice: numOriginal,
-          discount: numDiscount,
+          originalPrice: undefined,
+          discount: 0,
           duration: numServiceDuration,
           serviceDurationMinutes: numServiceDuration,
           travelTimeMinutes: numTravelTime,
@@ -684,38 +678,23 @@ export default function AdminServiceEditPage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold mb-1">السعر الأساسي (ج.م)</label>
+                  <label className="block text-xs font-bold mb-1 text-slate-800 dark:text-slate-200">
+                    سعر الخدمة النهائي (ج.م) <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="number"
                     min="0"
                     required
                     value={price}
                     onChange={(e) => setPrice(e.target.value)}
-                    className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold"
+                    placeholder="أدخل السعر النهائي للخدمة بالجنيه المصري"
+                    className="w-full p-2.5 text-sm rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-emerald-600 dark:text-emerald-400"
                   />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">السعر الأصلي قبل الخصم (اختياري)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={originalPrice}
-                    onChange={(e) => setOriginalPrice(e.target.value)}
-                    className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">نسبة الخصم المباشر % (اختياري)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={discount}
-                    onChange={(e) => setDiscount(e.target.value)}
-                    className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
-                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    هذا السعر هو السعر النهائي الرسمي الذي يدفعه العميل بالكامل بدون أي خصم تلقائي.
+                  </p>
                 </div>
               </div>
 

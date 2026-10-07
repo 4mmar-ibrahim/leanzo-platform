@@ -430,15 +430,15 @@ async function runAudit() {
 
   const freeDayRes = await getAvailableSlots(slotDate, testServiceSlot.id);
   assert(freeDayRes.isDayAvailable === true, 'Test date is marked available');
-  const slotTimes = freeDayRes.slots.map((s) => s.time);
-  assert(slotTimes.includes('10:00 – 11:00'), '10:00 – 11:00 slot appears on free day');
-  assert(slotTimes.includes('11:00 – 12:00'), '11:00 – 12:00 slot appears on free day');
-  assert(slotTimes.includes('12:00 – 13:00'), '12:00 – 13:00 slot appears on free day');
+  const slotStarts = freeDayRes.slots.map((s) => s.start || (s as any).time24 || s.time);
+  assert(slotStarts.some((t) => t.includes('10:00')), '10:00 slot appears on free day');
+  assert(slotStarts.some((t) => t.includes('11:00')), '11:00 slot appears on free day');
+  assert(slotStarts.some((t) => t.includes('12:00')), '12:00 slot appears on free day');
 
   // Fully occupy 11:00–12:00 capacity
   const occBooking = await createAuditBooking({
     date: slotDate,
-    time: '11:00 - 12:00',
+    time: '11:00 AM',
     timeSlotStart: '11:00',
     timeSlotEnd: '12:00',
     serviceId: testServiceSlot.id,
@@ -446,14 +446,14 @@ async function runAudit() {
   });
 
   const occRes = await getAvailableSlots(slotDate, testServiceSlot.id);
-  const slot11 = occRes.slots.find((s) => s.time === '11:00 – 12:00');
-  assert(slot11 !== undefined && slot11.available === false, 'Occupied 11:00–12:00 slot is marked unavailable');
+  const slot11 = occRes.slots.find((s) => s.start === '11:00' || (s as any).time24 === '11:00' || s.time.includes('11:00'));
+  assert(slot11 !== undefined && slot11.available === false, 'Occupied 11:00 slot is marked unavailable');
 
   // Release capacity
   await prisma.booking.delete({ where: { id: occBooking.id } });
   const releasedRes = await getAvailableSlots(slotDate, testServiceSlot.id);
-  const slot11Released = releasedRes.slots.find((s) => s.time === '11:00 – 12:00');
-  assert(slot11Released !== undefined && slot11Released.available === true, 'Released 11:00–12:00 slot becomes available again');
+  const slot11Released = releasedRes.slots.find((s) => s.start === '11:00' || (s as any).time24 === '11:00' || s.time.includes('11:00'));
+  assert(slot11Released !== undefined && slot11Released.available === true, 'Released 11:00 slot becomes available again');
   await prisma.service.deleteMany({ where: { id: testServiceSlot.id } });
 
   // -------------------------------------------------------------

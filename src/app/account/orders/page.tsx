@@ -10,6 +10,7 @@ import { StatusBadge } from '@/components/common/StatusBadge';
 import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Button } from '@/components/ui/Button';
+import { formatTimeTo12Hour } from '@/lib/timeUtils';
 
 export default function AccountOrdersPage() {
   const { t, locale, direction } = useLocaleStore();
@@ -138,7 +139,7 @@ export default function AccountOrdersPage() {
                         </span>
                         <span className="flex items-center gap-1.5">
                           <Clock className="w-3.5 h-3.5 text-[#0866C6]" />
-                          {order.time}
+                          {formatTimeTo12Hour(order.time)}
                         </span>
                         {addressText && <span>{addressText}</span>}
                       </div>

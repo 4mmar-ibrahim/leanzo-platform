@@ -10,7 +10,7 @@ import { Notification } from '../models/Notification.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { auditService } from '../services/auditService.js';
 import { assertSlotAvailability, compressScheduleAfterCancellation, getCurrentCairoTimeString, withBookingLock } from '../services/availabilityService.js';
-import { calculateBookingPrice } from '../services/bookingPriceService.js';
+import { calculateBookingPrice, calculateMultiServiceBookingPrice } from '../services/bookingPriceService.js';
 import { redeemCouponAtomically, rollbackCouponRedemption } from '../services/couponService.js';
 import { generateOrderNumber } from '../utils/orderNumber.js';
 import { sendSuccess, sendError } from '../utils/responseHandler.js';
@@ -117,23 +117,15 @@ function isTimeIntervalOverlapping(
 
 export async function calculateBookingPriceHandler(req: Request, res: Response): Promise<void> {
   try {
-    const { serviceId, packageId, addonIds, promoCode, customerPhone, category: bookingCategory } = req.body;
+    const { serviceId, services, packageId, addonIds, promoCode, customerPhone, category: bookingCategory } = req.body;
 
-    if (!serviceId) {
+    const rawServices = Array.isArray(services) && services.length > 0
+      ? services
+      : (serviceId ? [{ serviceId, packageId, addonIds }] : []);
+
+    if (rawServices.length === 0) {
       sendError(res, 'معرف الخدمة مطلوب', 400, 'MISSING_SERVICE_ID');
       return;
-    }
-
-    if (bookingCategory) {
-      const service = await Service.findOne({ id: serviceId });
-      if (!service) {
-        sendError(res, 'الخدمة المطلوبة غير موجودة', 404, 'SERVICE_NOT_FOUND');
-        return;
-      }
-      if (service.category !== bookingCategory) {
-        sendError(res, 'تصنيف الخدمة لا يتطابق مع قسم الحجز المحدد', 400, 'SERVICE_CATEGORY_MISMATCH');
-        return;
-      }
     }
 
     if (customerPhone) {
@@ -149,13 +141,33 @@ export async function calculateBookingPriceHandler(req: Request, res: Response):
       }
     }
 
-    const pricing = await calculateBookingPrice({
-      serviceId,
-      packageId,
-      addonIds,
-      promoCode,
-      customerPhone: customerPhone ? String(customerPhone).trim() : undefined,
-    });
+    const cleanPhone = customerPhone ? String(customerPhone).trim() : undefined;
+
+    let pricing;
+    if (rawServices.length > 1 || (Array.isArray(services) && services.length > 0)) {
+      pricing = await calculateMultiServiceBookingPrice(rawServices, promoCode, cleanPhone);
+    } else {
+      const sId = rawServices[0].serviceId;
+      if (bookingCategory) {
+        const service = await Service.findOne({ id: sId });
+        if (!service) {
+          sendError(res, 'الخدمة المطلوبة غير موجودة', 404, 'SERVICE_NOT_FOUND');
+          return;
+        }
+        if (service.category !== bookingCategory) {
+          sendError(res, 'تصنيف الخدمة لا يتطابق مع قسم الحجز المحدد', 400, 'SERVICE_CATEGORY_MISMATCH');
+          return;
+        }
+      }
+
+      pricing = await calculateBookingPrice({
+        serviceId: sId,
+        packageId: rawServices[0].packageId,
+        addonIds: rawServices[0].addonIds,
+        promoCode,
+        customerPhone: cleanPhone,
+      });
+    }
 
     sendSuccess(res, pricing, 'تم احتساب تفاصيل السعر بنجاح');
   } catch (err: any) {
@@ -167,6 +179,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
   try {
     const {
       serviceId,
+      services,
       packageId,
       addonIds,
       category: bookingCategory,
@@ -179,8 +192,12 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
       guestPhone,
     } = req.body;
 
+    const rawServices = Array.isArray(services) && services.length > 0
+      ? services
+      : (serviceId ? [{ serviceId, packageId, addonIds }] : []);
+
     // Strict Required Validation: Category & Service are mandatory
-    if (!serviceId) {
+    if (rawServices.length === 0) {
       sendError(res, 'يرجى اختيار خدمة للمتابعة وإتمام الحجز', 400, 'MISSING_SERVICE');
       return;
     }
@@ -200,8 +217,9 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
       return;
     }
 
-    // 1. Fetch and validate service (Reject non-existent, deleted, archived, unavailable, or inactive services)
-    const service = await Service.findOne({ id: serviceId });
+    // 1. Fetch and validate primary service (Reject non-existent, deleted, archived, unavailable, or inactive services)
+    const primaryServiceId = rawServices[0].serviceId;
+    const service = await Service.findOne({ id: primaryServiceId });
     if (!service) {
       sendError(res, 'الخدمة المطلوبة غير موجودة في النظام', 404, 'SERVICE_NOT_FOUND');
       return;
@@ -212,8 +230,8 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
       return;
     }
 
-    // 1.5 Strict Category Verification: Ensure Service matches requested Booking Category
-    if (service.category !== bookingCategory) {
+    // Category Verification for single service
+    if (rawServices.length === 1 && service.category !== bookingCategory && bookingCategory !== 'all') {
       sendError(
         res,
         `تصنيف الخدمة المختارة (${service.category}) لا يتوافق مع قسم الحجز المحدد (${bookingCategory})`,
@@ -261,16 +279,20 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
       }
     }
 
-    // 3. Authoritative Server-Side Price & Duration Calculation (packages, add-ons, coupons)
-    let pricing;
+    // 3. Authoritative Server-Side Price & Duration Calculation (multi-service, packages, add-ons, coupons)
+    let pricing: any;
     try {
-      pricing = await calculateBookingPrice({
-        serviceId: service.id,
-        packageId,
-        addonIds,
-        promoCode,
-        customerPhone: customerPhone.trim(),
-      });
+      if (rawServices.length > 1 || (Array.isArray(services) && services.length > 0)) {
+        pricing = await calculateMultiServiceBookingPrice(rawServices, promoCode, cleanCustomerPhone);
+      } else {
+        pricing = await calculateBookingPrice({
+          serviceId: service.id,
+          packageId,
+          addonIds,
+          promoCode,
+          customerPhone: cleanCustomerPhone,
+        });
+      }
     } catch (priceErr: any) {
       sendError(res, priceErr.message, 422, 'PRICING_VALIDATION_ERROR');
       return;
@@ -423,21 +445,23 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
         ];
 
         // 4.5 Create Booking Record with immutable snapshot
+        const isMulti = pricing.items && pricing.items.length > 1;
         try {
           const created = await Booking.create({
             id: orderNumber,
             customerId,
             customerName,
-            customerPhone: customerPhone.trim(),
+            customerPhone: cleanCustomerPhone,
             serviceId: service.id,
             serviceSnapshot: {
               id: service.id,
-              title: service.title,
-              titleEn: service.titleEn,
+              title: isMulti ? pricing.items.map((i: any) => i.title).join(' + ') : service.title,
+              titleEn: isMulti ? pricing.items.map((i: any) => i.titleEn).join(' + ') : service.titleEn,
               category: service.category,
               image: service.image,
-              price: service.price,
-              duration: service.duration,
+              price: pricing.finalPrice,
+              duration: pricing.totalServiceDuration,
+              services: pricing.items || undefined,
             },
             packageId: pricing.packageId || null,
             packageSnapshot: pricing.packageSnapshot || null,
@@ -464,6 +488,10 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
             status: 'pending',
             timeline: initialTimeline,
             notes,
+            metadata: {
+              isMultiService: isMulti,
+              services: pricing.items || undefined,
+            },
           });
           return { isDuplicate: false, booking: created };
         } catch (bookingCreateErr: any) {
@@ -474,6 +502,20 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
         }
       });
     } catch (availOrLockErr: any) {
+      if (
+        availOrLockErr.code === 'OFFICIAL_HOLIDAY' ||
+        availOrLockErr.message?.includes('عطلة') ||
+        availOrLockErr.message?.includes('مغلق بالكامل')
+      ) {
+        sendError(
+          res,
+          availOrLockErr.message || 'التاريخ المحدد عطلة رسمية وغير متاح للحجز',
+          400,
+          'OFFICIAL_HOLIDAY'
+        );
+        return;
+      }
+
       const isSlotConflict =
         availOrLockErr.code === 'SLOT_UNAVAILABLE' ||
         availOrLockErr.statusCode === 409 ||
