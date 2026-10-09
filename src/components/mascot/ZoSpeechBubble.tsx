@@ -91,9 +91,6 @@ export function ZoSpeechBubble({
   const [internalVisible, setInternalVisible] = useState(isOpen !== undefined ? isOpen : false);
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const activeTitle = isAr ? title : (titleEn || title);
-  const rawMessage = (isAr ? message : (messageEn || message)) || '';
-
   // Sync controlled isOpen
   useEffect(() => {
     if (isOpen !== undefined) {
@@ -102,21 +99,39 @@ export function ZoSpeechBubble({
   }, [isOpen]);
 
   // Determine display title & body cleanly
-  let displayTitle = activeTitle;
-  let displayBody = rawMessage.trim();
+  const activeTitle = (isAr ? title : (titleEn || title)) || '';
+  const rawMessage = ((isAr ? message : (messageEn || message)) || '').trim();
 
-  if (displayTitle && displayBody) {
-    if (displayTitle.trim() === displayBody) {
-      displayTitle = isAr ? 'زو المساعد الذكي 👋' : 'Zo Assistant 👋';
-    } else if (displayBody.startsWith(displayTitle.trim())) {
-      const rest = displayBody.slice(displayTitle.trim().length).trim();
+  // Strip generic/default titles completely so "زو المساعد الذكي" never appears
+  const isGenericTitle = (text: string) => {
+    const clean = text.trim().toLowerCase();
+    return (
+      clean === 'زو المساعد الذكي' ||
+      clean === 'زو المساعد الذكي 👋' ||
+      clean === 'zo assistant' ||
+      clean === 'zo assistant 👋' ||
+      clean.includes('المساعد الذكي') ||
+      clean.includes('zo assistant')
+    );
+  };
+
+  let displayTitle = '';
+  let displayBody = rawMessage;
+
+  if (activeTitle && !isGenericTitle(activeTitle)) {
+    if (activeTitle.trim() === displayBody) {
+      displayTitle = '';
+    } else if (displayBody.startsWith(activeTitle.trim())) {
+      const rest = displayBody.slice(activeTitle.trim().length).trim();
       if (rest) {
         displayBody = rest;
+        displayTitle = activeTitle.trim();
       }
+    } else {
+      displayTitle = activeTitle.trim();
     }
-  } else if (!displayBody && displayTitle) {
-    displayBody = displayTitle;
-    displayTitle = isAr ? 'زو المساعد الذكي 👋' : 'Zo Assistant 👋';
+  } else if (!displayBody && activeTitle && !isGenericTitle(activeTitle)) {
+    displayBody = activeTitle;
   }
 
   // Entrance and optional autoHide timer for uncontrolled mode
@@ -164,9 +179,9 @@ export function ZoSpeechBubble({
   }[bubbleStyle];
 
   const fontClasses = {
-    sm: 'text-xs leading-relaxed',
-    md: 'text-sm leading-relaxed',
-    lg: 'text-base leading-relaxed',
+    sm: 'text-xs leading-snug',
+    md: 'text-sm leading-snug',
+    lg: 'text-base leading-snug',
   }[fontSize];
 
   // High contrast default text color if not explicitly customized
@@ -177,18 +192,19 @@ export function ZoSpeechBubble({
 
   // Tail orientation
   const tailPositionClasses = {
-    'top': 'bottom-[-6px] left-1/2 -translate-x-1/2 border-t-current',
-    'top-start': 'bottom-[-6px] start-6 border-t-current',
-    'top-end': 'bottom-[-6px] end-6 border-t-current',
-    'top-right': 'bottom-[-6px] right-6 border-t-current',
-    'top-left': 'bottom-[-6px] left-6 border-t-current',
-    'side-start': 'top-1/2 -translate-y-1/2 end-[-6px] border-s-current',
-    'side-end': 'top-1/2 -translate-y-1/2 start-[-6px] border-e-current',
-    'bottom': 'top-[-6px] left-1/2 -translate-x-1/2 border-b-current',
-  }[position] || 'bottom-[-6px] right-6 border-t-current';
+    'top': 'bottom-[-5px] left-1/2 -translate-x-1/2',
+    'top-start': 'bottom-[-5px] start-5',
+    'top-end': 'bottom-[-5px] end-5',
+    'top-right': 'bottom-[-5px] right-5',
+    'top-left': 'bottom-[-5px] left-5',
+    'side-start': 'top-1/2 -translate-y-1/2 end-[-5px]',
+    'side-end': 'top-1/2 -translate-y-1/2 start-[-5px]',
+    'bottom': 'top-[-5px] left-1/2 -translate-x-1/2',
+  }[position] || 'bottom-[-5px] right-5';
 
   const customContainerStyle: React.CSSProperties = {
     maxWidth: `${maxWidth}px`,
+    width: 'fit-content',
     wordBreak: 'break-word',
     overflowWrap: 'break-word',
     ...(backgroundColor ? { backgroundColor } : {}),
@@ -199,7 +215,7 @@ export function ZoSpeechBubble({
     <div
       dir={isAr ? 'rtl' : 'ltr'}
       className={cn(
-        'relative z-30 p-3.5 sm:p-4 rounded-2xl transition-all duration-200 ease-out',
+        'relative z-30 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl transition-all duration-200 ease-out w-fit max-w-full',
         isOpen !== undefined
           ? (isOpen ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-95 translate-y-2 pointer-events-none')
           : (isVisible ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-95 translate-y-2 pointer-events-none'),
@@ -208,41 +224,64 @@ export function ZoSpeechBubble({
       )}
       style={customContainerStyle}
     >
-      {/* Header bar */}
-      <div className="flex items-center justify-between gap-2 mb-1.5">
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-[#F0444C] animate-pulse" />
-          <span
-            className="font-extrabold text-xs tracking-tight text-[#0866C6] dark:text-[#3894ec]"
-            style={titleColor ? { color: titleColor } : undefined}
+      {/* Optional Custom Title (only when explicitly provided and non-generic) */}
+      {displayTitle ? (
+        <>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span
+              className="font-bold text-[11px] leading-tight text-[#25B8E6] dark:text-[#3894ec] truncate"
+              style={titleColor ? { color: titleColor } : undefined}
+            >
+              {displayTitle}
+            </span>
+            {showCloseButton && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setInternalVisible(false);
+                  if (onClose) onClose();
+                }}
+                className="shrink-0 p-0.5 -me-1 -mt-0.5 rounded-full hover:bg-black/20 dark:hover:bg-white/20 text-white/60 hover:text-white transition-colors cursor-pointer"
+                title={isAr ? 'إغلاق' : 'Close'}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          <p
+            className={cn('font-medium whitespace-normal', !textColor && defaultTextColorClass, fontClasses)}
+            style={textColor ? { color: textColor } : undefined}
           >
-            {displayTitle || (isAr ? 'زو المساعد الذكي' : 'Zo Assistant')}
-          </span>
+            {displayBody}
+          </p>
+        </>
+      ) : (
+        /* Single-line or compact layout when no title: Body + Close button side-by-side */
+        <div className="flex items-center justify-between gap-2">
+          <p
+            className={cn('font-medium whitespace-normal select-none', !textColor && defaultTextColorClass, fontClasses)}
+            style={textColor ? { color: textColor } : undefined}
+          >
+            {displayBody}
+          </p>
+
+          {showCloseButton && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setInternalVisible(false);
+                if (onClose) onClose();
+              }}
+              className="shrink-0 p-0.5 -me-0.5 rounded-full hover:bg-black/20 dark:hover:bg-white/20 text-white/60 hover:text-white transition-colors cursor-pointer"
+              title={isAr ? 'إغلاق' : 'Close'}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
-
-        {showCloseButton && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setInternalVisible(false);
-              if (onClose) onClose();
-            }}
-            className="p-1 -me-1 -mt-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
-            title={isAr ? 'إغلاق' : 'Close'}
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </div>
-
-      {/* Message text with customizable color & high-contrast fallback */}
-      <p
-        className={cn('font-medium', !textColor && defaultTextColorClass, fontClasses)}
-        style={textColor ? { color: textColor } : undefined}
-      >
-        {displayBody}
-      </p>
+      )}
 
       {/* Optional Action Button */}
       {actionButton && (
@@ -254,7 +293,7 @@ export function ZoSpeechBubble({
             setInternalVisible(false);
             if (onClose) onClose();
           }}
-          className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#F0444C] hover:bg-[#D42E36] text-white text-xs font-bold transition-all shadow-md active:scale-95"
+          className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#F0444C] hover:bg-[#D42E36] text-white text-xs font-bold transition-all shadow-md active:scale-95"
         >
           <span>{isAr ? actionButton.label : (actionButton.labelEn || actionButton.label)}</span>
           {isAr ? <ArrowLeft className="w-3 h-3" /> : <ArrowRight className="w-3 h-3" />}
@@ -264,9 +303,9 @@ export function ZoSpeechBubble({
       {/* Speech bubble tail pointer */}
       <div
         className={cn(
-          'absolute w-3 h-3 rotate-45 pointer-events-none',
+          'absolute w-2.5 h-2.5 rotate-45 pointer-events-none',
           tailPositionClasses,
-          bubbleStyle === 'cleanzo_blue' ? 'bg-[#07345C]' : 'bg-current'
+          bubbleStyle === 'cleanzo_blue' ? 'bg-[#07345C] border-b border-e border-[#0866C6]/50' : 'bg-current'
         )}
       />
     </div>

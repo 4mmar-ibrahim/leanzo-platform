@@ -157,10 +157,10 @@ export function ZoCharacter({
           className={cn(
             'absolute bottom-[104%] mb-2 z-40 transition-all duration-200 ease-out',
             bubbleAlignment === 'right'
-              ? 'right-0 w-max max-w-[min(280px,calc(100vw-36px))]'
+              ? 'right-0 w-fit max-w-[min(280px,calc(100vw-36px))]'
               : bubbleAlignment === 'left'
-              ? 'left-0 w-max max-w-[min(280px,calc(100vw-36px))]'
-              : 'left-1/2 -translate-x-1/2 w-max max-w-[min(280px,calc(100vw-36px))]',
+              ? 'left-0 w-fit max-w-[min(280px,calc(100vw-36px))]'
+              : 'left-1/2 -translate-x-1/2 w-fit max-w-[min(280px,calc(100vw-36px))]',
             isMessageOpen
               ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto'
               : 'opacity-0 scale-95 translate-y-2 pointer-events-none'
