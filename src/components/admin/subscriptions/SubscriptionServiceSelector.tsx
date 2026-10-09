@@ -141,46 +141,29 @@ export function SubscriptionServiceSelector({
     });
   }, [activeServices, selectedCategory, searchTerm]);
 
-  // Multi-selection resolution
-  const currentSelectedIds = useMemo(() => {
+  // Single-selection resolution: easily select or switch service
+  const currentSelectedId = useMemo(() => {
+    if (selectedServiceId) return selectedServiceId;
     if (Array.isArray(selectedServiceIds) && selectedServiceIds.length > 0) {
-      return selectedServiceIds;
+      return selectedServiceIds[0];
     }
-    if (selectedServiceId) {
-      return [selectedServiceId];
-    }
-    return [];
-  }, [selectedServiceIds, selectedServiceId]);
+    return '';
+  }, [selectedServiceId, selectedServiceIds]);
 
-  const selectedServicesList = useMemo(() => {
-    return activeServices.filter((s: any) => {
-      const id = s.id || s._id;
-      return currentSelectedIds.includes(id);
-    });
-  }, [activeServices, currentSelectedIds]);
+  const selectedService = useMemo(() => {
+    return activeServices.find((s: any) => (s.id || s._id) === currentSelectedId);
+  }, [activeServices, currentSelectedId]);
 
-  const handleToggleService = (service: any) => {
+  const handleSelectService = (service: any) => {
     if (disabled) return;
     const serviceId = service.id || service._id;
-    const isAlreadySelected = currentSelectedIds.includes(serviceId);
+    const resolvedObj = { ...service, id: serviceId };
 
-    let nextSelectedIds: string[];
-    if (isAlreadySelected) {
-      nextSelectedIds = currentSelectedIds.filter((id) => id !== serviceId);
-    } else {
-      nextSelectedIds = [...currentSelectedIds, serviceId];
-    }
-
-    const nextSelectedObjects = activeServices.filter((s: any) => {
-      const sId = s.id || s._id;
-      return nextSelectedIds.includes(sId);
-    });
-
-    if (onSelectServices) {
-      onSelectServices(nextSelectedObjects);
-    }
     if (onSelectService) {
-      onSelectService(nextSelectedObjects[0] || { ...service, id: serviceId });
+      onSelectService(resolvedObj);
+    }
+    if (onSelectServices) {
+      onSelectServices([resolvedObj]);
     }
   };
 
@@ -197,15 +180,12 @@ export function SubscriptionServiceSelector({
     <div className="space-y-3">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
         <label className="font-bold text-foreground/80 text-xs flex items-center gap-1.5 flex-wrap">
-          <span>الخدمات المشمولة بالباقة *</span>
-          <span className="text-[10px] text-foreground/50 font-normal">
-            (يمكنك اختيار أكثر من خدمة)
-          </span>
-          {selectedServicesList.length > 0 && (
+          <span>الخدمة المرتبطة بالباقة *</span>
+          {selectedService && (
             <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md flex items-center gap-1">
-              <span>تم اختيار ({selectedServicesList.length}):</span>
+              <span>تم اختيار:</span>
               <span className="truncate max-w-[200px] sm:max-w-[320px]">
-                {selectedServicesList.map((s: any) => s.title || s.name).join(' + ')}
+                {selectedService.title || selectedService.name}
               </span>
             </span>
           )}
@@ -285,7 +265,7 @@ export function SubscriptionServiceSelector({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {filteredServices.map((service: any) => {
               const serviceId = service.id || service._id;
-              const isSelected = currentSelectedIds.includes(serviceId);
+              const isSelected = currentSelectedId === serviceId;
               const title = service.title || service.name || 'خدمة كلينزو';
               const description =
                 service.description ||
@@ -296,7 +276,7 @@ export function SubscriptionServiceSelector({
               return (
                 <div
                   key={serviceId}
-                  onClick={() => handleToggleService(service)}
+                  onClick={() => handleSelectService(service)}
                   className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between text-right relative ${
                     isSelected
                       ? 'bg-primary/10 border-primary ring-2 ring-primary/20 shadow-xs'

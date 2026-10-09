@@ -230,25 +230,25 @@ export default function AdminSubscriptionPlansPage() {
 
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    const effectiveServiceId = formData.serviceIds?.[0] || formData.serviceId;
+    const effectiveServiceId = formData.serviceId || formData.serviceIds?.[0];
     if (!formData.name || !effectiveServiceId || formData.visitCount < 1 || formData.price < 0) {
-      toast.error('يرجى التأكد من اختيار خدمة واحدة على الأقل وملء جميع الحقول الإلزامية');
+      toast.error('يرجى التأكد من اختيار الخدمة وملء جميع الحقول الإلزامية');
       return;
     }
 
     try {
       setSubmitting(true);
-      const selectedServiceObjects = services.filter((s: any) =>
-        (formData.serviceIds || []).includes(s.id || s._id)
+      const selectedServiceObject = services.find((s: any) =>
+        (s.id || s._id) === effectiveServiceId
       );
-      const serviceTitles = selectedServiceObjects.map((s: any) => s.title || s.name);
+      const serviceTitle = selectedServiceObject?.title || selectedServiceObject?.name;
 
       const payload = {
         ...formData,
         serviceId: effectiveServiceId,
-        serviceIds: formData.serviceIds && formData.serviceIds.length > 0 ? formData.serviceIds : [effectiveServiceId],
+        serviceIds: [effectiveServiceId],
         cashbackPercentage: 0,
-        features: serviceTitles.length > 0 ? serviceTitles : undefined,
+        features: serviceTitle ? [serviceTitle] : undefined,
       };
 
       if (editingPlan) {
@@ -511,28 +511,17 @@ export default function AdminSubscriptionPlansPage() {
                 </div>
               </div>
 
-              {/* Service Selector Component (TASK 08, 09, 10, 11) */}
+              {/* Service Selector Component */}
               <SubscriptionServiceSelector
                 services={services}
                 selectedServiceId={formData.serviceId}
-                selectedServiceIds={formData.serviceIds}
                 onSelectService={(s) => {
                   const sId = s.id || s._id;
-                  setFormData({
-                    ...formData,
+                  setFormData((prev) => ({
+                    ...prev,
                     serviceId: sId,
-                    serviceIds: formData.serviceIds?.includes(sId)
-                      ? formData.serviceIds
-                      : [...(formData.serviceIds || []), sId],
-                  });
-                }}
-                onSelectServices={(svcs) => {
-                  const ids = svcs.map((s: any) => s.id || s._id);
-                  setFormData({
-                    ...formData,
-                    serviceId: ids[0] || '',
-                    serviceIds: ids,
-                  });
+                    serviceIds: [sId],
+                  }));
                 }}
               />
 
