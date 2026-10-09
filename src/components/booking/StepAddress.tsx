@@ -34,7 +34,12 @@ import {
 } from '@/lib/validation/phoneValidation';
 import { validateCustomerName } from '@/lib/validation/nameValidation';
 
-export function StepAddress() {
+export interface StepAddressProps {
+  isAdminContext?: boolean;
+  targetCustomer?: any;
+}
+
+export function StepAddress({ isAdminContext = false, targetCustomer = null }: StepAddressProps = {}) {
   const { t, locale } = useLocaleStore();
   const {
     addresses,
@@ -66,13 +71,28 @@ export function StepAddress() {
   const [apartment, setApartment] = useState('');
   const [landmark, setLandmark] = useState('');
   const [notes, setNotes] = useState('');
-  const [guestPhoneInput, setGuestPhoneInput] = useState(user?.phone || guestPhone || '');
+
+  const initialPhone = isAdminContext ? (targetCustomer?.phone || guestPhone || '') : (user?.phone || guestPhone || '');
+  const initialName = isAdminContext ? (targetCustomer?.name || guestName || '') : (user?.name || guestName || '');
+
+  const [guestPhoneInput, setGuestPhoneInput] = useState(initialPhone);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [phoneTouched, setPhoneTouched] = useState(false);
-  const [guestNameInput, setGuestNameInput] = useState(user?.name || guestName || '');
+  const [guestNameInput, setGuestNameInput] = useState(initialName);
   const [nameError, setNameError] = useState<string | null>(null);
   const [nameTouched, setNameTouched] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Synchronize customer phone/name in admin context when targetCustomer changes
+  useEffect(() => {
+    if (isAdminContext && targetCustomer) {
+      if (targetCustomer.phone) setGuestPhoneInput(targetCustomer.phone);
+      if (targetCustomer.name) {
+        setGuestNameInput(targetCustomer.name);
+        setNameError(null);
+      }
+    }
+  }, [isAdminContext, targetCustomer]);
 
   const handleGuestNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -153,14 +173,16 @@ export function StepAddress() {
     }
   };
 
-  // Synchronize guest phone/name if user logs in
+  // Synchronize guest phone/name if user logs in (customer portal only)
   useEffect(() => {
-    if (user?.phone) setGuestPhoneInput(user.phone);
-    if (user?.name) {
-      setGuestNameInput(user.name);
-      setNameError(null);
+    if (!isAdminContext) {
+      if (user?.phone) setGuestPhoneInput(user.phone);
+      if (user?.name) {
+        setGuestNameInput(user.name);
+        setNameError(null);
+      }
     }
-  }, [user]);
+  }, [user, isAdminContext]);
 
   // Prefill form from existing selectedAddress if available
   useEffect(() => {
@@ -185,8 +207,9 @@ export function StepAddress() {
   // Fetch active locations and customer addresses on mount
   useEffect(() => {
     fetchLocations(false);
-    fetchAddresses(user?.phone);
-  }, [fetchLocations, fetchAddresses, user?.phone]);
+    const phoneToFetch = isAdminContext ? (targetCustomer?.phone || guestPhone) : user?.phone;
+    fetchAddresses(phoneToFetch);
+  }, [fetchLocations, fetchAddresses, user?.phone, isAdminContext, targetCustomer?.phone, guestPhone]);
 
   // Filter only active governorates from backend
   const activeGovernorates = useMemo(() => {

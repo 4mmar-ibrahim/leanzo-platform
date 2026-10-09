@@ -4,6 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
+  Users,
   Sparkles,
   Calendar,
   MapPin,
@@ -12,8 +13,8 @@ import {
   ArrowLeft,
   Loader2,
   RotateCcw,
-  ShieldCheck,
   ShoppingBag,
+  UserCheck,
 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useBookingStore } from '@/store/useBookingStore';
@@ -21,11 +22,12 @@ import { useServiceStore } from '@/store/useServiceStore';
 import { useOrderStore } from '@/store/useOrderStore';
 import { useAdminStore } from '@/store/useAdminStore';
 import { useActivityLogStore } from '@/store/useActivityLogStore';
+import { CustomerProfile } from '@/types';
+import { AdminStepCustomerSelect } from '@/components/admin/orders/AdminStepCustomerSelect';
 import { StepService } from '@/components/booking/StepService';
 import { StepDateTime } from '@/components/booking/StepDateTime';
 import { StepAddress } from '@/components/booking/StepAddress';
 import { StepReview } from '@/components/booking/StepReview';
-import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { Button } from '@/components/ui/Button';
 import { toast } from 'sonner';
 import { validateEgyptianPhone } from '@/lib/validation/phoneValidation';
@@ -63,24 +65,32 @@ function AdminNewBookingContent() {
     promoCode,
     getFinalPrice,
     resetBooking,
+    setGuestInfo,
     guestName,
     guestPhone,
   } = useBookingStore();
 
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerProfile | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mounted, setMounted] = useState(false);
 
+  // Initialize: Reset booking completely so the system never auto-selects any user or previous data
   useEffect(() => {
     setMounted(true);
+    resetBooking();
+    setSelectedCustomer(null);
+    setStep(1);
     fetchCategories();
     fetchAdminServices();
-  }, [fetchCategories, fetchAdminServices]);
+  }, [fetchCategories, fetchAdminServices, resetBooking, setStep]);
 
+  // 5 Clear Steps for Admin Order Creation
   const steps = [
-    { num: 1, label: isAr ? 'اختيار الخدمة' : 'Service', icon: Sparkles },
-    { num: 2, label: isAr ? 'الميعاد' : 'Date & Time', icon: Calendar },
-    { num: 3, label: isAr ? 'البيانات والعنوان' : 'Customer Info', icon: MapPin },
-    { num: 4, label: isAr ? 'مراجعة وتأكيد' : 'Confirmation', icon: CheckCircle2 },
+    { num: 1, label: isAr ? 'اختيار العميل' : 'Select Customer', icon: Users },
+    { num: 2, label: isAr ? 'اختيار الخدمة' : 'Service', icon: Sparkles },
+    { num: 3, label: isAr ? 'الميعاد' : 'Date & Time', icon: Calendar },
+    { num: 4, label: isAr ? 'العنوان وتفاصيل الزيارة' : 'Address & Details', icon: MapPin },
+    { num: 5, label: isAr ? 'مراجعة وتأكيد' : 'Confirmation', icon: CheckCircle2 },
   ];
 
   const hasServices = (selectedServices && selectedServices.length > 0) || (
@@ -91,16 +101,25 @@ function AdminNewBookingContent() {
   );
 
   const canProceed = () => {
-    if (currentStep === 1) return hasServices;
-    if (currentStep === 2) return !!selectedDate && !!selectedTime;
-    if (currentStep === 3) {
+    // Step 1: Customer must be selected by admin
+    if (currentStep === 1) return !!selectedCustomer;
+
+    // Step 2: Service must be chosen
+    if (currentStep === 2) return hasServices;
+
+    // Step 3: Date & Time
+    if (currentStep === 3) return !!selectedDate && !!selectedTime;
+
+    // Step 4: Address
+    if (currentStep === 4) {
       if (!selectedAddress) return false;
-      const effectiveName = (guestName || (selectedAddress as any)?.customerName || '').trim();
+      const effectiveName = (selectedCustomer?.name || guestName || (selectedAddress as any)?.customerName || '').trim();
       const isNameValid = validateCustomerName(effectiveName, isAr).isValid;
-      const effectivePhone = (guestPhone || selectedAddress?.customerPhone || '').trim();
+      const effectivePhone = (selectedCustomer?.phone || guestPhone || selectedAddress?.customerPhone || '').trim();
       const isPhoneValid = validateEgyptianPhone(effectivePhone).isValid;
       return isNameValid && isPhoneValid;
     }
+
     return true;
   };
 
@@ -114,16 +133,18 @@ function AdminNewBookingContent() {
   const handleNext = () => {
     if (!canProceed()) {
       if (currentStep === 1) {
-        toast.error(isAr ? 'من فضلك اختر خدمة واحدة على الأقل للمتابعة' : 'Please select at least one service');
+        toast.error(isAr ? 'يرجى اختيار العميل أولاً للمتابعة أو تسجيل عميل جديد' : 'Please select or register a customer first');
       } else if (currentStep === 2) {
-        toast.error(isAr ? 'يرجى اختيار التاريخ والوقت المفضل للزيارة' : 'Please select date and time');
+        toast.error(isAr ? 'من فضلك اختر خدمة واحدة على الأقل للمتابعة' : 'Please select at least one service');
       } else if (currentStep === 3) {
+        toast.error(isAr ? 'يرجى اختيار التاريخ والوقت المفضل للزيارة' : 'Please select date and time');
+      } else if (currentStep === 4) {
         if (!selectedAddress) {
-          toast.error(isAr ? 'يرجى تحديد أو إضافة عنوان الخدمة' : 'Please select service address');
+          toast.error(isAr ? 'يرجى تحديد أو إضافة عنوان الخدمة للعميل' : 'Please enter service address for the customer');
         } else {
-          const effectiveName = (guestName || (selectedAddress as any)?.customerName || '').trim();
+          const effectiveName = (selectedCustomer?.name || guestName || (selectedAddress as any)?.customerName || '').trim();
           const nameVal = validateCustomerName(effectiveName, isAr);
-          const effectivePhone = (guestPhone || selectedAddress?.customerPhone || '').trim();
+          const effectivePhone = (selectedCustomer?.phone || guestPhone || selectedAddress?.customerPhone || '').trim();
           const phoneVal = validateEgyptianPhone(effectivePhone);
           if (!nameVal.isValid) {
             toast.error(nameVal.message || (isAr ? 'يرجى إدخال اسم العميل بشكل صحيح' : 'Please enter customer name'));
@@ -137,8 +158,25 @@ function AdminNewBookingContent() {
     nextStep();
   };
 
+  const handleSelectCustomer = (customer: CustomerProfile) => {
+    setSelectedCustomer(customer);
+    setGuestInfo(customer.name, customer.phone);
+    toast.success(isAr ? `تم اختيار العميل (${customer.name})` : `Selected ${customer.name}`);
+  };
+
+  const handleClearCustomer = () => {
+    setSelectedCustomer(null);
+    setGuestInfo('', '');
+  };
+
   const handleExecuteBooking = async () => {
     if (isSubmitting) return;
+
+    if (!selectedCustomer) {
+      toast.error(isAr ? 'يرجى اختيار العميل أولاً' : 'Please select customer');
+      setStep(1);
+      return;
+    }
 
     const allItems = selectedServices && selectedServices.length > 0
       ? selectedServices
@@ -173,8 +211,8 @@ function AdminNewBookingContent() {
 
     setIsSubmitting(true);
     try {
-      const rawName = (guestName || (selectedAddress as any)?.customerName || '').trim();
-      const rawPhone = (guestPhone || selectedAddress?.customerPhone || '').trim();
+      const rawName = (selectedCustomer.name || guestName || (selectedAddress as any)?.customerName || '').trim();
+      const rawPhone = (selectedCustomer.phone || guestPhone || selectedAddress?.customerPhone || '').trim();
 
       const servicesPayload = allItems.map((item) => ({
         serviceId: item.service.id,
@@ -195,7 +233,8 @@ function AdminNewBookingContent() {
         promoCode: promoCode || undefined,
         guestName: rawName || undefined,
         guestPhone: rawPhone || undefined,
-      });
+        customerId: selectedCustomer.id || undefined,
+      } as any);
 
       if (res && res.id) {
         addLog({
@@ -251,7 +290,7 @@ function AdminNewBookingContent() {
             </h1>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            خطوات الحجز المتكاملة كما تظهر للعملاء: اختيار الخدمة ⬅️ الميعاد ⬅️ البيانات والعنوان ⬅️ مراجعة وتأكيد الطلب
+            خطوات الحجز المتكاملة: 1. اختيار العميل ⬅️ 2. اختيار الخدمة ⬅️ 3. الميعاد ⬅️ 4. العنوان ⬅️ 5. التأكيد
           </p>
         </div>
 
@@ -261,10 +300,11 @@ function AdminNewBookingContent() {
             onClick={() => {
               if (window.confirm('هل تريد إلغاء وإعادة تعيين خطوات الحجز الحالية؟')) {
                 resetBooking();
+                setSelectedCustomer(null);
                 setStep(1);
               }
             }}
-            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition-colors flex items-center gap-1.5"
+            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>إعادة تعيين الحجز</span>
@@ -272,9 +312,36 @@ function AdminNewBookingContent() {
         </div>
       </div>
 
-      {/* 4-Step Progress Indicator */}
+      {/* Selected Customer Sticky Badge (shows across steps 2-5) */}
+      {selectedCustomer && currentStep > 1 && (
+        <div className="p-3 sm:p-3.5 rounded-2xl bg-sky-50 dark:bg-sky-950/40 border border-[#0866C6]/30 flex items-center justify-between gap-3 text-xs shadow-2xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-[#0866C6] text-white flex items-center justify-center shrink-0">
+              <UserCheck className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-slate-500 text-[11px] block">العميل المختار:</span>
+              <span className="font-bold text-slate-900 dark:text-white truncate">
+                {selectedCustomer.name}{' '}
+                <span className="font-mono text-sky-600 dark:text-sky-400 dir-ltr text-xs">
+                  ({selectedCustomer.phone})
+                </span>
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStep(1)}
+            className="text-xs font-bold text-[#0866C6] hover:underline shrink-0 cursor-pointer"
+          >
+            تغيير العميل ↺
+          </button>
+        </div>
+      )}
+
+      {/* 5-Step Progress Indicator */}
       <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
           {steps.map((st) => {
             const Icon = st.icon;
             const isCompleted = currentStep > st.num;
@@ -288,7 +355,7 @@ function AdminNewBookingContent() {
                 onClick={() => {
                   if (isCompleted) setStep(st.num);
                 }}
-                className={`flex flex-col sm:flex-row items-center justify-center gap-2 p-2 sm:p-3 rounded-xl transition-all text-center ${
+                className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 p-1.5 sm:p-3 rounded-xl transition-all text-center ${
                   isCurrent
                     ? 'bg-[#0866C6] text-white shadow-sm'
                     : isCompleted
@@ -297,7 +364,7 @@ function AdminNewBookingContent() {
                 }`}
               >
                 <div
-                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${
+                  className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black shrink-0 ${
                     isCurrent
                       ? 'bg-white text-[#0866C6]'
                       : isCompleted
@@ -305,9 +372,9 @@ function AdminNewBookingContent() {
                       : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
                   }`}
                 >
-                  {isCompleted ? <CheckCircle2 className="w-4 h-4" /> : st.num}
+                  {isCompleted ? <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : st.num}
                 </div>
-                <span className="text-xs font-bold truncate hidden sm:inline">{st.label}</span>
+                <span className="text-[11px] sm:text-xs font-bold truncate hidden md:inline">{st.label}</span>
               </button>
             );
           })}
@@ -316,10 +383,18 @@ function AdminNewBookingContent() {
 
       {/* Step View Content */}
       <div className="min-h-[420px]">
-        {currentStep === 1 && <StepService />}
-        {currentStep === 2 && <StepDateTime />}
-        {currentStep === 3 && <StepAddress />}
-        {currentStep === 4 && <StepReview />}
+        {currentStep === 1 && (
+          <AdminStepCustomerSelect
+            selectedCustomer={selectedCustomer}
+            onSelectCustomer={handleSelectCustomer}
+            onClearCustomer={handleClearCustomer}
+            isAr={isAr}
+          />
+        )}
+        {currentStep === 2 && <StepService />}
+        {currentStep === 3 && <StepDateTime />}
+        {currentStep === 4 && <StepAddress isAdminContext={true} targetCustomer={selectedCustomer} />}
+        {currentStep === 5 && <StepReview />}
       </div>
 
       {/* Sticky Bottom Action Navigation Bar */}
@@ -332,7 +407,7 @@ function AdminNewBookingContent() {
                 type="button"
                 onClick={prevStep}
                 disabled={isSubmitting}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 transition-colors flex items-center gap-2"
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 transition-colors flex items-center gap-2 cursor-pointer"
               >
                 <ArrowBack className="w-4 h-4" />
                 <span>الخطوة السابقة</span>
@@ -357,12 +432,12 @@ function AdminNewBookingContent() {
 
           {/* Next / Confirm Button */}
           <div>
-            {currentStep < 4 ? (
+            {currentStep < 5 ? (
               <Button
                 variant="primary"
                 size="md"
                 onClick={handleNext}
-                className="px-6 py-2.5 text-xs font-bold shadow-md shadow-[#0866C6]/20 flex items-center gap-2"
+                className="px-6 py-2.5 text-xs font-bold shadow-md shadow-[#0866C6]/20 flex items-center gap-2 cursor-pointer"
               >
                 <span>الخطوة التالية: {steps[currentStep]?.label}</span>
                 <ArrowNext className="w-4 h-4" />
@@ -373,7 +448,7 @@ function AdminNewBookingContent() {
                 size="md"
                 disabled={isSubmitting}
                 onClick={handleExecuteBooking}
-                className="px-8 py-2.5 text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/20 flex items-center gap-2"
+                className="px-8 py-2.5 text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/20 flex items-center gap-2 cursor-pointer"
               >
                 {isSubmitting ? (
                   <>
@@ -383,7 +458,7 @@ function AdminNewBookingContent() {
                 ) : (
                   <>
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>تأكيد وإنشاء الحجز في النظام</span>
+                    <span>تأكيد وإنشاء الحجز للعميل في النظام</span>
                   </>
                 )}
               </Button>
