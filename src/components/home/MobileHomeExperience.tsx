@@ -60,12 +60,7 @@ function MobileSectionDivider({
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
 
   return (
-    <div className="relative flex items-center justify-center pt-5 pb-1 select-none">
-      {/* Background elegant gradient divider line */}
-      <div className="absolute inset-0 flex items-center pointer-events-none">
-        <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-slate-200/90 dark:via-[#133B61] to-transparent" />
-      </div>
-
+    <div className="relative flex items-center justify-center pt-4 pb-1 select-none">
       {/* Centered Title Badge in the middle of the page */}
       <div className="relative z-10 flex items-center justify-center gap-2 px-3.5 bg-transparent text-center max-w-[85%]">
         <div className="w-7 h-7 flex items-center justify-center shrink-0">
@@ -81,7 +76,7 @@ function MobileSectionDivider({
 
       {/* Action link on the end edge (if provided) */}
       {actionHref && actionLabel && (
-        <div className="absolute end-0 top-1/2 -translate-y-1/2 z-10 ps-2 bg-[#F8FAFD] dark:bg-[#041728]">
+        <div className="absolute end-0 top-1/2 -translate-y-1/2 z-10 ps-2 bg-transparent">
           <Link
             href={actionHref}
             className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0866C6] dark:text-[#3894ec] hover:opacity-80 active:scale-95 transition-all"
@@ -343,7 +338,10 @@ export function MobileHomeExperience() {
                     className="p-1 sm:p-2 bg-transparent border-0 shadow-none flex flex-col justify-between items-center text-center group"
                   >
                     {/* Clean Circular Image Presentation — 100% Round, No Borders, No Background Boxes */}
-                    <div className="pt-1 pb-2 px-1 flex items-center justify-center">
+                    <div
+                      onClick={() => openBookingForCategory(cat.slug || cat.id || 'car')}
+                      className="pt-1 pb-2 px-1 flex items-center justify-center cursor-pointer"
+                    >
                       <div className="relative w-28 h-28 sm:w-36 sm:h-36 rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-transparent">
                         {imageSrc ? (
                           <CleanzoImage
@@ -363,7 +361,10 @@ export function MobileHomeExperience() {
                     </div>
 
                     {/* Clean Title & Subtitle Outside the Image — Pure text, no background box */}
-                    <div className="text-center px-1 pb-2">
+                    <div
+                      onClick={() => openBookingForCategory(cat.slug || cat.id || 'car')}
+                      className="text-center px-1 pb-2 cursor-pointer"
+                    >
                       <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white leading-tight">
                         {titleText}
                       </h3>

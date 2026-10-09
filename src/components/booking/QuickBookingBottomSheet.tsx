@@ -87,6 +87,17 @@ export function QuickBookingBottomSheet({
   // Form selections
   const [category, setCategory] = useState<ServiceCategory>(initialCategory);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [selectedPkg, setSelectedPkg] = useState<ServicePackage | null>(null);
+  const [selectedAddonsList, setSelectedAddonsList] = useState<ServiceAddon[]>([]);
+
+  // Address & Contact info
+  const [governorateId, setGovernorateId] = useState<string>('');
+  const [cityId, setCityId] = useState<string>('');
+  const [area, setArea] = useState(user?.addresses?.[0]?.area || 'الحي الرابع، شارع النخيل');
+  const [customerName, setCustomerName] = useState(user?.name || '');
+  const [customerPhone, setCustomerPhone] = useState(user?.phone || '');
+  const [notes, setNotes] = useState('');
+  const [confirmedOrderId, setConfirmedOrderId] = useState<string>('');
 
   useEffect(() => {
     if (isOpen) {
@@ -129,8 +140,7 @@ export function QuickBookingBottomSheet({
     }
   }, [availableServices, initialServiceId]);
 
-  const [selectedPkg, setSelectedPkg] = useState<ServicePackage | null>(null);
-  const [selectedAddonsList, setSelectedAddonsList] = useState<ServiceAddon[]>([]);
+
 
   useEffect(() => {
     setSelectedPkg(null);
@@ -235,9 +245,7 @@ export function QuickBookingBottomSheet({
     return (governorates || []).filter((g) => g.active !== false);
   }, [governorates]);
 
-  // Address & Contact info
-  const [governorateId, setGovernorateId] = useState<string>('');
-  const [cityId, setCityId] = useState<string>('');
+
 
   const currentGov = useMemo(() => {
     if (!activeGovernorates || activeGovernorates.length === 0) return null;
@@ -293,15 +301,7 @@ export function QuickBookingBottomSheet({
     setCityId(validCity ? (validCity.id || (validCity as any)._id) : '');
   };
 
-  const [area, setArea] = useState(user?.addresses?.[0]?.area || 'الحي الرابع، شارع النخيل');
-  const [customerName, setCustomerName] = useState(user?.name || '');
-  const [customerPhone, setCustomerPhone] = useState(user?.phone || '');
-  const [notes, setNotes] = useState('');
 
-  // Confirmed Order Result
-  const [confirmedOrderId, setConfirmedOrderId] = useState<string>('');
-
-  if (!isOpen) return null;
 
   // Filter services by active category
   const filteredServices = useMemo(() => {
@@ -461,6 +461,8 @@ export function QuickBookingBottomSheet({
     setStep(4);
     toast.success('تم إرسال طلب الحجز بنجاح!');
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end animate-in fade-in duration-200">
