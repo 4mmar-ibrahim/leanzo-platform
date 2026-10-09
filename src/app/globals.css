@@ -379,14 +379,57 @@ html:not(.dark) h6.text-white {
   color: #FFFFFF !important;
 }
 
-/* Safeguard: Paragraphs on dark overlays / deliberate navy cards must stay light and legible */
-html:not(.dark) .text-white p,
-html:not(.dark) p.text-white,
-html:not(.dark) [class*="from-[#041728]"] p,
-html:not(.dark) [class*="from-[#07345C]"] p,
-html:not(.dark) [class*="bg-[#041728]"] p,
-html:not(.dark) [class*="bg-[#07345C]"] p {
+/* Category Selection Cards: High-Contrast & Vibrant Color Definition */
+.category-card-selected {
+  background: linear-gradient(135deg, #EAF8FC 0%, #D8F1FA 100%) !important;
+  border-color: #0866C6 !important;
+  box-shadow: 0 4px 14px -2px rgba(8, 102, 198, 0.25) !important;
+}
+.dark .category-card-selected {
+  background: linear-gradient(135deg, #072540 0%, #0B3B66 100%) !important;
+  border-color: #38BDF8 !important;
+  box-shadow: 0 4px 14px -2px rgba(56, 189, 248, 0.2) !important;
+}
+.category-card-unselected {
+  background-color: #FFFFFF !important;
+  border-color: #94A3B8 !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+}
+.dark .category-card-unselected {
+  background-color: #0A1E33 !important;
+  border-color: #334155 !important;
+}
+.category-card-title-selected {
+  color: #07345C !important;
+  font-weight: 900 !important;
+}
+.dark .category-card-title-selected {
+  color: #FFFFFF !important;
+  font-weight: 900 !important;
+}
+.category-card-title-unselected {
+  color: #0F172A !important;
+  font-weight: 900 !important;
+}
+.dark .category-card-title-unselected {
+  color: #F8FAFC !important;
+  font-weight: 900 !important;
+}
+.category-card-desc-selected {
+  color: #0866C6 !important;
+  font-weight: 700 !important;
+}
+.dark .category-card-desc-selected {
+  color: #7DD3FC !important;
+  font-weight: 700 !important;
+}
+.category-card-desc-unselected {
+  color: #334155 !important;
+  font-weight: 600 !important;
+}
+.dark .category-card-desc-unselected {
   color: #CBD5E1 !important;
+  font-weight: 600 !important;
 }
 
 html:not(.dark) .bg-white p:not(.text-white):not([class*="text-white"]):not([class*="text-slate-1"]):not([class*="text-slate-2"]):not([class*="text-slate-3"]):not([class*="text-sky-"]):not([class*="text-blue-"]),
