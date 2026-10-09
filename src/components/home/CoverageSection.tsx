@@ -143,7 +143,7 @@ export function CoverageSection() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="w-full justify-between rounded-xl font-bold group-hover:bg-emerald-500 group-hover:text-white group-hover:border-emerald-500 transition-all text-xs"
+                      className="w-full justify-center gap-2 rounded-xl font-bold group-hover:bg-emerald-500 group-hover:text-white group-hover:border-emerald-500 transition-all text-xs text-center"
                     >
                       <span>{isAr ? `احجز خدمتك في ${gov.name}` : `Book in ${gov.nameEn || gov.name}`}</span>
                       <ArrowIcon className="w-3.5 h-3.5" />

@@ -743,3 +743,12 @@ footer li {
     display: none !important;
   }
 }
+
+/* Global Centering for Action Buttons and Interactive CTAs */
+button,
+[role="button"],
+input[type="button"],
+input[type="submit"],
+input[type="reset"] {
+  text-align: center;
+}

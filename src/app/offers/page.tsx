@@ -260,7 +260,7 @@ export default function OffersPage() {
                 className="w-full max-w-[540px] rounded-3xl overflow-hidden border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#072540] shadow-sm hover:shadow-md hover:border-[#0866C6] dark:hover:border-[#0866C6] transition-all flex flex-col justify-between"
               >
                 {/* Top Badge & Expiry Bar (Cleanly Outside Image) */}
-                <div className="pt-4 px-5 flex items-center justify-between gap-2">
+                <div className="pt-4 px-5 flex items-center justify-center gap-2 flex-wrap">
                   <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-500 text-white shadow-2xs">
                     {isAr ? offer.badge : offer.badgeEn}
                   </span>
@@ -285,22 +285,22 @@ export default function OffersPage() {
                 </div>
 
                 {/* Compact Offer Content */}
-                <div className="p-4 sm:p-5 space-y-3 flex-1 flex flex-col justify-between text-start">
-                  <div className="space-y-1">
+                <div className="p-4 sm:p-5 space-y-3 flex-1 flex flex-col justify-between text-center items-center">
+                  <div className="space-y-1 w-full text-center">
                     <h3
-                      className="font-bold text-[#07345C] dark:text-white leading-snug line-clamp-1"
+                      className="font-bold text-[#07345C] dark:text-white leading-snug line-clamp-1 text-center"
                       style={{ fontSize: 'clamp(1.15rem, 2vw, 1.35rem)' }}
                     >
                       {isAr ? offer.title : offer.titleEn}
                     </h3>
-                    <p className="text-xs sm:text-[13px] text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-2">
+                    <p className="text-xs sm:text-[13px] text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-2 text-center">
                       {isAr ? offer.description : offer.descriptionEn}
                     </p>
                   </div>
 
                   {/* Compact Promo Code Box */}
-                  <div className="px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-[#041728]/80 border border-slate-200/90 dark:border-slate-700/80 flex items-center justify-between gap-2">
-                    <div className="space-y-0.5">
+                  <div className="w-full max-w-xs px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-[#041728]/80 border border-slate-200/90 dark:border-slate-700/80 flex items-center justify-between gap-2">
+                    <div className="space-y-0.5 text-start">
                       <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 block leading-tight">
                         {isAr ? 'كود الكوبون' : 'Coupon Code'}
                       </span>

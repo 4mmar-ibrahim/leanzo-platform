@@ -249,7 +249,7 @@ export function StepService() {
                 type="button"
                 id={`category-${cat.slug}-btn`}
                 onClick={() => setCategory(cat.slug as ServiceCategory)}
-                className={`relative p-3 sm:px-4 sm:py-3.5 rounded-2xl border-2 flex items-center gap-2.5 sm:gap-3 transition-all text-start cursor-pointer ${
+                className={`relative p-3 sm:px-4 sm:py-3.5 rounded-2xl border-2 flex items-center justify-center text-center gap-2.5 sm:gap-3 transition-all cursor-pointer ${
                   isSelected
                     ? 'border-[#0866C6] bg-sky-50/70 dark:bg-sky-950/40 text-[#07345C] dark:text-sky-200 shadow-md ring-2 ring-[#0866C6]/20'
                     : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
@@ -264,12 +264,12 @@ export function StepService() {
                 >
                   <CatIcon className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs sm:text-sm font-bold leading-snug break-words text-slate-900 dark:text-white">
+                <div className="min-w-0 flex-1 text-center">
+                  <p className="text-xs sm:text-sm font-bold leading-snug break-words text-slate-900 dark:text-white text-center">
                     {catName}
                   </p>
                   {catDesc && (
-                    <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5 line-clamp-2 break-words">
+                    <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5 line-clamp-2 break-words text-center">
                       {catDesc}
                     </p>
                   )}
@@ -830,7 +830,7 @@ export function StepService() {
                 </div>
 
                 {/* 4. Actions */}
-                <div className="pt-2 flex flex-col sm:flex-row items-center justify-end gap-2.5">
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2.5 w-full">
                   <Button
                     type="button"
                     variant="ghost"
@@ -839,7 +839,7 @@ export function StepService() {
                       removeService(modalService.id);
                       setModalService(null);
                     }}
-                    className="w-full sm:w-auto text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                    className="w-full sm:w-auto text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 justify-center text-center"
                   >
                     {isAr ? 'إلغاء اختيار الخدمة' : 'Deselect service'}
                   </Button>
@@ -847,7 +847,7 @@ export function StepService() {
                     type="button"
                     variant="primary"
                     onClick={() => setModalService(null)}
-                    className="w-full sm:w-auto h-11 px-6 rounded-xl font-bold text-xs sm:text-sm shadow-md shadow-[#0866C6]/20"
+                    className="w-full sm:w-auto h-11 px-6 rounded-xl font-bold text-xs sm:text-sm shadow-md shadow-[#0866C6]/20 justify-center text-center"
                   >
                     <Check className="w-4 h-4 ml-1.5" />
                     <span>{isAr ? 'تأكيد والعودة لاختيار الخدمات' : 'Confirm & Return to Services'}</span>

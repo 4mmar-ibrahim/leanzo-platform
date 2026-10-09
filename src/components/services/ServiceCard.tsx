@@ -81,7 +81,8 @@ export function ServiceCard({ service, featured = false }: ServiceCardProps) {
       {/* Existing Service Information Card — Clean and borderless, no background rectangle */}
       <div className="bg-transparent border-0 shadow-none overflow-hidden transition-all duration-300 flex-1 flex flex-col justify-between">
         {/* Card Header: Category & Popular / Discount Badges */}
-        <div className="pt-2 px-1 flex items-center justify-between gap-2">
+        {/* Card Header: Category & Popular / Discount Badges */}
+        <div className="pt-2 px-1 flex items-center justify-center gap-2 flex-wrap">
           <span
             className={cn(
               'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors',
@@ -112,14 +113,14 @@ export function ServiceCard({ service, featured = false }: ServiceCardProps) {
         </div>
 
         {/* Content */}
-        <div className="p-2 pt-3 flex-1 flex flex-col justify-between space-y-3">
-          <div className="space-y-2">
-            <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors line-clamp-1">
+        <div className="p-2 pt-3 flex-1 flex flex-col justify-between space-y-3 items-center text-center">
+          <div className="space-y-2 w-full text-center">
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors line-clamp-1 text-center">
               {isAr ? service.title : service.titleEn}
             </h3>
 
             {/* Rating & Duration */}
-            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pb-1">
+            <div className="flex items-center justify-center gap-3 text-xs text-slate-500 dark:text-slate-400 pb-1">
               <div className="flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300">
                 <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
                 <span>{service.rating}</span>
@@ -131,14 +132,14 @@ export function ServiceCard({ service, featured = false }: ServiceCardProps) {
               </div>
             </div>
 
-            <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2 leading-relaxed text-center">
               {isAr ? service.shortDescription : service.shortDescriptionEn}
             </p>
 
             {/* Quick Feature Highlights (first 2) */}
-            <ul className="pt-2 space-y-1 text-[11px] text-slate-600 dark:text-slate-400">
+            <ul className="pt-2 space-y-1 text-[11px] text-slate-600 dark:text-slate-400 flex flex-col items-center">
               {(isAr ? service.features : service.featuresEn).slice(0, 2).map((feat, idx) => (
-                <li key={idx} className="flex items-center gap-1.5 truncate">
+                <li key={idx} className="flex items-center justify-center gap-1.5 truncate">
                   <CheckCircle2 className="w-3.5 h-3.5 text-[#0866C6] shrink-0" />
                   <span className="truncate">{feat}</span>
                 </li>
@@ -147,8 +148,8 @@ export function ServiceCard({ service, featured = false }: ServiceCardProps) {
           </div>
 
           {/* Footer: Price + CTAs */}
-          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
-            <div className="flex flex-col">
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center gap-2.5 w-full">
+            <div className="flex flex-col items-center text-center">
               <span className="text-[10px] text-slate-400 font-medium">
                 {isAr ? 'يبدأ من' : 'Starting from'}
               </span>
@@ -159,12 +160,12 @@ export function ServiceCard({ service, featured = false }: ServiceCardProps) {
               />
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="w-full flex items-center justify-center">
               <Button
                 variant="primary"
                 size="sm"
                 onClick={handleBookNow}
-                className="px-3.5 py-1.5 text-xs shadow-md shadow-sky-500/20"
+                className="w-full max-w-[200px] justify-center px-3.5 py-2 text-xs shadow-md shadow-sky-500/20"
               >
                 <span>{isAr ? 'احجز الآن' : 'Book'}</span>
                 <ArrowIcon className="w-3.5 h-3.5" />
