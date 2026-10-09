@@ -217,10 +217,10 @@ export function MobileHomeExperience() {
               </div>
 
               <div className="text-center">
-                <h1 className="text-xl sm:text-2xl font-black text-[#07345C] dark:text-white tracking-tight">
+                <h1 className="text-xl sm:text-2xl font-black text-[#07345C] dark:text-white tracking-tight leading-snug">
                   {isAr ? 'أهلاً بك في كلينزو 👋' : 'Welcome to Cleanzo 👋'}
                 </h1>
-                <p className="text-xs sm:text-sm font-bold text-[#0866C6] dark:text-[#3894ec] mt-1">
+                <p className="text-xs sm:text-sm font-bold text-[#0866C6] dark:text-[#3894ec] mt-2.5 sm:mt-3">
                   {isAr ? 'اختر الخدمة واحجز في ثوانٍ' : 'Choose a service & book in seconds'}
                 </p>
               </div>
