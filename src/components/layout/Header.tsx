@@ -161,7 +161,7 @@ export function Header() {
           <Link
             href="/"
             aria-label={logoText}
-            className="group flex items-center justify-center px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-2xl bg-white/70 dark:bg-[#072540]/60 backdrop-blur-md border border-slate-200/80 dark:border-[#133B61] shadow-2xs hover:shadow-sm hover:border-[#0866C6]/40 dark:hover:border-[#0866C6]/60 transition-all duration-300 shrink-0 select-none"
+            className="group flex items-center justify-center py-1 transition-transform duration-200 hover:opacity-95 shrink-0 select-none"
           >
             <div className="relative h-9 sm:h-10 w-auto flex items-center justify-center shrink-0">
               {!mounted || !isSettingsLoaded ? (
@@ -472,10 +472,10 @@ export function Header() {
               </Link>
             )}
 
-            {/* Booking CTA Module (المستطيل السادس: زر الحجز الاحترافي مع تأثير وميض) */}
+            {/* Booking CTA Module (المستطيل السادس: زر الحجز الاحترافي بهوية كلينزو الحمراء) */}
             <Link
               href="/booking"
-              className="relative group overflow-hidden inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl font-black text-xs sm:text-sm text-white bg-gradient-to-r from-[#0866C6] via-[#0A7CEE] to-[#07345C] shadow-md shadow-[#0866C6]/25 hover:shadow-xl hover:shadow-[#0866C6]/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 shrink-0"
+              className="relative group overflow-hidden inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold text-xs sm:text-sm text-white bg-[#F0444C] hover:bg-[#D9333B] active:bg-[#B8242C] shadow-md shadow-[#F0444C]/25 hover:shadow-xl hover:shadow-[#F0444C]/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 shrink-0 font-sans"
             >
               {/* Animated Light Sweep Shimmer Effect */}
               <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/25 to-transparent -skew-x-12 -translate-x-full group-hover:animate-shimmer pointer-events-none" />

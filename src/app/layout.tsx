@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Cairo, Inter } from 'next/font/google';
+import { Alexandria, Manrope } from 'next/font/google';
 import './globals.css';
 import { Providers } from '@/components/common/Providers';
 import { Header } from '@/components/layout/Header';
@@ -7,16 +7,17 @@ import { Footer } from '@/components/layout/Footer';
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
 import { TopAnnouncementBanner } from '@/components/layout/TopAnnouncementBanner';
 
-const cairo = Cairo({
+const alexandria = Alexandria({
   subsets: ['arabic', 'latin'],
   weight: ['300', '400', '500', '600', '700', '800', '900'],
-  variable: '--font-cairo',
+  variable: '--font-alexandria',
   display: 'swap',
 });
 
-const inter = Inter({
+const manrope = Manrope({
   subsets: ['latin'],
-  variable: '--font-inter',
+  weight: ['300', '400', '500', '600', '700', '800'],
+  variable: '--font-manrope',
   display: 'swap',
 });
 
@@ -55,8 +56,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ar" dir="rtl" suppressHydrationWarning className={`${cairo.variable} ${inter.variable} overflow-x-hidden max-w-full`}>
-      <body suppressHydrationWarning className="font-sans antialiased min-h-screen flex flex-col overflow-x-hidden max-w-full w-full bg-[#F5F8FC] dark:bg-[#041728] text-[#0F172A] dark:text-[#F8FAFC] selection:bg-[#0866C6] selection:text-white">
+    <html lang="ar" dir="rtl" suppressHydrationWarning className={`${alexandria.variable} ${manrope.variable} overflow-x-hidden max-w-full`}>
+      <body suppressHydrationWarning className="font-sans antialiased min-h-screen flex flex-col overflow-x-hidden max-w-full w-full bg-[#EAF8FC] dark:bg-[#041728] text-[#162631] dark:text-[#F6F8FA] selection:bg-[#0866C6] selection:text-white">
         <Providers>
           <ScrollToTopOnNavigate />
           <TopAnnouncementBanner />

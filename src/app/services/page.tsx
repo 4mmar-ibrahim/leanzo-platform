@@ -2,16 +2,15 @@
 
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Search, SlidersHorizontal, Car, Home, Sparkles, RotateCcw, Loader2 } from 'lucide-react';
+import { SlidersHorizontal, Car, Home, Sparkles, Loader2 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useServiceStore } from '@/store/useServiceStore';
 import { ServiceCategory } from '@/types';
 import { ServiceCard } from '@/components/services/ServiceCard';
 import { SectionHeader } from '@/components/common/SectionHeader';
 import { EmptyState } from '@/components/common/EmptyState';
-import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
+import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
 
 function ServicesContent() {
   const { t, locale } = useLocaleStore();
@@ -49,49 +48,29 @@ function ServicesContent() {
     }
   }, [searchParams]);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [maxPrice, setMaxPrice] = useState<number>(1500);
-  const [sortBy, setSortBy] = useState<'recommended' | 'price-asc' | 'price-desc' | 'rating'>('recommended');
-
   const filteredServices = useMemo(() => {
     return activeServices
       .filter((s) => {
         // Category filter
-        if (selectedCategory !== 'all' && s.category !== selectedCategory) return false;
-
-        // Search query filter (matches Arabic or English title/desc)
-        if (searchQuery.trim()) {
-          const q = searchQuery.toLowerCase().trim();
-          const matchTitleAr = s.title.toLowerCase().includes(q);
-          const matchTitleEn = s.titleEn.toLowerCase().includes(q);
-          const matchDescAr = s.shortDescription.toLowerCase().includes(q);
-          const matchDescEn = s.shortDescriptionEn.toLowerCase().includes(q);
-          if (!matchTitleAr && !matchTitleEn && !matchDescAr && !matchDescEn) return false;
+        if (selectedCategory !== 'all') {
+          const catInfo = resolveCategoryInfo(s.category, categories, isAr);
+          const isMatch =
+            s.category === selectedCategory ||
+            catInfo.slug === selectedCategory ||
+            (selectedCategory === 'car' && catInfo.isCar) ||
+            (selectedCategory === 'home' && catInfo.isHome);
+          if (!isMatch) return false;
         }
-
-        // Price filter
-        if (s.price > maxPrice) return false;
-
         return true;
       })
       .sort((a, b) => {
-        if (sortBy === 'price-asc') return a.price - b.price;
-        if (sortBy === 'price-desc') return b.price - a.price;
-        if (sortBy === 'rating') return b.rating - a.rating;
         // Default recommended: popular first, then rating
         return (b.popular ? 1 : 0) - (a.popular ? 1 : 0) || b.rating - a.rating;
       });
-  }, [activeServices, selectedCategory, searchQuery, maxPrice, sortBy]);
-
-  const resetFilters = () => {
-    setSelectedCategory('all');
-    setSearchQuery('');
-    setMaxPrice(1500);
-    setSortBy('recommended');
-  };
+  }, [activeServices, selectedCategory, categories, isAr]);
 
   return (
-    <div className="py-6 sm:py-12 bg-[#F8FAFD] dark:bg-[#041728] min-h-screen">
+    <div className="py-6 sm:py-12 bg-[#EAF8FC] dark:bg-[#041728] min-h-screen">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 space-y-4 sm:space-y-8">
         {/* Header */}
         <SectionHeader
@@ -117,9 +96,12 @@ function ServicesContent() {
               <h3 className="text-sm sm:text-base font-black text-[#07345C] dark:text-white">
                 {selectedCategory === 'all'
                   ? (isAr ? 'كل الباقات والخدمات' : 'All Service Packages')
-                  : selectedCategory === 'car'
-                  ? (isAr ? 'باقات العناية بالسيارات 🚗' : 'Car Care Packages 🚗')
-                  : (isAr ? 'باقات العناية بالمنزل 🏡' : 'Home Care Packages 🏡')}
+                  : (() => {
+                      const selCatInfo = resolveCategoryInfo(selectedCategory, categories, isAr);
+                      return isAr
+                        ? `باقات ${selCatInfo.name} ${selCatInfo.isCar ? '🚗' : selCatInfo.isHome ? '🏡' : '✨'}`
+                        : `${selCatInfo.name} Packages`;
+                    })()}
               </h3>
               <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 hidden sm:block">
                 {isAr
@@ -199,78 +181,6 @@ function ServicesContent() {
           </div>
         </div>
 
-        {/* Search, Filter & Sort Bar */}
-        <div className="p-4 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-            {/* Search Input */}
-            <div className="md:col-span-6 relative">
-              <div className="absolute inset-y-0 start-0 ps-3.5 flex items-center pointer-events-none text-slate-400">
-                <Search className="w-4 h-4" />
-              </div>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t.services.searchPlaceholder}
-                className="w-full h-11 ps-10 pe-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-              />
-            </div>
-
-            {/* Price Filter Slider */}
-            <div className="md:col-span-3 space-y-1">
-              <div className="flex justify-between text-xs font-semibold text-slate-600 dark:text-slate-400">
-                <span>{isAr ? 'أقصى سعر' : 'Max Price'}</span>
-                <span className="text-sky-600 dark:text-sky-400 font-bold">{maxPrice} {isAr ? 'ج.م' : 'EGP'}</span>
-              </div>
-              <input
-                type="range"
-                min="200"
-                max="1500"
-                step="50"
-                value={maxPrice}
-                onChange={(e) => setMaxPrice(Number(e.target.value))}
-                className="w-full accent-sky-500 cursor-pointer h-2 bg-slate-200 dark:bg-slate-800 rounded-lg"
-              />
-            </div>
-
-            {/* Sort Select */}
-            <div className="md:col-span-3 flex items-center gap-2">
-              <div className="flex-1">
-                <Select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                  className="h-11"
-                  options={[
-                    { value: 'recommended', label: t.services.sortRecommended },
-                    { value: 'price-asc', label: t.services.sortPriceLow },
-                    { value: 'price-desc', label: t.services.sortPriceHigh },
-                    { value: 'rating', label: t.services.sortRating },
-                  ]}
-                />
-              </div>
-
-              {(searchQuery || selectedCategory !== 'all' || maxPrice < 1500 || sortBy !== 'recommended') && (
-                <button
-                  onClick={resetFilters}
-                  title={isAr ? 'إعادة ضبط' : 'Reset'}
-                  className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Results Count */}
-        <div className="flex items-center justify-between text-xs text-slate-500 font-medium px-1">
-          <span>
-            {isAr
-              ? `تم العثور على ${filteredServices.length} خدمة متطابقة`
-              : `Found ${filteredServices.length} matching services`}
-          </span>
-        </div>
-
         {/* Services Grid or Empty State */}
         {filteredServices.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -282,8 +192,8 @@ function ServicesContent() {
           <EmptyState
             title={t.services.noServicesFound}
             description={t.services.noServicesSub}
-            actionLabel={isAr ? 'إعادة تعيين الفلاتر' : 'Reset Filters'}
-            onAction={resetFilters}
+            actionLabel={isAr ? 'عرض جميع الخدمات' : 'Show All Services'}
+            onAction={() => setSelectedCategory('all')}
           />
         )}
       </div>

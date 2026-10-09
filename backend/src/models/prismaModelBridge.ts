@@ -263,16 +263,18 @@ function attachDocHelpers(doc: any, delegate?: any) {
       if (data.service !== undefined) {
         delete data.service;
       }
-      if (data.cancelledAt || data.cancellationSource || data.cancellationReason) {
+      if (data.cancelledAt || data.cancellationSource || data.cancellationReason || data.rescheduledAt) {
         data.metadata = {
           ...(data.metadata || {}),
           ...(data.cancelledAt ? { cancelledAt: data.cancelledAt } : {}),
           ...(data.cancellationSource ? { cancellationSource: data.cancellationSource } : {}),
           ...(data.cancellationReason ? { cancellationReason: data.cancellationReason } : {}),
+          ...(data.rescheduledAt ? { rescheduledAt: data.rescheduledAt } : {}),
         };
         delete data.cancelledAt;
         delete data.cancellationSource;
         delete data.cancellationReason;
+        delete data.rescheduledAt;
       }
       const updated = await delegate.update({
         where: { id: targetId },

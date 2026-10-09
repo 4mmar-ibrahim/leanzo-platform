@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Calendar, Clock, AlertCircle, Ban } from 'lucide-react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { Calendar, Clock, AlertCircle, Ban, ChevronDown, Check } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useBookingStore } from '@/store/useBookingStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
@@ -9,15 +9,44 @@ import { useOrderStore } from '@/store/useOrderStore';
 import { getUpcomingBookingDates, getTimeSlotsForDate, BookingSlot, isSameService, isSameTime } from '@/lib/bookingEngine';
 import { formatTimeTo12Hour } from '@/lib/timeUtils';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
+import { cn } from '@/lib/utils';
 
 export function StepDateTime() {
   const { t, locale } = useLocaleStore();
-  const { selectedDate, setDate, selectedTime, setTime, selectedService, getTotalDuration } = useBookingStore();
+  const { selectedDate, setDate, selectedTime, setTime, selectedService, selectedServices, getTotalDuration } = useBookingStore();
   const bookingSettings = useSettingsStore((s) => s.settings.booking);
   const fetchPublicSettings = useSettingsStore((s) => s.fetchPublicSettings);
   const orders = useOrderStore((s) => s.orders);
   const [liveSlots, setLiveSlots] = useState<BookingSlot[] | null>(null);
   const isAr = locale === 'ar';
+
+  const dateDropdownRef = useRef<HTMLDivElement>(null);
+  const timeDropdownRef = useRef<HTMLDivElement>(null);
+  const [isDateOpen, setIsDateOpen] = useState(false);
+  const [isTimeOpen, setIsTimeOpen] = useState(false);
+
+  // Derive active service IDs for multi-service booking availability checks
+  const currentServiceIds = useMemo(() => {
+    if (selectedServices && selectedServices.length > 0) {
+      return selectedServices.map((s) => s.service.id).filter(Boolean);
+    }
+    return selectedService?.id ? [selectedService.id] : [];
+  }, [selectedServices, selectedService]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dateDropdownRef.current && !dateDropdownRef.current.contains(event.target as Node)) {
+        setIsDateOpen(false);
+      }
+      if (timeDropdownRef.current && !timeDropdownRef.current.contains(event.target as Node)) {
+        setIsTimeOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   useEffect(() => {
     fetchPublicSettings();
@@ -37,16 +66,16 @@ export function StepDateTime() {
     }
   }, [selectedDate, dateOptions, setDate]);
 
-  // Query live availability from backend when date or selected services change
+  // Query live availability from backend when date, service, or booking settings change (multi-service aware)
   useEffect(() => {
     if (!selectedDate) return;
     let isMounted = true;
     const duration = getTotalDuration() || selectedService?.serviceDurationMinutes || selectedService?.duration || 45;
     cleanzoApi.availability
-      .checkDate(selectedDate, selectedService?.id, duration)
+      .checkDate(selectedDate, selectedService?.id, duration, currentServiceIds)
       .then((res) => {
         if (isMounted) {
-          if (res?.slots && Array.isArray(res.slots)) {
+          if (res?.slots && Array.isArray(res.slots) && res.slots.length > 0) {
             const formattedSlots: BookingSlot[] = res.slots.map((slot: any) => {
               const label12 = formatTimeTo12Hour(slot.label || slot.time);
               return {
@@ -59,20 +88,23 @@ export function StepDateTime() {
             });
             setLiveSlots(formattedSlots);
           } else {
-            setLiveSlots([]);
+            setLiveSlots(null);
           }
         }
       })
       .catch(() => {
-        // Fallback quietly to deterministic engine
+        if (isMounted) {
+          // Fallback cleanly to deterministic local engine using bookingSettings
+          setLiveSlots(null);
+        }
       });
     return () => {
       isMounted = false;
     };
-  }, [selectedDate, selectedService?.id, getTotalDuration]);
+  }, [selectedDate, selectedService?.id, currentServiceIds, getTotalDuration, bookingSettings]);
 
-  // Compute available time slots for the chosen date & service:
-  // Strict Per-Service rule: If an active booking exists for THIS SAME SERVICE at date & time, mark slot closed!
+  // Compute available time slots for the chosen date & services:
+  // Strict Multi-Service rule: If an active booking exists for ANY of the order's services at date & time, mark slot closed!
   const timeSlots = useMemo(() => {
     if (!selectedDate) return [];
 
@@ -87,7 +119,8 @@ export function StepDateTime() {
         selectedService?.title,
         orders,
         selectedService?.serviceDurationMinutes || selectedService?.duration,
-        selectedService?.travelTimeMinutes
+        selectedService?.travelTimeMinutes,
+        currentServiceIds
       );
     }
 
@@ -96,7 +129,14 @@ export function StepDateTime() {
       const isAlreadyBooked = orders.some((o) => {
         if (o.status === 'cancelled') return false;
         if (o.date !== selectedDate) return false;
-        if (!isSameService(o, selectedService?.id, selectedService?.title)) return false;
+
+        const matchesAny = currentServiceIds.some((sId) => isSameService(o, sId, undefined));
+        if (!matchesAny && selectedService?.title) {
+          if (!isSameService(o, undefined, selectedService.title)) return false;
+        } else if (!matchesAny && currentServiceIds.length > 0) {
+          return false;
+        }
+
         return isSameTime(o.time, slot.time);
       });
 
@@ -109,7 +149,7 @@ export function StepDateTime() {
       }
       return slot;
     });
-  }, [selectedDate, liveSlots, bookingSettings, selectedService, orders, isAr]);
+  }, [selectedDate, liveSlots, bookingSettings, selectedService, currentServiceIds, orders, isAr]);
 
   // Auto-select first available slot if current slot is invalid or empty
   useEffect(() => {
@@ -124,127 +164,226 @@ export function StepDateTime() {
     }
   }, [timeSlots, selectedTime, setTime]);
 
+  const selectedDateOpt = useMemo(
+    () => dateOptions.find((d) => d.dateString === selectedDate),
+    [dateOptions, selectedDate]
+  );
+
+  const selectedDateLabel = useMemo(() => {
+    if (!selectedDateOpt) {
+      return isAr ? 'اختر التاريخ المناسب' : 'Select preferred date';
+    }
+    const day = isAr ? selectedDateOpt.dayNameAr : selectedDateOpt.dayNameEn;
+    const dateFormatted = isAr ? selectedDateOpt.formattedDateAr : selectedDateOpt.formattedDateEn;
+    const badge = selectedDateOpt.isToday ? (isAr ? ' (اليوم)' : ' (Today)') : '';
+    return `${day}، ${dateFormatted}${badge}`;
+  }, [selectedDateOpt, isAr]);
+
+  const selectedTimeSlot = useMemo(
+    () => timeSlots.find((s) => s.time === selectedTime || isSameTime(s.time, selectedTime)),
+    [timeSlots, selectedTime]
+  );
+
+  const selectedTimeLabel = useMemo(() => {
+    if (!selectedTime) {
+      return isAr ? 'اختر الوقت المناسب' : 'Select preferred time';
+    }
+    if (selectedTimeSlot) {
+      return formatTimeTo12Hour(isAr ? selectedTimeSlot.label : selectedTimeSlot.labelEn);
+    }
+    return formatTimeTo12Hour(selectedTime);
+  }, [selectedTime, selectedTimeSlot, isAr]);
+
   return (
     <div className="space-y-4 sm:space-y-6 text-start">
-      {/* 1. Date Selector */}
-      <div className="space-y-2 sm:space-y-2.5">
-        <label className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center justify-between">
-          <span className="flex items-center gap-1.5">
-            <Calendar className="w-4 h-4 text-sky-500" />
-            <span>{t.booking.selectDate}</span>
-          </span>
-          <span className="text-[11px] font-normal text-slate-400">
-            {isAr ? 'اختر اليوم الأنسب' : 'Choose preferred date'}
-          </span>
-        </label>
-
-        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-1.5 sm:gap-2">
-          {dateOptions.map((opt) => {
-            const isSelected = selectedDate === opt.dateString;
-            const isAvailable = opt.isAvailable;
-
-            return (
-              <button
-                key={opt.dateString}
-                type="button"
-                disabled={!isAvailable}
-                onClick={() => isAvailable && setDate(opt.dateString)}
-                className={`p-2 sm:p-2.5 rounded-xl border-2 flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer ${
-                  !isAvailable
-                    ? 'border-slate-200/50 dark:border-slate-800/40 bg-slate-100/60 dark:bg-slate-900/40 opacity-50 cursor-not-allowed text-slate-400'
-                    : isSelected
-                    ? 'border-sky-500 bg-sky-50 dark:bg-sky-950/60 text-sky-900 dark:text-sky-200 shadow-xs ring-1 ring-sky-500/50'
-                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                }`}
-              >
-                <span className="text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  {isAr ? opt.dayNameAr : opt.dayNameEn}
-                </span>
-                <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
-                  {isAr ? opt.formattedDateAr : opt.formattedDateEn}
-                </span>
-                {opt.isToday ? (
-                  <span className="text-[9px] font-bold text-[#0866C6] dark:text-[#83AED0]">
-                    {isAr ? 'اليوم' : 'Today'}
-                  </span>
-                ) : !isAvailable && opt.reason ? (
-                  <span className="text-[9px] font-medium text-[#F0444C] truncate max-w-[70px]">
-                    {opt.reason}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 2. Time Slots Selector */}
-      <div className="space-y-2 sm:space-y-2.5">
-        <div className="flex items-center justify-between">
-          <label className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-            <Clock className="w-4 h-4 text-[#0866C6]" />
-            <span>{t.booking.selectTime}</span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+        {/* 1. Date Dropdown */}
+        <div className="relative space-y-1.5" ref={dateDropdownRef}>
+          <label className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <Calendar className="w-4 h-4 text-sky-500" />
+              <span>{t.booking.selectDate}</span>
+            </span>
+            <span className="text-[11px] font-normal text-slate-400">
+              {isAr ? 'اختر اليوم الأنسب' : 'Choose date'}
+            </span>
           </label>
-          <span className="text-[11px] text-slate-400">
-            {isAr ? 'حجز الموعد بدقة' : 'Precision scheduling'}
-          </span>
+
+          <button
+            type="button"
+            onClick={() => {
+              setIsDateOpen((prev) => !prev);
+              setIsTimeOpen(false);
+            }}
+            className={cn(
+              "w-full h-11 sm:h-12 px-3 sm:px-4 rounded-xl border flex items-center justify-between transition-all bg-white dark:bg-[#071E34] text-slate-900 dark:text-white font-medium text-xs sm:text-sm cursor-pointer",
+              isDateOpen
+                ? "border-[#0866C6] ring-2 ring-[#0866C6]/20 dark:ring-[#0866C6]/30 shadow-sm"
+                : "border-[#DDE7EC] dark:border-[#133B61] hover:border-[#0866C6]/40 dark:hover:border-[#0866C6]/40"
+            )}
+          >
+            <div className="flex items-center gap-2.5 truncate">
+              <Calendar className="w-4 h-4 text-[#0866C6] shrink-0" />
+              <span className="truncate font-semibold">{selectedDateLabel}</span>
+            </div>
+            <ChevronDown
+              className={cn(
+                "w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0",
+                isDateOpen && "rotate-180 text-[#0866C6]"
+              )}
+            />
+          </button>
+
+          {isDateOpen && (
+            <div className="absolute z-40 mt-1.5 w-full bg-white dark:bg-[#071E34] border border-[#DDE7EC] dark:border-[#133B61] rounded-xl shadow-xl max-h-64 overflow-y-auto p-1.5 space-y-1">
+              {dateOptions.map((opt) => {
+                const isSelected = selectedDate === opt.dateString;
+                const isAvailable = opt.isAvailable;
+
+                return (
+                  <button
+                    key={opt.dateString}
+                    type="button"
+                    disabled={!isAvailable}
+                    onClick={() => {
+                      if (isAvailable) {
+                        setDate(opt.dateString);
+                        setIsDateOpen(false);
+                      }
+                    }}
+                    className={cn(
+                      "w-full px-3 py-2 rounded-lg flex items-center justify-between text-xs sm:text-sm transition-colors text-start cursor-pointer",
+                      !isAvailable
+                        ? "opacity-40 cursor-not-allowed text-slate-400 dark:text-slate-500"
+                        : isSelected
+                        ? "bg-[#0866C6]/10 text-[#0866C6] dark:text-[#83AED0] font-bold"
+                        : "hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-200"
+                    )}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="font-semibold">{isAr ? opt.dayNameAr : opt.dayNameEn}</span>
+                      <span className="text-slate-400">·</span>
+                      <span>{isAr ? opt.formattedDateAr : opt.formattedDateEn}</span>
+                      {opt.isToday && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-100 dark:bg-sky-900/50 text-[#0866C6] dark:text-sky-300">
+                          {isAr ? 'اليوم' : 'Today'}
+                        </span>
+                      )}
+                    </div>
+                    {isSelected ? (
+                      <Check className="w-4 h-4 text-[#0866C6] shrink-0" />
+                    ) : !isAvailable && opt.reason ? (
+                      <span className="text-[10px] text-[#F0444C] font-semibold">{opt.reason}</span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {timeSlots.length === 0 ? (
-          <div className="p-6 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-center space-y-1.5">
-            <Ban className="w-6 h-6 text-amber-500 mx-auto opacity-70" />
-            <p className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200">
-              {isAr ? 'لا توجد مواعيد متاحة لهذا اليوم' : 'No available slots for this date'}
-            </p>
-            <p className="text-[11px] text-slate-400">
-              {isAr ? 'يرجى اختيار يوم آخر للمتابعة' : 'Please select another date to proceed'}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-            {timeSlots.map((slot) => {
-              const isSelected = selectedTime === slot.time || isSameTime(selectedTime, slot.time);
-              const isAvailable = slot.isAvailable;
-              const displayLabel = formatTimeTo12Hour(isAr ? slot.label : slot.labelEn);
+        {/* 2. Time Dropdown */}
+        <div className="relative space-y-1.5" ref={timeDropdownRef}>
+          <label className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <Clock className="w-4 h-4 text-[#0866C6]" />
+              <span>{t.booking.selectTime}</span>
+            </span>
+            <span className="text-[11px] font-normal text-slate-400">
+              {isAr ? 'حجز الموعد بدقة' : 'Select time'}
+            </span>
+          </label>
 
-              return (
-                <button
-                  key={slot.time}
-                  type="button"
-                  disabled={!isAvailable}
-                  onClick={() => isAvailable && setTime(slot.time)}
-                  className={`py-2 px-1.5 sm:py-2.5 sm:px-2 rounded-xl border-2 flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer ${
-                    !isAvailable
-                      ? 'border-slate-200/50 dark:border-slate-800/40 bg-slate-100/50 dark:bg-slate-950/40 opacity-50 cursor-not-allowed text-slate-400'
-                      : isSelected
-                      ? 'border-[#0866C6] bg-blue-50 dark:bg-[#082845] text-[#0866C6] dark:text-white shadow-xs ring-1 ring-[#0866C6]/50'
-                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  <span className="text-xs sm:text-sm font-bold font-mono">
-                    {displayLabel}
-                  </span>
-                  <span className="text-[9px] sm:text-[10px] font-medium">
-                    {isAvailable ? (
-                      <span className="text-[#0866C6] dark:text-[#83AED0] font-semibold">
-                        {isAr ? 'متاح' : 'Available'}
+          <button
+            type="button"
+            disabled={timeSlots.length === 0}
+            onClick={() => {
+              setIsTimeOpen((prev) => !prev);
+              setIsDateOpen(false);
+            }}
+            className={cn(
+              "w-full h-11 sm:h-12 px-3 sm:px-4 rounded-xl border flex items-center justify-between transition-all bg-white dark:bg-[#071E34] text-slate-900 dark:text-white font-medium text-xs sm:text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+              isTimeOpen
+                ? "border-[#0866C6] ring-2 ring-[#0866C6]/20 dark:ring-[#0866C6]/30 shadow-sm"
+                : "border-[#DDE7EC] dark:border-[#133B61] hover:border-[#0866C6]/40 dark:hover:border-[#0866C6]/40"
+            )}
+          >
+            <div className="flex items-center gap-2.5 truncate">
+              <Clock className="w-4 h-4 text-[#0866C6] shrink-0" />
+              <span className="truncate font-semibold" dir="ltr">
+                {timeSlots.length === 0
+                  ? (isAr ? 'لا توجد مواعيد متاحة' : 'No available slots')
+                  : selectedTimeLabel}
+              </span>
+            </div>
+            <ChevronDown
+              className={cn(
+                "w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0",
+                isTimeOpen && "rotate-180 text-[#0866C6]"
+              )}
+            />
+          </button>
+
+          {isTimeOpen && (
+            <div className="absolute z-40 mt-1.5 w-full bg-white dark:bg-[#071E34] border border-[#DDE7EC] dark:border-[#133B61] rounded-xl shadow-xl max-h-64 overflow-y-auto p-1.5 space-y-1">
+              {timeSlots.length === 0 ? (
+                <div className="p-4 text-center space-y-1">
+                  <Ban className="w-5 h-5 text-amber-500 mx-auto opacity-70" />
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                    {isAr ? 'لا توجد مواعيد متاحة لهذا اليوم' : 'No available slots for this date'}
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    {isAr ? 'يرجى اختيار يوم آخر' : 'Please select another date'}
+                  </p>
+                </div>
+              ) : (
+                timeSlots.map((slot) => {
+                  const isSelected = selectedTime === slot.time || isSameTime(selectedTime, slot.time);
+                  const isAvailable = slot.isAvailable;
+                  const displayLabel = formatTimeTo12Hour(isAr ? slot.label : slot.labelEn);
+
+                  return (
+                    <button
+                      key={slot.time}
+                      type="button"
+                      disabled={!isAvailable}
+                      onClick={() => {
+                        if (isAvailable) {
+                          setTime(slot.time);
+                          setIsTimeOpen(false);
+                        }
+                      }}
+                      className={cn(
+                        "w-full px-3 py-2 rounded-lg flex items-center justify-between text-xs sm:text-sm transition-colors text-start cursor-pointer",
+                        !isAvailable
+                          ? "opacity-40 cursor-not-allowed text-slate-400 dark:text-slate-500"
+                          : isSelected
+                          ? "bg-[#0866C6]/10 text-[#0866C6] dark:text-[#83AED0] font-bold"
+                          : "hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-200"
+                      )}
+                    >
+                      <span className="font-mono font-bold" dir="ltr">
+                        {displayLabel}
                       </span>
-                    ) : (
-                      <span className="text-[#F0444C] font-semibold">
-                        {slot.reason || (isAr ? 'غير متاح' : 'Unavailable')}
-                      </span>
-                    )}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
+                      {isSelected ? (
+                        <Check className="w-4 h-4 text-[#0866C6] shrink-0" />
+                      ) : !isAvailable ? (
+                        <span className="text-[10px] text-[#F0444C] font-semibold">
+                          {slot.reason || (isAr ? 'غير متاح' : 'Unavailable')}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Notice info */}
-      <div className="p-2.5 sm:p-3.5 rounded-xl bg-sky-50/70 dark:bg-sky-950/30 border border-sky-200/80 dark:border-sky-900/60 flex items-center gap-2.5 text-[11px] sm:text-xs text-sky-800 dark:text-sky-300">
-        <AlertCircle className="w-4 h-4 shrink-0 text-sky-600" />
+      <div className="p-2.5 sm:p-3.5 rounded-xl bg-[#EAF8FC] dark:bg-[#072540] border border-[#0866C6]/20 dark:border-[#0866C6]/30 flex items-center gap-2.5 text-[11px] sm:text-xs text-[#07345C] dark:text-[#F6F8FA] font-sans">
+        <AlertCircle className="w-4 h-4 shrink-0 text-[#0866C6] dark:text-[#38BDF8]" />
         <p className="leading-snug">
           {isAr
             ? 'تصل سيارة الخدمة المتنقلة في نافذة الموعد المحددة. سيصلك إشعار عند تحرك الفني نحو موقعك.'

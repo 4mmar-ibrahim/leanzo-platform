@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   RotateCcw,
   X,
+  Link2,
 } from 'lucide-react';
 import { useCMSStore } from '@/store/useCMSStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
@@ -292,6 +293,22 @@ export default function AdminSocialSettingsPage() {
             <span>{hasChanges ? 'نشر التعديلات للعملاء *' : 'حفظ ونشر'}</span>
           </button>
         </div>
+      </div>
+
+      {/* Helpful banner to Footer Links */}
+      <div className="p-4 rounded-2xl bg-[#0866C6]/10 border border-[#0866C6]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2.5 text-[#0866C6] dark:text-sky-400">
+          <Link2 className="w-5 h-5 shrink-0" />
+          <span>
+            <strong>هل تبحث عن إدارة أو حذف روابط أسفل الموقع (الفوتر)؟</strong> يمكنك التحكم في الروابط السريعة وفئات الخدمات المعروضة في الفوتر من صفحة الروابط المخصصة.
+          </span>
+        </div>
+        <Link
+          href="/admin/settings/footer-links"
+          className="px-3.5 py-1.5 rounded-xl bg-[#0866C6] text-white font-bold text-xs hover:bg-[#07529E] transition-colors shrink-0 text-center"
+        >
+          الانتقال لروابط الفوتر
+        </Link>
       </div>
 
       {/* Quick Stats & Live Preview Banner */}

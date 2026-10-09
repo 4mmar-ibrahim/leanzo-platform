@@ -46,7 +46,7 @@ export default function ForgotPasswordPage() {
   const phoneUrl = `tel:${rawPhone.replace(/[^0-9+]/g, '')}`;
 
   return (
-    <div className="py-16 bg-slate-50 dark:bg-[#0B1120] min-h-[85vh] flex items-center justify-center px-4">
+    <div className="py-16 bg-[#EAF8FC] dark:bg-[#041728] min-h-[85vh] flex items-center justify-center px-4">
       <div className="w-full max-w-xl space-y-8 animate-in fade-in duration-300">
         {/* Cleanzo Header */}
         <div className="text-center space-y-2">

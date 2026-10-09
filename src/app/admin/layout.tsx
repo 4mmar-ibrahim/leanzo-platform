@@ -97,7 +97,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       className={adminTheme === 'dark' ? 'dark' : ''}
       dir="rtl"
     >
-      <div className="min-h-screen bg-[#F5F8FC] dark:bg-[#041728] flex text-[#0F172A] dark:text-[#F8FAFC] antialiased selection:bg-[#0866C6] selection:text-white transition-colors duration-200">
+      <div className="min-h-screen bg-[#F6F8FA] dark:bg-[#041728] flex text-[#162631] dark:text-[#F6F8FA] antialiased selection:bg-[#0866C6] selection:text-white transition-colors duration-200 font-sans">
       {/* Sidebar - Strictly filtered by permissions */}
       <AdminSidebar
         collapsed={sidebarCollapsed}

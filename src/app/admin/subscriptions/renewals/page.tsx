@@ -29,11 +29,17 @@ export default function AdminSubscriptionRenewalsPage() {
   const fetchRenewals = async () => {
     try {
       setLoading(true);
-      const res = await apiGet('/subscriptions/admin/renewals');
-      const rawRenewals = Array.isArray(res.data) ? res.data : res.data?.renewals || [];
+      let res: any;
+      try {
+        res = await apiGet('/subscriptions/admin/renewals');
+      } catch {
+        res = await apiGet('/admin/subscriptions/renewals');
+      }
+      const rawRenewals = Array.isArray(res?.data) ? res.data : res?.data?.renewals || [];
       setRenewals(rawRenewals);
     } catch (err: any) {
-      toast.error(err.message || 'فشل تحميل سجلات التجديد');
+      console.warn('Failed to load renewals:', err);
+      toast.error('تعذر تحميل سجلات تجديد الاشتراكات');
       setRenewals([]);
     } finally {
       setLoading(false);

@@ -358,6 +358,9 @@ export const useBookingStore = create<BookingState>()(
       },
 
       resetBooking: () => {
+        const prevAddress = get().selectedAddress;
+        const prevName = get().guestName;
+        const prevPhone = get().guestPhone;
         set({
           category: 'car',
           selectedServices: [],
@@ -366,13 +369,13 @@ export const useBookingStore = create<BookingState>()(
           selectedAddons: [],
           selectedDate: '',
           selectedTime: '',
-          selectedAddress: null,
+          selectedAddress: prevAddress || null,
           notes: '',
           currentStep: 1,
           promoCode: '',
           appliedCoupon: null,
-          guestName: '',
-          guestPhone: '',
+          guestName: prevName || '',
+          guestPhone: prevPhone || '',
         });
       },
 

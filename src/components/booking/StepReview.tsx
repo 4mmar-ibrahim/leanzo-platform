@@ -20,11 +20,13 @@ import {
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useBookingStore } from '@/store/useBookingStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useServiceStore } from '@/store/useServiceStore';
 import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { Button } from '@/components/ui/Button';
 import { formatDuration } from '@/lib/utils';
 import { formatTimeTo12Hour } from '@/lib/timeUtils';
 import { toast } from 'sonner';
+import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
 
 export function StepReview() {
   const { t, locale } = useLocaleStore();
@@ -56,6 +58,7 @@ export function StepReview() {
     getItemizedServicesList,
   } = useBookingStore();
   const user = useAuthStore((s) => s.user);
+  const categories = useServiceStore((s) => s.categories);
   const isAr = locale === 'ar';
 
   const [inputCode, setInputCode] = useState(promoCode);
@@ -141,7 +144,7 @@ export function StepReview() {
                         {isAr ? item.title : item.titleEn}
                       </h4>
                       <span className="text-[9px] px-1.5 py-0.2 rounded-md bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300">
-                        {item.category === 'car' ? (isAr ? 'سيارات' : 'Car') : (isAr ? 'منازل' : 'Home')}
+                        {resolveCategoryInfo(item.category, categories, isAr).name}
                       </span>
                     </div>
 
@@ -297,12 +300,12 @@ export function StepReview() {
               ? 'أي إرشادات خاصة بالدخول أو أماكن محددة للتركيز عليها...'
               : 'Any special gate instructions or requests...'
           }
-          className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+          className="w-full rounded-xl border border-[#DDE7EC] dark:border-[#133B61] bg-white dark:bg-[#051C30] p-2.5 text-xs text-[#162631] dark:text-[#F6F8FA] placeholder:text-[#60717C] focus:outline-hidden focus:ring-2 focus:ring-[#0866C6]/20 focus:border-[#0866C6] font-sans"
         />
       </div>
 
       {/* Authoritative Financial Breakdown Table */}
-      <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800 space-y-2 shadow-2xs">
+      <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-[#F6F8FA] dark:bg-[#072540] border border-[#DDE7EC] dark:border-[#133B61] space-y-2 shadow-2xs font-sans">
         <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
           <span>{isAr ? 'سعر الخدمات الأساسي' : 'Base Services Price'}</span>
           <div className="flex items-center gap-1 font-mono">

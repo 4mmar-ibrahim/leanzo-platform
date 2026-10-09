@@ -249,7 +249,7 @@ export function AdminSidebar({
             { title: 'الإعدادات العامة', href: '/admin/settings/general' },
             { title: 'تميمة زو 3D (Zo Studio)', href: '/admin/zo-studio' },
             { title: 'الهوية والعلامة (Branding)', href: '/admin/settings/branding' },
-            { title: 'المظهر والألوان', href: '/admin/settings/appearance' },
+            { title: 'روابط أسفل الموقع (الفوتر)', href: '/admin/settings/footer-links' },
             { title: 'تجربة الموبايل (App)', href: '/admin/settings/mobile' },
             { title: 'قواعد الحجز والمواعيد', href: '/admin/settings/booking' },
             { title: 'بيانات التواصل', href: '/admin/settings/contact' },
@@ -281,9 +281,9 @@ export function AdminSidebar({
     .filter((sec) => sec.items.length > 0);
 
   const sidebarContent = (
-    <div suppressHydrationWarning className="flex flex-col h-full bg-white dark:bg-[#072540] border-l border-slate-200/80 dark:border-[#133B61] text-slate-700 dark:text-slate-200 select-none shadow-xs transition-colors duration-200">
+    <div suppressHydrationWarning className="flex flex-col h-full bg-white dark:bg-[#072540] border-l border-[#DDE7EC] dark:border-[#07345C] text-[#162631] dark:text-[#F6F8FA] select-none shadow-xs transition-colors duration-200">
       {/* Brand Header */}
-      <div className="h-16 px-4 flex items-center justify-between border-b border-slate-100 dark:border-[#133B61] bg-white dark:bg-[#072540] transition-colors duration-200">
+      <div className="h-16 px-4 flex items-center justify-between border-b border-[#DDE7EC] dark:border-[#07345C] bg-white dark:bg-[#072540] transition-colors duration-200">
         <Link href="/admin" aria-label="لوحة الإدارة" className="flex items-center overflow-hidden">
           <div className="h-10 w-10 shrink-0 flex items-center justify-center">
             {!mounted || !isSettingsLoaded ? (
@@ -304,7 +304,7 @@ export function AdminSidebar({
         </Link>
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="hidden lg:flex w-7 h-7 rounded-lg items-center justify-center text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          className="hidden lg:flex w-7 h-7 rounded-lg items-center justify-center text-[#60717C] dark:text-slate-400 hover:text-[#07345C] dark:hover:text-white hover:bg-[#F6F8FA] dark:hover:bg-[#0A2E50] transition-colors"
           title={collapsed ? 'توسيع القائمة' : 'طي القائمة'}
         >
           {collapsed ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -316,7 +316,7 @@ export function AdminSidebar({
         {visibleSections.map((section, sIdx) => (
           <div key={sIdx} className="space-y-1.5">
             {!collapsed && (
-              <div className="px-3 text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-400 uppercase">
+              <div className="px-3 text-[10px] font-bold tracking-wider text-[#60717C] dark:text-slate-400 uppercase">
                 {section.sectionTitle}
               </div>
             )}
@@ -334,20 +334,20 @@ export function AdminSidebar({
                       className={cn(
                         'w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150',
                         isActive
-                          ? 'bg-[#0866C6]/10 dark:bg-[#0866C6]/20 text-[#0866C6] dark:text-[#38BDF8] font-bold'
-                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-[#0A2E50] hover:text-[#07345C] dark:hover:text-white'
+                          ? 'bg-[#EAF8FC] dark:bg-[#0866C6]/20 text-[#0866C6] dark:text-[#25B8E6] font-bold'
+                          : 'text-[#60717C] dark:text-slate-300 hover:bg-[#F6F8FA] dark:hover:bg-[#0A2E50] hover:text-[#07345C] dark:hover:text-white'
                       )}
                     >
                       <div className="flex items-center gap-3">
-                        <Icon className={cn('w-4 h-4 shrink-0', isActive ? 'text-[#0866C6] dark:text-[#38BDF8]' : 'text-slate-400 dark:text-slate-400')} />
+                        <Icon className={cn('w-4 h-4 shrink-0', isActive ? 'text-[#0866C6] dark:text-[#25B8E6]' : 'text-[#60717C] dark:text-slate-400')} />
                         <span>{item.title}</span>
                       </div>
                       <ChevronDown
-                        className={cn('w-3.5 h-3.5 text-slate-400 transition-transform duration-200', isSubmenuOpen && 'rotate-180')}
+                        className={cn('w-3.5 h-3.5 text-[#60717C] transition-transform duration-200', isSubmenuOpen && 'rotate-180')}
                       />
                     </button>
                     {isSubmenuOpen && (
-                      <div className="pr-7 space-y-1 border-r border-slate-200 dark:border-[#133B61] mr-4 mt-1">
+                      <div className="pr-7 space-y-1 border-r border-[#DDE7EC] dark:border-[#07345C] mr-4 mt-1">
                         {item.children?.map((child, cIdx) => {
                           const isChildActive = pathname === child.href;
                           return (
@@ -359,7 +359,7 @@ export function AdminSidebar({
                                 'block px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
                                 isChildActive
                                   ? 'bg-[#0866C6] text-white shadow-xs font-bold'
-                                  : 'text-slate-600 dark:text-slate-300 hover:text-[#07345C] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#0A2E50]'
+                                  : 'text-[#60717C] dark:text-slate-300 hover:text-[#07345C] dark:hover:text-white hover:bg-[#F6F8FA] dark:hover:bg-[#0A2E50]'
                               )}
                             >
                               {child.title}
@@ -382,14 +382,14 @@ export function AdminSidebar({
                     'flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 group',
                     isActive
                       ? 'bg-[#0866C6] text-white shadow-md shadow-[#0866C6]/20 font-bold'
-                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-[#0A2E50] hover:text-[#07345C] dark:hover:text-white'
+                      : 'text-[#60717C] dark:text-slate-300 hover:bg-[#F6F8FA] dark:hover:bg-[#0A2E50] hover:text-[#07345C] dark:hover:text-white'
                   )}
                 >
                   <div className="flex items-center gap-3 overflow-hidden">
                     <Icon
                       className={cn(
                         'w-4 h-4 shrink-0 transition-transform group-hover:scale-110',
-                        isActive ? 'text-white' : 'text-slate-400 dark:text-slate-400 group-hover:text-[#0866C6] dark:group-hover:text-[#38BDF8]'
+                        isActive ? 'text-white' : 'text-[#60717C] dark:text-slate-400 group-hover:text-[#0866C6] dark:group-hover:text-[#25B8E6]'
                       )}
                     />
                     {!collapsed && <span className="truncate">{item.title}</span>}
@@ -398,7 +398,7 @@ export function AdminSidebar({
                     <span
                       className={cn(
                         'text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0',
-                        item.badgeColor || 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                        item.badgeColor || 'bg-[#F6F8FA] dark:bg-slate-800 text-[#60717C] dark:text-slate-300 border border-[#DDE7EC] dark:border-slate-700'
                       )}
                     >
                       {item.badge}
@@ -412,11 +412,11 @@ export function AdminSidebar({
       </div>
 
       {/* Customer Website Quick Jump */}
-      <div className="p-3 border-t border-slate-100 dark:border-[#133B61] bg-slate-50/70 dark:bg-[#041728]/70 transition-colors duration-200">
+      <div className="p-3 border-t border-[#DDE7EC] dark:border-[#07345C] bg-[#F6F8FA]/80 dark:bg-[#041728]/70 transition-colors duration-200">
         <Link
           href="/"
           target="_blank"
-          className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-white dark:bg-[#072540] text-slate-700 dark:text-slate-200 hover:bg-[#0866C6] hover:text-white dark:hover:bg-[#0866C6] dark:hover:text-white transition-colors border border-slate-200/80 dark:border-[#133B61] shadow-2xs"
+          className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-white dark:bg-[#072540] text-[#162631] dark:text-[#F6F8FA] hover:bg-[#0866C6] hover:text-white dark:hover:bg-[#0866C6] dark:hover:text-white transition-colors border border-[#DDE7EC] dark:border-[#07345C] shadow-2xs"
         >
           <ExternalLink className="w-3.5 h-3.5 shrink-0" />
           {!collapsed && <span>معاينة موقع العملاء</span>}

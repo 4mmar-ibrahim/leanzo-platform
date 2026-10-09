@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Tag,
   Plus,
@@ -67,8 +68,17 @@ export default function AdminOffersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  const searchParams = useSearchParams();
+
   // Regular Modal and Form states
   const [modalOpen, setModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (searchParams?.get('action') === 'new') {
+      setModalOpen(true);
+    }
+  }, [searchParams]);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(false);
   const [editingOfferId, setEditingOfferId] = useState<string | null>(null);

@@ -9,6 +9,7 @@ import { ServiceCard } from '@/components/services/ServiceCard';
 import { SectionHeader } from '@/components/common/SectionHeader';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Button } from '@/components/ui/Button';
+import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
 
 export default function HomeServicesPage() {
   const { t, locale, direction } = useLocaleStore();
@@ -16,20 +17,25 @@ export default function HomeServicesPage() {
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
 
   const storeServices = useServiceStore((s) => s.services);
+  const categories = useServiceStore((s) => s.categories);
   const fetchServices = useServiceStore((s) => s.fetchServices);
+  const fetchCategories = useServiceStore((s) => s.fetchCategories);
 
   useEffect(() => {
     fetchServices('home');
-  }, [fetchServices]);
+    fetchCategories();
+  }, [fetchServices, fetchCategories]);
 
   const homeServices = useMemo(() => {
-    return (storeServices || []).filter(
-      (s) => s.category === 'home' && s.available !== false && !(s as any).isArchived
-    );
-  }, [storeServices]);
+    return (storeServices || []).filter((s) => {
+      if (s.available === false || (s as any).isArchived) return false;
+      const cat = resolveCategoryInfo(s.category, categories, isAr);
+      return cat.isHome || s.category === 'home';
+    });
+  }, [storeServices, categories, isAr]);
 
   return (
-    <div className="py-12 bg-[#F8FAFD] dark:bg-[#041728] min-h-screen space-y-12">
+    <div className="py-12 bg-[#EAF8FC] dark:bg-[#041728] min-h-screen space-y-12">
       {/* Category Hero Banner */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-[#041728] via-[#07345C] to-[#041728] p-8 sm:p-14 text-white shadow-xl border border-[#0866C6]/20">

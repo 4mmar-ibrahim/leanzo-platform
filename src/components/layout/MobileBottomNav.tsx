@@ -301,14 +301,14 @@ export function MobileBottomNav() {
                   <div
                     className={cn(
                       'w-13 h-13 rounded-2xl flex items-center justify-center text-white',
-                      'bg-gradient-to-tr from-[#0866C6] via-[#0977e6] to-[#38BDF8]',
-                      'shadow-lg shadow-[#0866C6]/40 ring-4 ring-white dark:ring-[#061e35]',
+                      'bg-[#F0444C] hover:bg-[#D9333B]',
+                      'shadow-lg shadow-[#F0444C]/35 ring-4 ring-white dark:ring-[#041728]',
                       'animate-glow-pulse group-hover:scale-105 transition-all'
                     )}
                   >
                     <Icon className="w-6 h-6 text-white transition-transform group-hover:rotate-6" />
                   </div>
-                  <span className="text-[10px] font-black mt-1 text-[#0866C6] dark:text-[#3894ec] tracking-tight">
+                  <span className="text-[10px] font-bold mt-1 text-[#F0444C] dark:text-[#FB7185] tracking-tight font-sans">
                     {item.label}
                   </span>
                 </button>

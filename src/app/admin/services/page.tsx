@@ -321,8 +321,18 @@ export default function AdminServicesPage() {
                       );
                     })()}
                   </td>
-                  <td className="py-3.5 px-4 font-bold text-sky-600 dark:text-sky-400">
-                    {service.price} ج.م
+                  <td className="py-3.5 px-4">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold text-sky-600 dark:text-sky-400">{service.price} ج.م</span>
+                      {service.originalPrice && service.originalPrice > service.price && (
+                        <>
+                          <span className="text-[11px] text-slate-400 line-through">{service.originalPrice} ج.م</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200/50">
+                            -{Math.round(((service.originalPrice - service.price) / service.originalPrice) * 100)}%
+                          </span>
+                        </>
+                      )}
+                    </div>
                   </td>
                   <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
                     {service.duration} دقيقة

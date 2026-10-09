@@ -207,8 +207,8 @@ export async function createService(req: Request, res: Response): Promise<void> 
         image: serviceData.image || defaultServiceImage,
         order: serviceData.order ?? count,
         isArchived: false,
-        originalPrice: null,
-        discount: 0,
+        originalPrice: serviceData.originalPrice ? Number(serviceData.originalPrice) : null,
+        discount: serviceData.discount ? Number(serviceData.discount) : 0,
       });
 
       const createdPackages: any[] = [];
@@ -284,8 +284,12 @@ export async function updateService(req: Request, res: Response): Promise<void> 
     const { id } = req.params;
     const { packages: incomingPackages, addons: incomingAddons, ...serviceUpdates } = req.body;
 
-    serviceUpdates.originalPrice = null;
-    serviceUpdates.discount = 0;
+    if (serviceUpdates.originalPrice !== undefined) {
+      serviceUpdates.originalPrice = serviceUpdates.originalPrice ? Number(serviceUpdates.originalPrice) : null;
+    }
+    if (serviceUpdates.discount !== undefined) {
+      serviceUpdates.discount = serviceUpdates.discount ? Number(serviceUpdates.discount) : 0;
+    }
 
     if (serviceUpdates.category) {
       serviceUpdates.category = String(serviceUpdates.category).trim();
@@ -686,9 +690,18 @@ export async function getCategories(req: Request, res: Response): Promise<void> 
 export async function createCategory(req: Request, res: Response): Promise<void> {
   try {
     const data = { ...req.body };
-    if (!data.name || !data.slug) {
-      sendError(res, 'اسم التصنيف والمعرف البرمجي (Slug) مطلوبان', 400);
+    if (!data.name || !String(data.name).trim()) {
+      sendError(res, 'اسم التصنيف مطلوب', 400);
       return;
+    }
+
+    if (!data.slug || !String(data.slug).trim()) {
+      const base = data.nameEn || data.name || `cat-${Date.now()}`;
+      data.slug = String(base)
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\u0600-\u06FF]+/g, '-')
+        .replace(/^-+|-+$/g, '') || `cat-${Date.now()}`;
     }
 
     const normalizedSlug = data.slug.toLowerCase().trim().replace(/\s+/g, '-');
@@ -701,12 +714,13 @@ export async function createCategory(req: Request, res: Response): Promise<void>
     }
 
     // Check if category with same id or slug already exists
-    const existing = await ServiceCategory.findOne({
+    let existing = await ServiceCategory.findOne({
       $or: [{ id: data.id }, { slug: data.slug }],
     });
     if (existing) {
-      sendError(res, 'يوجد تصنيف آخر بالفعل بنفس المعرف البرمجي (Slug) أو المعرف', 409);
-      return;
+      // If slug conflict, append unique suffix to make it succeed seamlessly
+      data.slug = `${data.slug}-${Date.now().toString(36)}`;
+      data.id = data.slug;
     }
 
     const newCat = await ServiceCategory.create(data);

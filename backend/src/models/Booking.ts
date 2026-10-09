@@ -57,6 +57,7 @@ export interface IBooking extends Document {
   travelTimeMinutes: number;
   totalOccupiedMinutes: number;
   rescheduledFrom?: string;
+  rescheduledAt?: Date;
   address: IBookingAddress;
   basePrice: number;
   discount: number;
@@ -153,6 +154,7 @@ const BookingSchema = new Schema<IBooking>(
     travelTimeMinutes: { type: Number, default: 15 },
     totalOccupiedMinutes: { type: Number, default: 60 },
     rescheduledFrom: { type: String },
+    rescheduledAt: { type: Date },
     address: { type: BookingAddressSchema, required: true },
     basePrice: { type: Number, required: true, min: 0 },
     discount: { type: Number, default: 0, min: 0 },

@@ -4,14 +4,26 @@ import { sendSuccess, sendError } from '../utils/responseHandler.js';
 
 export async function checkDateAvailability(req: Request, res: Response): Promise<void> {
   try {
-    const { date, duration, serviceId } = req.query;
+    const { date, duration, serviceId, serviceIds, excludeBookingId } = req.query;
     if (!date || typeof date !== 'string') {
       sendError(res, 'يرجى تحديد التاريخ المراد فحصه (YYYY-MM-DD)', 422);
       return;
     }
 
     const durationNum = duration ? parseInt(duration as string, 10) : undefined;
-    const result = await getAvailableSlots(date, serviceId as string, durationNum);
+    const parsedServiceIds = typeof serviceIds === 'string'
+      ? serviceIds.split(',').map((s) => s.trim()).filter(Boolean)
+      : Array.isArray(serviceIds)
+      ? (serviceIds as string[])
+      : undefined;
+
+    const result = await getAvailableSlots(
+      date,
+      serviceId as string,
+      durationNum,
+      parsedServiceIds,
+      excludeBookingId as string | undefined
+    );
     sendSuccess(res, result);
   } catch (err: any) {
     sendError(res, err.message, 500);
@@ -20,17 +32,24 @@ export async function checkDateAvailability(req: Request, res: Response): Promis
 
 export async function validateSlot(req: Request, res: Response): Promise<void> {
   try {
-    const { date, time, duration, serviceId } = req.body;
+    const { date, time, duration, serviceId, serviceIds } = req.body;
     if (!date || !time) {
       sendError(res, 'يرجى تحديد التاريخ والوقت المراد التحقق منهما', 422);
       return;
     }
 
     const durationNum = duration ? parseInt(duration, 10) : undefined;
+    const parsedServiceIds = typeof serviceIds === 'string'
+      ? serviceIds.split(',').map((s) => s.trim()).filter(Boolean)
+      : Array.isArray(serviceIds)
+      ? (serviceIds as string[])
+      : undefined;
+
     const timing = await assertSlotAvailability({
       dateStr: date,
       timeStr: time,
-      serviceId: (serviceId as string) || '',
+      serviceId: (serviceId as string) || (parsedServiceIds?.[0] || ''),
+      serviceIds: parsedServiceIds,
       customDuration: durationNum,
     });
 

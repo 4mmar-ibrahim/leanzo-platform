@@ -12,6 +12,11 @@ import {
   CalendarCheck,
   ArrowLeft,
   ArrowRight,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Sparkles,
+  UserCheck,
 } from 'lucide-react';
 import { useCustomerNotificationStore } from '@/store/useCustomerNotificationStore';
 import { useLocaleStore } from '@/store/useLocaleStore';
@@ -61,10 +66,25 @@ export function CustomerNotificationCenter({
     if (type === 'offer' || title?.includes('خصم') || title?.includes('Discount')) {
       return <Gift className="w-4 h-4 text-[#F0444C]" />;
     }
-    if (title?.includes('الفني') || title?.includes('Technician') || title?.includes('🚗')) {
+    if (title?.includes('🚗') || title?.includes('الطريق') || title?.includes('on the Way')) {
       return <Car className="w-4 h-4 text-[#0866C6]" />;
     }
-    if (title?.includes('تأكيد') || title?.includes('حجز') || title?.includes('Confirmed')) {
+    if (title?.includes('👷') || title?.includes('الفني') || title?.includes('Specialist') || title?.includes('Technician')) {
+      return <UserCheck className="w-4 h-4 text-[#0866C6]" />;
+    }
+    if (title?.includes('🎉') || title?.includes('اكتمال') || title?.includes('نعيماً') || title?.includes('Completed')) {
+      return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
+    }
+    if (title?.includes('✨') || title?.includes('تنفيذ') || title?.includes('Progress') || title?.includes('جارٍ')) {
+      return <Sparkles className="w-4 h-4 text-cyan-500" />;
+    }
+    if (title?.includes('❌') || title?.includes('إلغاء') || title?.includes('Cancelled')) {
+      return <XCircle className="w-4 h-4 text-rose-500" />;
+    }
+    if (title?.includes('⏳') || title?.includes('مراجعة') || title?.includes('Review') || title?.includes('الانتظار') || title?.includes('Pending')) {
+      return <Clock className="w-4 h-4 text-amber-500" />;
+    }
+    if (title?.includes('✅') || title?.includes('تأكيد') || title?.includes('حجز') || title?.includes('Confirmed')) {
       return <CalendarCheck className="w-4 h-4 text-emerald-500" />;
     }
     return <Bell className="w-4 h-4 text-[#0866C6]" />;

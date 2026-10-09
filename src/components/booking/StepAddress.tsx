@@ -13,6 +13,8 @@ import {
   Loader2,
   AlertCircle,
   Building,
+  User,
+  Phone,
 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useAddressStore } from '@/store/useAddressStore';
@@ -252,13 +254,86 @@ export function StepAddress() {
     setCityId(validCity ? (validCity.id || (validCity as any)._id) : '');
   };
 
-  // Auto-select first address if returning customer and none is selected
+  // Auto-select default/saved address if returning customer and none is selected
   useEffect(() => {
-    if (addresses.length > 0 && !selectedAddress) {
-      const defaultAddr = addresses.find((a) => a.isDefault) || addresses[0];
-      setAddress(defaultAddr);
+    if (addresses.length > 0) {
+      if (!selectedAddress) {
+        const defaultAddr = addresses.find((a) => a.isDefault) || addresses[0];
+        setAddress(defaultAddr);
+        if (defaultAddr.customerPhone && !guestPhoneInput) {
+          setGuestPhoneInput(defaultAddr.customerPhone);
+        }
+        if (defaultAddr.customerName && !guestNameInput) {
+          setGuestNameInput(defaultAddr.customerName);
+        }
+      } else {
+        if (selectedAddress.customerPhone && !guestPhoneInput) {
+          setGuestPhoneInput(selectedAddress.customerPhone);
+        }
+        if (selectedAddress.customerName && !guestNameInput) {
+          setGuestNameInput(selectedAddress.customerName);
+        }
+      }
     }
-  }, [addresses, selectedAddress, setAddress]);
+  }, [addresses, selectedAddress, setAddress, guestPhoneInput, guestNameInput]);
+
+  // Keep booking store guest info synchronized with selected address or authenticated user
+  useEffect(() => {
+    const currentName = guestNameInput || guestName || selectedAddress?.customerName || user?.name || '';
+    const currentPhone = guestPhoneInput || guestPhone || selectedAddress?.customerPhone || user?.phone || '';
+    if (currentName || currentPhone) {
+      setGuestInfo(currentName, currentPhone);
+    }
+  }, [guestNameInput, guestPhoneInput, guestName, guestPhone, selectedAddress, user, setGuestInfo]);
+
+  // Auto-sync draft address to booking store if first-time user fills form without clicking inner submit button
+  useEffect(() => {
+    if (addresses.length === 0 && area.trim() && currentGov && currentCity) {
+      const activeName = (!isAuthenticated ? guestNameInput : (guestNameInput || user?.name || '')).trim();
+      const activePhone = (!isAuthenticated ? guestPhoneInput : (guestPhoneInput || user?.phone || '')).trim();
+
+      const draftAddress: Address = {
+        id: selectedAddress?.id || 'draft-address',
+        label: label.trim() || 'المنزل',
+        governorateId: currentGov.id || (currentGov as any)._id || governorateId,
+        governorateNameSnapshot: isAr ? currentGov.name : (currentGov.nameEn || currentGov.name || ''),
+        cityId: currentCity.id || (currentCity as any)._id || cityId,
+        cityNameSnapshot: isAr ? currentCity.name : (currentCity.nameEn || currentCity.name || ''),
+        governorate: isAr ? currentGov.name : (currentGov.nameEn || currentGov.name || ''),
+        city: isAr ? currentCity.name : (currentCity.nameEn || currentCity.name || ''),
+        area: area.trim(),
+        building: building.trim(),
+        floor: floor.trim(),
+        apartment: apartment.trim(),
+        landmark: landmark.trim(),
+        notes: notes.trim(),
+        details: notes.trim() || landmark.trim(),
+        customerName: activeName || undefined,
+        customerPhone: activePhone || undefined,
+      };
+      setAddress(draftAddress);
+    }
+  }, [
+    addresses.length,
+    area,
+    currentGov,
+    currentCity,
+    governorateId,
+    cityId,
+    label,
+    building,
+    floor,
+    apartment,
+    landmark,
+    notes,
+    guestNameInput,
+    guestPhoneInput,
+    isAuthenticated,
+    user?.name,
+    user?.phone,
+    isAr,
+    setAddress,
+  ]);
 
   // Reset form
   const resetForm = () => {
@@ -346,8 +421,6 @@ export function StepAddress() {
 
     setIsSubmitting(true);
     try {
-      const effectivePhone = user?.phone || guestPhoneInput.trim();
-
       // Check if customer account is deactivated by admin
       if (effectivePhone) {
         try {
@@ -386,6 +459,7 @@ export function StepAddress() {
         landmark: landmark.trim(),
         notes: notes.trim(),
         details: notes.trim() || landmark.trim(),
+        customerName: effectiveName || undefined,
         customerPhone: effectivePhone || undefined,
       };
 
@@ -538,8 +612,18 @@ export function StepAddress() {
 
         <form onSubmit={handleSaveAddress} noValidate className="space-y-3 sm:space-y-4 bg-white dark:bg-slate-900 p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-2xs">
           <div className="space-y-2 sm:space-y-2.5">
-            {/* Row 1: Governorate & City */}
-            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+            {/* Row 1: اسم العميل و المحافظة و المدينة */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+              <Input
+                label={isAr ? 'اسم العميل' : 'Customer Name'}
+                placeholder={isAr ? 'مثال: أحمد عبد الله' : 'e.g. Ahmed Abdallah'}
+                value={guestNameInput}
+                onChange={handleGuestNameChange}
+                onBlur={handleGuestNameBlur}
+                error={nameError || undefined}
+                required
+              />
+
               <Select
                 label={isAr ? 'المحافظة' : 'Governorate'}
                 value={governorateId}
@@ -583,8 +667,8 @@ export function StepAddress() {
               </Select>
             </div>
 
-            {/* Row 2: تسمية العنوان (المنزل) و اسم العميل جنب بعض */}
-            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+            {/* Row 2: تسمية العنوان و اسم الشارع */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
               <Input
                 label={isAr ? 'تسمية العنوان (مثل: المنزل)' : 'Address Label'}
                 value={label}
@@ -593,18 +677,16 @@ export function StepAddress() {
                 required
               />
               <Input
-                label={isAr ? 'اسم العميل' : 'Customer Name'}
-                placeholder={isAr ? 'مثال: أحمد عبد الله' : 'e.g. Ahmed Abdallah'}
-                value={guestNameInput}
-                onChange={handleGuestNameChange}
-                onBlur={handleGuestNameBlur}
-                error={nameError || undefined}
+                label={isAr ? 'اسم الشارع / الحي / المنطقة' : 'Street / Area'}
+                placeholder={isAr ? 'شارع النصر، متفرع من عباس العقاد' : 'Street name, district'}
+                value={area}
+                onChange={(e) => setArea(e.target.value)}
                 required
               />
             </div>
 
-            {/* Row 3: رقم الهاتف و اسم الشارع جنب بعض */}
-            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+            {/* Row 3: رقم الهاتف و رقم العمارة و الطابق و الشقة */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
               <Input
                 label={isAr ? 'رقم الهاتف للتواصل' : 'Contact Phone'}
                 type="tel"
@@ -618,17 +700,6 @@ export function StepAddress() {
                 error={phoneError || undefined}
                 required
               />
-              <Input
-                label={isAr ? 'اسم الشارع / الحي / المنطقة بالتفصيل' : 'Street / Area Details'}
-                placeholder={isAr ? 'شارع النصر، متفرع من عباس العقاد' : 'Street name, district'}
-                value={area}
-                onChange={(e) => setArea(e.target.value)}
-                required
-              />
-            </div>
-
-            {/* Row 4: رقم العمارة و الطابق و الشقة جنب بعض */}
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               <Input
                 label={isAr ? 'رقم العمارة' : 'Building'}
                 placeholder="14"
@@ -649,19 +720,13 @@ export function StepAddress() {
               />
             </div>
 
-            {/* Row 5: علامة مميزة و ملاحظات للفني جنب بعض */}
-            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+            {/* Row 4: علامة مميزة */}
+            <div>
               <Input
                 label={isAr ? 'علامة مميزة (اختياري)' : 'Landmark (Optional)'}
                 placeholder={isAr ? 'بجوار صيدلية النور' : 'Near landmark'}
                 value={landmark}
                 onChange={(e) => setLandmark(e.target.value)}
-              />
-              <Input
-                label={isAr ? 'ملاحظات للفني أو الحارس' : 'Notes for Technician'}
-                placeholder={isAr ? 'يرجى الاتصال عند البوابة' : 'Call on arrival'}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
               />
             </div>
           </div>
@@ -691,8 +756,59 @@ export function StepAddress() {
   // -------------------------------------------------------------
   // RENDER 2: RETURNING CUSTOMER (With Saved Addresses)
   // -------------------------------------------------------------
+  const currentDisplayName = guestNameInput || guestName || selectedAddress?.customerName || user?.name || '';
+  const currentDisplayPhone = guestPhoneInput || guestPhone || selectedAddress?.customerPhone || user?.phone || '';
+
   return (
     <div className="space-y-6 text-start">
+      {/* Auto-selected Reassurance Banner for Returning Customer */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-sky-500/10 border border-emerald-500/30 dark:border-emerald-500/20 shadow-xs space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-sm font-black text-emerald-950 dark:text-emerald-100 flex items-center gap-1.5 flex-wrap">
+                <span>{isAr ? 'تم تحديد عنوانك وبياناتك المحفوظة تلقائياً' : 'Saved Address & Info Selected Automatically'}</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">
+                  {isAr ? 'جاهز للمتابعة فوراً' : 'Ready to Proceed'}
+                </span>
+              </h4>
+              <p className="text-xs text-emerald-800/80 dark:text-emerald-300/90 mt-1">
+                {isAr
+                  ? 'بياناتك وعنوانك محفوظة ومحددة لطلبك تلقائياً؛ لست بحاجة لإعادة إدخالها أو مراجعتها في كل مرة. يمكنك المتابعة فوراً بالضغط على "التالي"!'
+                  : 'Your address and details are automatically selected; you do not need to re-enter them every time. You can proceed directly to the next step!'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick contact and selected address summary pill */}
+        <div className="pt-2 border-t border-emerald-500/20 flex flex-wrap items-center gap-2 sm:gap-4 text-xs font-semibold text-slate-700 dark:text-slate-200">
+          {currentDisplayName && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/90 dark:bg-slate-900/90 border border-emerald-200 dark:border-emerald-800">
+              <User className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>{isAr ? `العميل: ${currentDisplayName}` : `Customer: ${currentDisplayName}`}</span>
+            </span>
+          )}
+          {currentDisplayPhone && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/90 dark:bg-slate-900/90 border border-emerald-200 dark:border-emerald-800 dir-ltr">
+              <Phone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>{currentDisplayPhone}</span>
+            </span>
+          )}
+          {selectedAddress && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/90 dark:bg-slate-900/90 border border-emerald-200 dark:border-emerald-800">
+              <MapPin className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>
+                {selectedAddress.label || (isAr ? 'المنزل' : 'Home')}: {selectedAddress.area || selectedAddress.cityNameSnapshot || selectedAddress.city}
+              </span>
+            </span>
+          )}
+        </div>
+      </div>
+
       <div className="flex items-center justify-between">
         <label className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
           <MapPin className="w-4 h-4 text-sky-500" />
@@ -857,7 +973,18 @@ export function StepAddress() {
         }
       >
         <form onSubmit={handleSaveAddress} className="space-y-3">
-          <div className="grid grid-cols-2 gap-2 sm:gap-3">
+          {/* Row 1: اسم العميل و المحافظة و المدينة */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+            <Input
+              label={isAr ? 'اسم العميل' : 'Customer Name'}
+              placeholder={isAr ? 'مثال: أحمد عبد الله' : 'e.g. Ahmed Abdallah'}
+              value={guestNameInput}
+              onChange={handleGuestNameChange}
+              onBlur={handleGuestNameBlur}
+              error={nameError || undefined}
+              required
+            />
+
             <Select
               label={isAr ? 'المحافظة' : 'Governorate'}
               value={governorateId}
@@ -900,83 +1027,68 @@ export function StepAddress() {
             </Select>
           </div>
 
-            <div className="grid grid-cols-2 gap-2 sm:gap-3">
-              <Input
-                label={isAr ? 'تسمية العنوان (مثل: المنزل)' : 'Address Label'}
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                placeholder={isAr ? 'المنزل' : 'Home'}
-                required
-              />
-              <Input
-                label={isAr ? 'اسم العميل' : 'Customer Name'}
-                placeholder={isAr ? 'مثال: أحمد عبد الله' : 'e.g. Ahmed Abdallah'}
-                value={guestNameInput}
-                onChange={handleGuestNameChange}
-                onBlur={handleGuestNameBlur}
-                error={nameError || undefined}
-                required
-              />
-            </div>
+          {/* Row 2: تسمية العنوان و اسم الشارع */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+            <Input
+              label={isAr ? 'تسمية العنوان (مثل: المنزل)' : 'Address Label'}
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder={isAr ? 'المنزل' : 'Home'}
+              required
+            />
+            <Input
+              label={isAr ? 'الشارع / الحي' : 'Street / Area'}
+              value={area}
+              onChange={(e) => setArea(e.target.value)}
+              placeholder={isAr ? 'اسم الشارع والحي' : 'Street name and district'}
+              required
+            />
+          </div>
 
-            <div className="grid grid-cols-2 gap-2 sm:gap-3">
-              <Input
-                label={isAr ? 'رقم الهاتف للتواصل' : 'Contact Phone'}
-                type="tel"
-                inputMode="numeric"
-                maxLength={11}
-                dir="ltr"
-                placeholder={isAr ? 'مثال: 01012345678' : '01012345678'}
-                value={guestPhoneInput}
-                onChange={handleGuestPhoneChange}
-                onBlur={handleGuestPhoneBlur}
-                error={phoneError || undefined}
-                required
-              />
-              <Input
-                label={isAr ? 'الشارع / الحي بالتفصيل' : 'Street / Area Details'}
-                value={area}
-                onChange={(e) => setArea(e.target.value)}
-                placeholder={isAr ? 'اسم الشارع والحي' : 'Street name and district'}
-                required
-              />
-            </div>
+          {/* Row 3: رقم الهاتف و المبنى و الطابق و الشقة */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+            <Input
+              label={isAr ? 'رقم الهاتف للتواصل' : 'Contact Phone'}
+              type="tel"
+              inputMode="numeric"
+              maxLength={11}
+              dir="ltr"
+              placeholder={isAr ? 'مثال: 01012345678' : '01012345678'}
+              value={guestPhoneInput}
+              onChange={handleGuestPhoneChange}
+              onBlur={handleGuestPhoneBlur}
+              error={phoneError || undefined}
+              required
+            />
+            <Input
+              label={isAr ? 'المبنى' : 'Building'}
+              placeholder="14"
+              value={building}
+              onChange={(e) => setBuilding(e.target.value)}
+            />
+            <Input
+              label={isAr ? 'الطابق' : 'Floor'}
+              placeholder="3"
+              value={floor}
+              onChange={(e) => setFloor(e.target.value)}
+            />
+            <Input
+              label={isAr ? 'الشقة' : 'Apartment'}
+              placeholder="7"
+              value={apartment}
+              onChange={(e) => setApartment(e.target.value)}
+            />
+          </div>
 
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
-              <Input
-                label={isAr ? 'المبنى' : 'Building'}
-                placeholder="14"
-                value={building}
-                onChange={(e) => setBuilding(e.target.value)}
-              />
-              <Input
-                label={isAr ? 'الطابق' : 'Floor'}
-                placeholder="3"
-                value={floor}
-                onChange={(e) => setFloor(e.target.value)}
-              />
-              <Input
-                label={isAr ? 'الشقة' : 'Apartment'}
-                placeholder="7"
-                value={apartment}
-                onChange={(e) => setApartment(e.target.value)}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 sm:gap-3">
-              <Input
-                label={isAr ? 'علامة مميزة' : 'Landmark'}
-                placeholder={isAr ? 'بجوار صيدلية...' : 'Near landmark...'}
-                value={landmark}
-                onChange={(e) => setLandmark(e.target.value)}
-              />
-              <Input
-                label={isAr ? 'ملاحظات للفني' : 'Notes'}
-                placeholder={isAr ? 'ملاحظات إضافية' : 'Extra notes'}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </div>
+          {/* Row 4: علامة مميزة */}
+          <div>
+            <Input
+              label={isAr ? 'علامة مميزة' : 'Landmark'}
+              placeholder={isAr ? 'بجوار صيدلية...' : 'Near landmark...'}
+              value={landmark}
+              onChange={(e) => setLandmark(e.target.value)}
+            />
+          </div>
 
           <div className="pt-2 flex justify-end gap-2">
             <Button

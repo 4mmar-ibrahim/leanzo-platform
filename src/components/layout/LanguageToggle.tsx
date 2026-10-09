@@ -21,11 +21,11 @@ export function LanguageToggle({ compact = false, className }: LanguageTogglePro
       className={cn(
         compact
           ? 'inline-flex items-center justify-center gap-1 px-1.5 h-7.5 sm:h-8 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700 active:scale-95 transition-all'
-          : 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-2xs',
+          : 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-[#DDE7EC] dark:border-[#133B61] bg-white dark:bg-[#072540] text-xs font-semibold text-[#162631] dark:text-[#F6F8FA] hover:bg-[#EAF8FC] dark:hover:bg-[#082845] transition-colors shadow-2xs font-sans',
         className
       )}
     >
-      <Globe className={cn('text-sky-500 shrink-0', compact ? 'w-3.5 h-3.5' : 'w-3.5 h-3.5')} />
+      <Globe className={cn('text-[#0866C6] shrink-0', compact ? 'w-3.5 h-3.5' : 'w-3.5 h-3.5')} />
       {compact ? (
         <span className="text-[10.5px] font-black uppercase text-slate-700 dark:text-slate-200">
           {locale === 'ar' ? 'EN' : 'ع'}

@@ -84,6 +84,7 @@ export interface Address {
   id: string;
   _id?: string;
   customerId?: string;
+  customerName?: string;
   customerPhone?: string;
   label: string; // e.g. "المنزل", "العمل"
   governorateId?: string;
@@ -825,6 +826,8 @@ export interface BrandingSettings {
   ctaTextEn: string;
   footerText: string;
   footerTextEn: string;
+  footerQuickLinks?: FooterLinkItem[];
+  footerCategoryLinks?: FooterLinkItem[];
   topBanner: {
     enabled: boolean;
     text: string;
@@ -835,6 +838,15 @@ export interface BrandingSettings {
   };
   maintenanceMode: boolean;
   maintenanceMessage: string;
+}
+
+export interface FooterLinkItem {
+  id: string;
+  label: string;
+  labelEn: string;
+  url: string;
+  visible?: boolean;
+  order?: number;
 }
 
 export interface CustomerNotification {

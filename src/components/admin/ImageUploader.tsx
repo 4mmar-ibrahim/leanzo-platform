@@ -18,7 +18,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { normalizeMediaUrl } from '@/lib/utils';
+import { normalizeMediaUrl, extractDirectImageUrl } from '@/lib/utils';
 import { CleanzoImage, CleanzoImageFit, CleanzoImagePosition } from '@/components/common/CleanzoImage';
 
 export interface ImageUploaderProps {
@@ -162,23 +162,23 @@ export function ImageUploader({
     [handleFile]
   );
 
-  const handleUrlSubmit = async (e?: React.SyntheticEvent) => {
+  const handleUrlSubmit = async (e?: React.SyntheticEvent, directUrlInput?: string) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
     }
-    const cleanUrl = urlInput.trim();
+    const rawUrl = directUrlInput !== undefined ? directUrlInput : urlInput;
+    let cleanUrl = extractDirectImageUrl(rawUrl.trim());
     if (!cleanUrl) return;
 
-    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
-      toast.error('يرجى إدخال رابط صالح يبدأ بـ http:// أو https://');
-      return;
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://') && !cleanUrl.startsWith('data:')) {
+      cleanUrl = `https://${cleanUrl}`;
     }
 
     setIsUploading(true);
     try {
       // 1. Try importing through backend media system for permanent local persistence
-      const item = await importFromUrl(cleanUrl);
+      const item = await importFromUrl(cleanUrl, 'image');
       setMetaDetails({
         width: item.width,
         height: item.height,
@@ -194,6 +194,7 @@ export function ImageUploader({
       console.warn('Backend URL import failed, falling back to direct URL:', err);
 
       const img = new Image();
+      img.referrerPolicy = 'no-referrer';
       img.src = cleanUrl;
       img.onload = () => {
         setMetaDetails({

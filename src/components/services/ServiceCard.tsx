@@ -3,15 +3,17 @@
 import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Star, Clock, Car, Home, ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Star, Clock, Car, Home, ArrowLeft, ArrowRight, CheckCircle2, Sparkles } from 'lucide-react';
 import { Service } from '@/types';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useBookingStore } from '@/store/useBookingStore';
+import { useServiceStore } from '@/store/useServiceStore';
 import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { Button } from '@/components/ui/Button';
-import { formatDuration } from '@/lib/utils';
+import { formatDuration, cn } from '@/lib/utils';
 import { CleanzoImage } from '@/components/common/CleanzoImage';
 import { getServiceDisplayPrice } from '@/lib/pricing';
+import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
 
 interface ServiceCardProps {
   service: Service;
@@ -22,9 +24,29 @@ export function ServiceCard({ service, featured = false }: ServiceCardProps) {
   const router = useRouter();
   const { locale, direction } = useLocaleStore();
   const { selectService } = useBookingStore();
+  const categories = useServiceStore((s) => s.categories);
+  const fetchCategories = useServiceStore((s) => s.fetchCategories);
+
+  React.useEffect(() => {
+    if (!categories || categories.length === 0) {
+      fetchCategories();
+    }
+  }, [categories, fetchCategories]);
+
   const isAr = locale === 'ar';
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
   const pricing = getServiceDisplayPrice(service);
+
+  const catInfo = React.useMemo(() => {
+    return resolveCategoryInfo(service.category, categories, isAr);
+  }, [service.category, categories, isAr]);
+
+  const targetDetailUrl =
+    service.category === 'car'
+      ? `/services/car/${service.id}`
+      : service.category === 'home'
+      ? `/services/home/${service.id}`
+      : `/services/${service.id}`;
 
   const handleBookNow = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -35,14 +57,14 @@ export function ServiceCard({ service, featured = false }: ServiceCardProps) {
 
   return (
     <div
-      onClick={() => router.push(`/services/${service.category}/${service.id}`)}
+      onClick={() => router.push(targetDetailUrl)}
       className="group relative flex flex-col cursor-pointer transition-all duration-300"
     >
       {/* Clean Circular Service Image — 100% Round, Independent, Zero Square/Card behind it */}
-      <div className="flex items-center justify-center pb-3 sm:pb-4">
+      <div className="flex items-center justify-center pb-2">
         <div
           style={{ borderRadius: '50%' }}
-          className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-full overflow-hidden shadow-md group-hover:scale-105 group-hover:shadow-xl transition-all duration-300 shrink-0 bg-transparent"
+          className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-full overflow-hidden group-hover:scale-105 transition-all duration-300 shrink-0 bg-transparent"
         >
           <CleanzoImage
             src={service.image}
@@ -56,22 +78,28 @@ export function ServiceCard({ service, featured = false }: ServiceCardProps) {
         </div>
       </div>
 
-      {/* Existing Service Information Card — Unchanged data and functionality */}
-      <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/90 overflow-hidden shadow-xs group-hover:shadow-xl group-hover:border-sky-300 dark:group-hover:border-sky-900 transition-all duration-300 flex-1 flex flex-col justify-between">
+      {/* Existing Service Information Card — Clean and borderless, no background rectangle */}
+      <div className="bg-transparent border-0 shadow-none overflow-hidden transition-all duration-300 flex-1 flex flex-col justify-between">
         {/* Card Header: Category & Popular / Discount Badges */}
-        <div className="pt-4 px-5 flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 shadow-2xs">
-            {service.category === 'car' ? (
-              <>
-                <Car className="w-3.5 h-3.5 text-sky-500" />
-                <span>{isAr ? 'سيارات' : 'Car'}</span>
-              </>
-            ) : (
-              <>
-                <Home className="w-3.5 h-3.5 text-[#07345C] dark:text-[#83AED0]" />
-                <span>{isAr ? 'منازل' : 'Home'}</span>
-              </>
+        <div className="pt-2 px-1 flex items-center justify-between gap-2">
+          <span
+            className={cn(
+              'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors',
+              catInfo.isCar
+                ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-200/60 dark:border-sky-800/60'
+                : catInfo.isHome
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200'
+                : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60'
             )}
+          >
+            {catInfo.isCar ? (
+              <Car className="w-3.5 h-3.5 text-sky-500" />
+            ) : catInfo.isHome ? (
+              <Home className="w-3.5 h-3.5 text-[#07345C] dark:text-[#83AED0]" />
+            ) : (
+              <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+            )}
+            <span>{catInfo.name}</span>
           </span>
 
           <div className="flex items-center gap-1.5">
@@ -84,7 +112,7 @@ export function ServiceCard({ service, featured = false }: ServiceCardProps) {
         </div>
 
         {/* Content */}
-        <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+        <div className="p-2 pt-3 flex-1 flex flex-col justify-between space-y-3">
           <div className="space-y-2">
             <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors line-clamp-1">
               {isAr ? service.title : service.titleEn}
@@ -124,7 +152,11 @@ export function ServiceCard({ service, featured = false }: ServiceCardProps) {
               <span className="text-[10px] text-slate-400 font-medium">
                 {isAr ? 'يبدأ من' : 'Starting from'}
               </span>
-              <PriceDisplay price={Number(service.price) || 0} size="sm" />
+              <PriceDisplay
+                price={Number(service.price) || 0}
+                originalPrice={service.originalPrice && service.originalPrice > service.price ? service.originalPrice : undefined}
+                size="sm"
+              />
             </div>
 
             <div className="flex items-center gap-2">

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   HardHat,
   Plus,
@@ -61,8 +62,16 @@ export default function AdminTechniciansPage() {
     fetchTechnicians();
   }, [fetchTechnicians]);
 
+  const searchParams = useSearchParams();
+
   // Modal & Form State
   const [modalOpen, setModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (searchParams?.get('action') === 'new') {
+      setModalOpen(true);
+    }
+  }, [searchParams]);
   const [editingTechId, setEditingTechId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');

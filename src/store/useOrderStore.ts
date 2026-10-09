@@ -20,54 +20,108 @@ interface OrderState {
   assignTechnician: (orderId: string, technician: Technician) => void;
   bulkUpdateStatus: (orderIds: string[], status: OrderStatus) => void;
   cancelOrder: (orderId: string, reason?: string) => void;
+  rescheduleOrder: (orderId: string, newDate: string, newTime: string, reason?: string, customerPhone?: string) => Promise<Order>;
   deleteOrder: (orderId: string) => Promise<void> | void;
   updateOrderNotes: (orderId: string, notes: string) => void;
   getOrderById: (orderId: string) => Order | undefined;
   getOrdersByStatus: (status?: OrderStatus | 'all') => Order[];
 }
 
-const statusLabels: Record<OrderStatus, { ar: string; en: string; descAr: string; descEn: string }> = {
+interface CustomerStatusNotifMeta {
+  ar: string;
+  en: string;
+  descAr: string;
+  descEn: string;
+  titleAr: string;
+  titleEn: string;
+  getMsgAr: (orderId: string, srvTitle: string, extra?: { date?: string; time?: string; techName?: string; note?: string; area?: string }) => string;
+  getMsgEn: (orderId: string, srvTitleEn: string, extra?: { date?: string; time?: string; techName?: string; note?: string; area?: string }) => string;
+}
+
+const statusLabels: Record<OrderStatus, CustomerStatusNotifMeta> = {
   pending: {
     ar: 'قيد المراجعة',
     en: 'Pending Review',
-    descAr: 'تم استلام طلب الحجز وجارٍ مراجعته.',
-    descEn: 'Order received and is pending review.',
+    descAr: 'تم استلام طلب الحجز وبانتظار المراجعة والتأكيد.',
+    descEn: 'Order received and pending review.',
+    titleAr: '⏳ تم استلام طلبك وبانتظار المراجعة',
+    titleEn: '⏳ Booking Received & Under Review',
+    getMsgAr: (id, srv, extra) =>
+      `تم استلام طلبك رقم #${id} لخدمة (${srv}) بنجاح. فريق العمليات يراجع التفاصيل لتأكيد الموعد (${extra?.date || ''}${extra?.time ? ` - ${extra?.time}` : ''}). سنوافيك بالتأكيد قريباً.${extra?.note ? `\nملاحظة: ${extra.note}` : ''}`,
+    getMsgEn: (id, srvEn, extra) =>
+      `Your booking #${id} for (${srvEn}) was received. Our operations team is reviewing details for (${extra?.date || ''}${extra?.time ? ` at ${extra?.time}` : ''}). We will confirm shortly.${extra?.note ? `\nNote: ${extra.note}` : ''}`,
   },
   confirmed: {
-    ar: 'مستلم',
-    en: 'Order Received',
-    descAr: 'تم استلام وتأكيد طلب الحجز من الإدارة.',
-    descEn: 'Booking accepted and scheduled.',
+    ar: 'تم تأكيد الحجز',
+    en: 'Booking Confirmed',
+    descAr: 'تم تأكيد موعد الحجز وتثبيت الموعد في جدول الزيارات.',
+    descEn: 'Booking confirmed and scheduled.',
+    titleAr: '✅ تم تأكيد موعد حجزك بنجاح',
+    titleEn: '✅ Booking Confirmed Successfully',
+    getMsgAr: (id, srv, extra) =>
+      `يسعدنا إبلاغك بتأكيد حجزك للطلب #${id} لخدمة (${srv}) ليوم ${extra?.date || ''}${extra?.time ? ` في تمام ${extra?.time}` : ''}. أسطول كلينزو جاهز للزيارة في الموعد المحدد!${extra?.note ? `\nملاحظة: ${extra.note}` : ''}`,
+    getMsgEn: (id, srvEn, extra) =>
+      `Great news! Your booking #${id} for (${srvEn}) is confirmed for ${extra?.date || ''}${extra?.time ? ` at ${extra?.time}` : ''}. The Cleanzo fleet is scheduled for your visit!${extra?.note ? `\nNote: ${extra.note}` : ''}`,
   },
   assigned: {
     ar: 'تم تعيين الفني المختص',
     en: 'Technician Assigned',
-    descAr: 'تم إسناد الطلب للفني المختص وجاهز للانطلاق.',
-    descEn: 'Specialized technician assigned.',
+    descAr: 'تم إسناد الطلب للفني المختص وتجهيز المعدات اللازمة.',
+    descEn: 'Specialist technician assigned and preparing.',
+    titleAr: '👷‍♂️ تم تعيين الفني المختص لخدمتك',
+    titleEn: '👷‍♂️ Specialist Assigned to Your Booking',
+    getMsgAr: (id, srv, extra) =>
+      `تم إسناد طلبك #${id} إلى الكابتن (${extra?.techName || 'الفني المختص'}). تم تجهيز سيارة الخدمة المتنقلة بأحدث معدات ومواد النظافة والتعقيم الفندقية لزيارتك.${extra?.note ? `\nملاحظة: ${extra.note}` : ''}`,
+    getMsgEn: (id, srvEn, extra) =>
+      `Captain (${extra?.techName || 'our specialist'}) has been assigned to your booking #${id}. The mobile unit is equipped with top cleaning and sanitization gear for your visit.${extra?.note ? `\nNote: ${extra.note}` : ''}`,
   },
   on_the_way: {
     ar: 'الفني في الطريق إليك',
     en: 'Technician On The Way',
-    descAr: 'تحركت الوحدة المتنقلة وهي متجهة إلى موقعك الآن.',
-    descEn: 'Technician mobile unit is on the way to your location.',
+    descAr: 'انطلقت وحدة الخدمة المتنقلة وهي متجهة إلى الموقع الآن.',
+    descEn: 'Mobile service unit en route to your location.',
+    titleAr: '🚗 الفني في الطريق إلى موقعك الآن!',
+    titleEn: '🚗 Technician is on the Way!',
+    getMsgAr: (id, srv, extra) =>
+      `انطلقت سيارة الخدمة المتنقلة بقيادة الكابتن (${extra?.techName || 'الفني'}) وهي متجهة الآن إلى عنوانك (${extra?.area || 'موقعك'}) لتنفيذ طلبك #${id}. يُرجى التواجد لاستقبال الفريق.${extra?.note ? `\nملاحظة: ${extra.note}` : ''}`,
+    getMsgEn: (id, srvEn, extra) =>
+      `Our mobile unit with Captain (${extra?.techName || 'our technician'}) is en route to your address (${extra?.area || 'your location'}) for booking #${id}. Please be ready to welcome the team.${extra?.note ? `\nNote: ${extra.note}` : ''}`,
   },
   in_progress: {
     ar: 'الخدمة جارية الآن',
     en: 'Service In Progress',
-    descAr: 'بدأ الفني في تنفيذ أعمال التنظيف والعناية بالموقع.',
-    descEn: 'Technician is performing the service.',
+    descAr: 'بدأ فريق العمل تنفيذ أعمال النظافة والتعقيم بالموقع.',
+    descEn: 'Service execution in progress at location.',
+    titleAr: '✨ بدأ تنفيذ خدمة النظافة الآن',
+    titleEn: '✨ Cleaning Service in Progress',
+    getMsgAr: (id, srv, extra) =>
+      `بدأ فريق كلينزو الآن تنفيذ أعمال (${srv}) لطلبك #${id} في موقعك. نحرص على تقديم أعلى معايير العناية والتألق لمكانك!${extra?.note ? `\nملاحظة: ${extra.note}` : ''}`,
+    getMsgEn: (id, srvEn, extra) =>
+      `Our team has started performing (${srvEn}) for your booking #${id}. We are dedicated to delivering pristine results and premium care!${extra?.note ? `\nNote: ${extra.note}` : ''}`,
   },
   completed: {
     ar: 'تم إتمام الخدمة بنجاح',
     en: 'Completed Successfully',
-    descAr: 'انتهت الخدمة بالكامل وتم التأكد من رضا العميل.',
-    descEn: 'Service completed with customer satisfaction.',
+    descAr: 'تم تسليم العمل بالكامل بأعلى معايير الجودة والنظافة.',
+    descEn: 'Service completed to the highest standards.',
+    titleAr: '🎉 تم اكتمال خدمتك بنجاح.. نعيماً!',
+    titleEn: '🎉 Service Completed Successfully!',
+    getMsgAr: (id, srv, extra) =>
+      `تم الانتهاء من تنفيذ طلبك #${id} وتسليم العمل بأعلى درجات النظافة والتعقيم. يسعدنا دائماً خدمتك ونتطلع لمعرفة تقييمك ورأيك في التجربة!${extra?.note ? `\nملاحظة: ${extra.note}` : ''}`,
+    getMsgEn: (id, srvEn, extra) =>
+      `Your booking #${id} has been successfully completed with the highest cleanliness standards. Thank you for choosing Cleanzo — we'd love your feedback!${extra?.note ? `\nNote: ${extra.note}` : ''}`,
   },
   cancelled: {
     ar: 'تم إلغاء الطلب',
     en: 'Order Cancelled',
     descAr: 'تم إلغاء طلب الحجز.',
-    descEn: 'Booking was cancelled.',
+    descEn: 'Booking cancelled.',
+    titleAr: '❌ تم إلغاء حجز الطلب',
+    titleEn: '❌ Booking Cancelled',
+    getMsgAr: (id, srv, extra) =>
+      `نود إبلاغك بأنه تم إلغاء حجز الطلب #${id}${extra?.note ? ` (السبب: ${extra.note})` : ''}. يمكنك إعادة جدولة الحجز أو اختيار موعد جديد في أي وقت بخطوات بسيطة.`,
+    getMsgEn: (id, srvEn, extra) =>
+      `Please be informed that booking #${id} has been cancelled${extra?.note ? ` (Reason: ${extra.note})` : ''}. You can easily reschedule or place a new booking anytime.`,
   },
 };
 
@@ -137,10 +191,10 @@ export const useOrderStore = create<OrderState>((set, get) => ({
           });
 
           useCustomerNotificationStore.getState().addNotification({
-            title: '✓ تم استلام طلبك بنجاح',
-            titleEn: 'Booking Received',
-            message: `تم استلام طلبك رقم #${newOrder.id} لخدمة ${serviceTitle} بنجاح، وسنتواصل معك قريباً.`,
-            messageEn: `Your booking #${newOrder.id} was placed successfully.`,
+            title: '⏳ تم استلام طلبك وبانتظار المراجعة',
+            titleEn: '⏳ Booking Received & Under Review',
+            message: `تم استلام طلبك رقم #${newOrder.id} لخدمة (${serviceTitle}) بنجاح. فريق العمليات يراجع التفاصيل لتأكيد الموعد (${newOrder.date}${newOrder.time ? ` - ${newOrder.time}` : ''}). سنوافيك بالتأكيد قريباً.`,
+            messageEn: `Your booking #${newOrder.id} for (${serviceTitle}) was received. Our team is reviewing details for (${newOrder.date}${newOrder.time ? ` at ${newOrder.time}` : ''}). We will confirm shortly.`,
             type: 'order',
             link: `/track/${newOrder.id}`,
           });
@@ -263,11 +317,27 @@ export const useOrderStore = create<OrderState>((set, get) => ({
             link: `/admin/orders/${orderId}`,
           });
 
+          const notifMeta = statusLabels[status] || statusLabels.pending;
+          const srvTitleEn = (order?.service as any)?.titleEn || srvTitle;
+          const addressArea = typeof order?.address === 'object' ? order?.address?.area || order?.address?.city : undefined;
+
           useCustomerNotificationStore.getState().addNotification({
-            title: `حالة طلبك: ${info.ar}`,
-            titleEn: `Order Update: ${info.en}`,
-            message: note || `${info.descAr}`,
-            messageEn: note || `${info.descEn}`,
+            title: notifMeta.titleAr,
+            titleEn: notifMeta.titleEn,
+            message: notifMeta.getMsgAr(orderId, srvTitle, {
+              date: order?.date,
+              time: order?.time,
+              techName: order?.technician?.name,
+              area: addressArea,
+              note,
+            }),
+            messageEn: notifMeta.getMsgEn(orderId, srvTitleEn, {
+              date: order?.date,
+              time: order?.time,
+              techName: order?.technician?.name,
+              area: addressArea,
+              note,
+            }),
             type: 'order',
             link: `/track/${orderId}`,
           });
@@ -325,10 +395,10 @@ export const useOrderStore = create<OrderState>((set, get) => ({
           });
 
           useCustomerNotificationStore.getState().addNotification({
-            title: '🚗 تم تعيين الفني المختص',
-            titleEn: 'Technician Assigned',
-            message: `تم إسناد طلبك #${orderId} للكابتن ${technician.name} وفريق كلينزو جاهز للخدمة.`,
-            messageEn: `Technician ${technician.name} has been assigned to your order #${orderId}.`,
+            title: '👷‍♂️ تم تعيين الفني المختص لخدمتك',
+            titleEn: '👷‍♂️ Specialist Assigned to Your Booking',
+            message: `تم إسناد طلبك #${orderId} إلى الكابتن (${technician.name}). تم تجهيز سيارة الخدمة المتنقلة بأحدث معدات ومواد النظافة والتعقيم الفندقية لزيارتك.`,
+            messageEn: `Captain (${technician.name}) has been assigned to your booking #${orderId}. The mobile unit is equipped with top cleaning and sanitization gear for your visit.`,
             type: 'order',
             link: `/track/${orderId}`,
           });
@@ -354,6 +424,19 @@ export const useOrderStore = create<OrderState>((set, get) => ({
           'cancelled',
           reason ? `تم الإلغاء: ${reason}` : 'تم إلغاء الحجز بناءً على طلب الإدارة/العميل.'
         );
+      },
+
+      rescheduleOrder: async (orderId, newDate, newTime, reason, customerPhone) => {
+        const updated = await cleanzoApi.bookings.reschedule(orderId, {
+          newDate,
+          newTime,
+          reason,
+          customerPhone,
+        });
+        set((state) => ({
+          orders: state.orders.map((o) => (o.id === orderId ? { ...o, ...updated } : o)),
+        }));
+        return updated;
       },
 
       deleteOrder: async (orderId) => {

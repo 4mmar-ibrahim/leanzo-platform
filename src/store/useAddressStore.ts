@@ -1,6 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { Address } from '@/types';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 
@@ -17,8 +18,9 @@ interface AddressState {
   clearAddresses: () => void;
 }
 
-export const useAddressStore = create<AddressState>((set, get) => ({
-      // Real first-time customers start with NO addresses (clean slate)
+export const useAddressStore = create<AddressState>()(
+  persist(
+    (set, get) => ({
       addresses: [],
       isLoading: false,
       error: null,
@@ -27,16 +29,21 @@ export const useAddressStore = create<AddressState>((set, get) => ({
         set({ isLoading: true, error: null });
         try {
           const res = await cleanzoApi.addresses.getAll(phone);
-          const mapped: Address[] = (res || []).map((item: any) => ({
-            ...item,
-            id: item.id || item._id,
-            governorate: item.governorateNameSnapshot || item.governorate,
-            city: item.cityNameSnapshot || item.city,
-          }));
-          set({ addresses: mapped, isLoading: false });
-          return mapped;
+          if (Array.isArray(res) && res.length > 0) {
+            const mapped: Address[] = res.map((item: any) => ({
+              ...item,
+              id: item.id || item._id,
+              governorate: item.governorateNameSnapshot || item.governorate,
+              city: item.cityNameSnapshot || item.city,
+            }));
+            set({ addresses: mapped, isLoading: false });
+            return mapped;
+          }
+          // If server returned empty, preserve existing local cache in localStorage
+          set({ isLoading: false });
+          return get().addresses;
         } catch (err: any) {
-          // Keep current local cache on network blip
+          // Keep current local cache on network error or unauthorized
           set({ isLoading: false, error: err.message });
           return get().addresses;
         }
@@ -44,40 +51,47 @@ export const useAddressStore = create<AddressState>((set, get) => ({
 
       addAddress: async (newAddr) => {
         set({ isLoading: true, error: null });
+        let savedAddress: Address | null = null;
         try {
           const res = await cleanzoApi.addresses.create(newAddr);
-          const savedAddress: Address = {
-            ...newAddr,
-            ...res,
-            id: (res as any)._id || res.id || `addr-${Date.now()}`,
-            governorate: (res as any).governorateNameSnapshot || newAddr.governorate,
-            city: (res as any).cityNameSnapshot || newAddr.city,
-          };
-
-          let updatedList = [...get().addresses];
-          if (savedAddress.isDefault) {
-            updatedList = updatedList.map((a) => ({ ...a, isDefault: false }));
+          if (res) {
+            savedAddress = {
+              ...newAddr,
+              ...res,
+              id: (res as any)._id || res.id || `addr-${Date.now()}`,
+              governorate: (res as any).governorateNameSnapshot || newAddr.governorate,
+              city: (res as any).cityNameSnapshot || newAddr.city,
+            };
           }
-          updatedList.push(savedAddress);
-          set({ addresses: updatedList, isLoading: false });
-          return savedAddress;
         } catch (err: any) {
-          // Optimistic local fallback if offline
+          // Optimistic local fallback if offline or guest
+        }
+
+        if (!savedAddress) {
           const id = newAddr.id || `addr-${Date.now()}`;
           const isFirst = get().addresses.length === 0;
-          const fallbackAddress: Address = {
+          savedAddress = {
             ...newAddr,
             id,
-            isDefault: newAddr.isDefault || isFirst,
+            isDefault: newAddr.isDefault !== undefined ? newAddr.isDefault : isFirst,
           };
-          let updatedList = [...get().addresses];
-          if (fallbackAddress.isDefault) {
-            updatedList = updatedList.map((a) => ({ ...a, isDefault: false }));
-          }
-          updatedList.push(fallbackAddress);
-          set({ addresses: updatedList, isLoading: false });
-          return fallbackAddress;
         }
+
+        const isDefault = savedAddress.isDefault ?? (get().addresses.length === 0);
+        const existing = get().addresses.filter(
+          (a) => a.id !== savedAddress!.id && (a as any)._id !== savedAddress!.id
+        );
+
+        let updatedList: Address[];
+        if (isDefault) {
+          updatedList = existing.map((a) => ({ ...a, isDefault: false }));
+          updatedList.unshift({ ...savedAddress, isDefault: true });
+        } else {
+          updatedList = [...existing, savedAddress];
+        }
+
+        set({ addresses: updatedList, isLoading: false });
+        return savedAddress;
       },
 
       updateAddress: async (id, updates) => {
@@ -133,5 +147,12 @@ export const useAddressStore = create<AddressState>((set, get) => ({
       clearAddresses: () => {
         set({ addresses: [], error: null, isLoading: false });
       },
-    })
+    }),
+    {
+      name: 'cleanzo_address_storage',
+      partialize: (state) => ({
+        addresses: state.addresses,
+      }),
+    }
+  )
 );

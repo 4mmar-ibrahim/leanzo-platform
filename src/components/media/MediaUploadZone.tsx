@@ -19,7 +19,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { normalizeMediaUrl } from '@/lib/utils';
+import { normalizeMediaUrl, extractDirectImageUrl } from '@/lib/utils';
 import { CleanzoImage } from '@/components/common/CleanzoImage';
 
 export interface MediaUploadZoneProps {
@@ -114,21 +114,29 @@ export function MediaUploadZone({
 
   // Handle URL Import
   const handleImportUrl = async () => {
-    if (!urlInput || !urlInput.trim()) {
+    let cleanUrl = extractDirectImageUrl(urlInput.trim());
+    if (!cleanUrl) {
       toast.error('يرجى كتابة رابط صالح');
       return;
+    }
+
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://') && !cleanUrl.startsWith('data:')) {
+      cleanUrl = `https://${cleanUrl}`;
     }
 
     setIsUploading(true);
     try {
       const typeHint = accept === 'video' ? 'video' : accept === 'image' ? 'image' : undefined;
-      const item = await importFromUrl(urlInput.trim(), typeHint);
+      const item = await importFromUrl(cleanUrl, typeHint);
       setMediaDetails(item);
       onChange(item.url, item);
       setUrlInput('');
       toast.success('تم استيراد الوسائط وتخزينها بنجاح');
     } catch (err: any) {
-      toast.error(err.message || 'فشل استيراد الرابط. يرجى التحقق من الرابط');
+      console.warn('Backend URL import failed, falling back to direct URL:', err);
+      onChange(cleanUrl, undefined);
+      setUrlInput('');
+      toast.success('تم تطبيق رابط الصورة بنجاح');
     } finally {
       setIsUploading(false);
     }

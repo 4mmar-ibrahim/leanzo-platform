@@ -1,39 +1,47 @@
-@import "tailwindcss" source(none);
-@source "../";
+@import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
+@variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: var(--font-cairo), var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-sans: var(--font-alexandria), var(--font-manrope), system-ui, -apple-system, sans-serif;
+  --font-heading: var(--font-alexandria), var(--font-manrope), system-ui, sans-serif;
+  --font-latin: var(--font-manrope), system-ui, sans-serif;
 
   /* ========================================================
      OFFICIAL CLEANZO BRAND DESIGN TOKENS
      Source of Truth:
-     Cleanzo Navy: #07345C | Cleanzo Blue: #0866C6 | Cleanzo Red: #F0444C | White: #FFFFFF
+     Navy: #07345C | Blue: #0866C6 | Red: #F0444C | Aqua: #25B8E6
+     White: #FFFFFF | Ice: #EAF8FC | Cloud: #F6F8FA
+     Ink: #162631 | Slate: #60717C | Mist: #DDE7EC
      ======================================================== */
-  --color-cleanzo-navy: var(--cleanzo-navy);
-  --color-cleanzo-navy-hover: var(--cleanzo-navy-hover);
-  --color-cleanzo-navy-dark: var(--cleanzo-navy-dark);
-  --color-cleanzo-navy-light: var(--cleanzo-navy-light);
+  --color-cleanzo-navy: #07345C;
+  --color-cleanzo-navy-hover: #052644;
+  --color-cleanzo-navy-dark: #041728;
+  --color-cleanzo-navy-light: #0B467B;
 
-  --color-cleanzo-blue: var(--cleanzo-blue);
-  --color-cleanzo-blue-hover: var(--cleanzo-blue-hover);
-  --color-cleanzo-blue-active: var(--cleanzo-blue-active);
-  --color-cleanzo-blue-light: var(--cleanzo-blue-light);
-  --color-cleanzo-blue-soft: var(--cleanzo-blue-soft);
+  --color-cleanzo-blue: #0866C6;
+  --color-cleanzo-blue-hover: #06529E;
+  --color-cleanzo-blue-active: #054382;
+  --color-cleanzo-blue-light: #25B8E6;
+  --color-cleanzo-blue-soft: #EAF8FC;
 
-  --color-cleanzo-red: var(--cleanzo-red);
-  --color-cleanzo-red-hover: var(--cleanzo-red-hover);
-  --color-cleanzo-red-soft: var(--cleanzo-red-soft);
-  --color-cleanzo-red-light: var(--cleanzo-red-light);
+  --color-cleanzo-red: #F0444C;
+  --color-cleanzo-red-hover: #D9333B;
+  --color-cleanzo-red-soft: #FEECEE;
+  --color-cleanzo-red-light: #FB7185;
+
+  --color-cleanzo-aqua: #25B8E6;
+  --color-cleanzo-aqua-hover: #1FA2CB;
+  --color-cleanzo-aqua-soft: #EAF8FC;
 
   --color-cleanzo-white: #FFFFFF;
-  --color-cleanzo-cloud: #F5F8FC;
-  --color-cleanzo-ink: var(--cleanzo-navy);
-  --color-cleanzo-slate: #5E718D;
-  --color-cleanzo-mist: #E2E8F0;
+  --color-cleanzo-ice: #EAF8FC;
+  --color-cleanzo-cloud: #F6F8FA;
+  --color-cleanzo-ink: #162631;
+  --color-cleanzo-slate: #60717C;
+  --color-cleanzo-mist: #DDE7EC;
 
-  /* Standard Design Token Aliases */
+  /* Semantic Design Token Aliases */
   --color-primary: var(--primary);
   --color-primary-hover: var(--cleanzo-blue-hover);
   --color-primary-active: var(--cleanzo-blue-active);
@@ -65,29 +73,41 @@
   --color-surface-hover: var(--color-surface-hover);
   --color-surface-elevated: var(--color-surface-elevated);
 
-  /* Unified Brand Scales: Harmonize legacy classes to Official Brand Palette */
-  --color-sky-50: #F0F6FC;
-  --color-sky-100: #E1EFFC;
-  --color-sky-200: #BADBFA;
-  --color-sky-300: #7CB5F0;
-  --color-sky-400: #2581DE;
-  --color-sky-500: #0866C6;
+  /* Unified Brand Scales: Harmonize legacy sky & rose utility classes to Official Palette */
+  --color-sky-50: #EAF8FC;  /* Ice */
+  --color-sky-100: #D8F1FA;
+  --color-sky-200: #B3E3F5;
+  --color-sky-300: #7AD0EE;
+  --color-sky-400: #25B8E6; /* Aqua */
+  --color-sky-500: #0866C6; /* Cleanzo Blue */
   --color-sky-600: #06529E;
   --color-sky-700: #054382;
-  --color-sky-800: #043364;
-  --color-sky-900: #072540;
+  --color-sky-800: #0B467B;
+  --color-sky-900: #07345C; /* Cleanzo Navy */
   --color-sky-950: #041728;
 
   --color-rose-50: #FEECEE;
   --color-rose-100: #FDD8DC;
   --color-rose-200: #FBAFB7;
   --color-rose-400: #F87176;
-  --color-rose-500: #F0444C;
+  --color-rose-500: #F0444C; /* Cleanzo Red */
   --color-rose-600: #D9333B;
   --color-rose-700: #B8242C;
   --color-rose-800: #931920;
   --color-rose-900: #661015;
   --color-rose-950: #380C10;
+
+  --color-slate-50: #F8FAFC;
+  --color-slate-100: #F1F5F9;
+  --color-slate-200: #E2E8F0;
+  --color-slate-300: #CBD5E1;
+  --color-slate-400: #94A3B8;
+  --color-slate-500: #64748B;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1E293B;
+  --color-slate-900: #0F172A;
+  --color-slate-950: #020617;
 }
 
 :root {
@@ -102,32 +122,38 @@
   --cleanzo-blue: #0866C6;
   --cleanzo-blue-hover: #06529E;
   --cleanzo-blue-active: #054382;
-  --cleanzo-blue-light: #2581DE;
-  --cleanzo-blue-soft: #F0F6FC;
+  --cleanzo-blue-light: #25B8E6;
+  --cleanzo-blue-soft: #EAF8FC;
 
   --cleanzo-red: #F0444C;
   --cleanzo-red-hover: #D9333B;
-  --cleanzo-red-soft: #FFF1F2;
+  --cleanzo-red-soft: #FEECEE;
   --cleanzo-red-light: #FB7185;
 
+  --cleanzo-aqua: #25B8E6;
+  --cleanzo-aqua-hover: #1FA2CB;
+  --cleanzo-aqua-soft: #EAF8FC;
+
   --cleanzo-white: #FFFFFF;
-  --cleanzo-cloud: #F5F8FC;
-  --cleanzo-slate: #5E718D;
-  --cleanzo-mist: #E2E8F0;
+  --cleanzo-ice: #EAF8FC;
+  --cleanzo-cloud: #F6F8FA;
+  --cleanzo-ink: #162631;
+  --cleanzo-slate: #60717C;
+  --cleanzo-mist: #DDE7EC;
 
   /* ========================================================
      LIGHT MODE SEMANTIC SYSTEM
-     Multi-level surfaces, high contrast, WCAG AA/AAA compliant
-     PAGE BACKGROUND != CARDS (Prevents "everything white" wash)
+     Background Distribution: 60% Ice (#EAF8FC), 25% Cloud (#F6F8FA), 15% White (#FFFFFF)
+     Navy for Header & Depth, Blue for Core, Red for CTAs, Aqua for Cleanliness
      ======================================================== */
-  --background: #F5F8FC;
-  --foreground: #0F172A;
+  --background: #EAF8FC; /* Primary website background: Soft Icy-Blue */
+  --foreground: #162631;
 
-  --card: #FFFFFF;
-  --card-foreground: #0F172A;
+  --card: #FFFFFF; /* Content cards, service cards, forms */
+  --card-foreground: #162631;
 
   --popover: #FFFFFF;
-  --popover-foreground: #0F172A;
+  --popover-foreground: #162631;
 
   --primary: #0866C6;
   --primary-foreground: #FFFFFF;
@@ -138,34 +164,34 @@
   --accent: #F0444C;
   --accent-foreground: #FFFFFF;
 
-  --muted: #EDF2F7;
-  --muted-foreground: #64748B;
+  --muted: #F6F8FA;
+  --muted-foreground: #60717C;
 
-  --border: #E2E8F0;
+  --border: #DDE7EC;
   --ring: #0866C6;
 
-  --color-background: #F5F8FC;
-  --color-background-secondary: #EDF2F7;
-  --color-surface: #FFFFFF;
-  --color-surface-secondary: #F8FAFC;
+  --color-background: #EAF8FC; /* Ice */
+  --color-background-secondary: #F6F8FA; /* Cloud */
+  --color-surface: #FFFFFF; /* White */
+  --color-surface-secondary: #F6F8FA; /* Cloud */
   --color-surface-elevated: #FFFFFF;
-  --color-surface-hover: #F0F6FC;
+  --color-surface-hover: #F6F8FA;
 
-  --color-text: #0F172A;
-  --color-text-secondary: #334155;
-  --color-text-muted: #64748B;
+  --color-text: #162631;
+  --color-text-secondary: #60717C;
+  --color-text-muted: #60717C;
   --color-heading: #07345C;
-  --color-border: #E2E8F0;
-  --color-divider: #E2E8F0;
+  --color-border: #DDE7EC;
+  --color-divider: #DDE7EC;
 
   --color-input-bg: #FFFFFF;
-  --color-input-border: #CBD5E1;
+  --color-input-border: #DDE7EC;
   --color-input-focus: #0866C6;
 
   /* Functional Statuses */
   --color-success: #059669;
   --color-warning: #D97706;
-  --color-error: #DC2626;
+  --color-error: #F0444C;
   --color-info: #0866C6;
 }
 
@@ -173,7 +199,7 @@
   /* ========================================================
      DARK MODE SEMANTIC SYSTEM
      Deep rich navy foundation derived from Cleanzo Navy (#07345C)
-     Never pure flat black #000000
+     High contrast, balanced and legible
      ======================================================== */
   --cleanzo-navy: #07345C;
   --cleanzo-navy-hover: #0A3D6C;
@@ -184,36 +210,47 @@
   --cleanzo-blue-hover: #60A5FA;
   --cleanzo-blue-active: #2581DE;
   --cleanzo-blue-light: #7DD3FC;
-  --cleanzo-blue-soft: #0A223B;
+  --cleanzo-blue-soft: #072540;
 
-  --cleanzo-red: #FB7185;
+  --cleanzo-red: #F0444C;
   --cleanzo-red-hover: #FDA4AF;
   --cleanzo-red-soft: #380C10;
   --cleanzo-red-light: #FECDD3;
 
+  --cleanzo-aqua: #25B8E6;
+  --cleanzo-aqua-hover: #38BDF8;
+  --cleanzo-aqua-soft: #082845;
+
+  --cleanzo-white: #FFFFFF;
+  --cleanzo-ice: #0A2E50;
+  --cleanzo-cloud: #072540;
+  --cleanzo-ink: #FFFFFF;
+  --cleanzo-slate: #94A7BF;
+  --cleanzo-mist: #133B61;
+
   --background: #041728;
-  --foreground: #F8FAFC;
+  --foreground: #F6F8FA;
 
   --card: #072540;
-  --card-foreground: #F8FAFC;
+  --card-foreground: #F6F8FA;
 
   --popover: #072540;
-  --popover-foreground: #F8FAFC;
+  --popover-foreground: #F6F8FA;
 
-  --primary: #38BDF8;
-  --primary-foreground: #041728;
+  --primary: #0866C6;
+  --primary-foreground: #FFFFFF;
 
-  --secondary: #0A2E50;
-  --secondary-foreground: #F8FAFC;
+  --secondary: #07345C;
+  --secondary-foreground: #FFFFFF;
 
-  --accent: #FB7185;
-  --accent-foreground: #041728;
+  --accent: #F0444C;
+  --accent-foreground: #FFFFFF;
 
   --muted: #081D33;
   --muted-foreground: #94A7BF;
 
   --border: #133B61;
-  --ring: #38BDF8;
+  --ring: #0866C6;
 
   --color-background: #041728;
   --color-background-secondary: #072540;
@@ -222,21 +259,21 @@
   --color-surface-elevated: #0C355C;
   --color-surface-hover: #103E6B;
 
-  --color-text: #F8FAFC;
-  --color-text-secondary: #CBD5E1;
-  --color-text-muted: #94A3B8;
-  --color-heading: #F8FAFC;
+  --color-text: #F6F8FA;
+  --color-text-secondary: #94A7BF;
+  --color-text-muted: #94A7BF;
+  --color-heading: #FFFFFF;
   --color-border: #133B61;
   --color-divider: #133B61;
 
   --color-input-bg: #072540;
   --color-input-border: #133B61;
-  --color-input-focus: #38BDF8;
+  --color-input-focus: #0866C6;
 
   --color-success: #10B981;
   --color-warning: #F59E0B;
-  --color-error: #FB7185;
-  --color-info: #38BDF8;
+  --color-error: #F0444C;
+  --color-info: #0866C6;
 }
 
 * {
@@ -251,7 +288,7 @@ html {
 }
 
 body {
-  font-family: var(--font-cairo), var(--font-inter), system-ui, -apple-system, sans-serif;
+  font-family: var(--font-alexandria), var(--font-manrope), system-ui, -apple-system, sans-serif;
   background-color: var(--background);
   color: var(--foreground);
   min-height: 100vh;
@@ -265,23 +302,51 @@ body {
 
 /* ========================================================
    HEADINGS & TYPOGRAPHY HIERARCHY
-   Cleanzo Navy in Light Theme (#07345C), Soft White in Dark Theme (#FFFFFF)
+   Alexandria for Headings, Cleanzo Navy in Light Theme (#07345C), White in Dark (#FFFFFF)
+   Weights: H1-H2: 700, H3-H4: 600-700, Body: 400-500, Buttons: 600, Secondary: 400
    ======================================================== */
 h1, h2, h3, h4, h5, h6 {
   color: var(--color-heading);
   letter-spacing: -0.015em;
+  font-family: var(--font-alexandria), var(--font-manrope), system-ui, sans-serif;
+}
+
+h1 {
   font-weight: 700;
-  font-family: var(--font-cairo), var(--font-inter), system-ui, sans-serif;
+  line-height: 1.2;
+}
+
+h2 {
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+h3 {
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+h4, h5, h6 {
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+p, span, div, li, input, textarea, select {
+  font-family: var(--font-alexandria), var(--font-manrope), system-ui, sans-serif;
+}
+
+button {
+  font-family: var(--font-alexandria), var(--font-manrope), system-ui, sans-serif;
+  font-weight: 600;
 }
 
 /* Explicit white text on deliberate dark banners / buttons */
 .text-white {
-  color: #FFFFFF;
+  color: #FFFFFF !important;
 }
 
 /* ========================================================
    LIGHT THEME CONTRAST & LEGIBILITY SAFEGUARDS
-   Properly scoped to html:not(.dark) so they NEVER leak into Dark Theme
    ======================================================== */
 html:not(.dark) .bg-white h1:not(.text-white):not([class*="text-white"]),
 html:not(.dark) .bg-white h2:not(.text-white):not([class*="text-white"]),
@@ -315,23 +380,52 @@ html:not(.dark) h6.text-white {
 }
 
 html:not(.dark) .bg-white p,
-html:not(.dark) .bg-slate-50 p {
-  color: #334155;
+html:not(.dark) .bg-slate-50 p,
+html:not(.dark) .bg-\[\#EAF8FC\] p,
+html:not(.dark) .bg-\[\#F6F8FA\] p {
+  color: #162631;
 }
 
 html:not(.dark) .bg-white p.text-slate-600,
-html:not(.dark) .bg-slate-50 p.text-slate-600 {
-  color: #334155;
+html:not(.dark) .bg-slate-50 p.text-slate-600,
+html:not(.dark) p.text-slate-600,
+html:not(.dark) p.text-slate-500 {
+  color: #60717C;
 }
 
-html:not(.dark) .bg-white p.text-slate-500,
-html:not(.dark) .bg-slate-50 p.text-slate-500 {
-  color: #475569;
+/* ========================================================
+   FOOTER CONTRAST & LEGIBILITY SAFEGUARD (DELIBERATE NAVY BACKGROUND)
+   ======================================================== */
+footer {
+  background-color: #07345C !important;
+  color: #DDE7EC !important;
+}
+
+footer p {
+  color: #DDE7EC !important;
+}
+
+footer h1,
+footer h2,
+footer h3,
+footer h4 {
+  color: #FFFFFF !important;
+}
+
+footer a {
+  color: #DDE7EC;
+}
+
+footer a:hover {
+  color: #25B8E6 !important;
+}
+
+footer li {
+  color: #DDE7EC;
 }
 
 /* ========================================================
    GLOBAL DARK MODE CONTRAST & WCAG RULES
-   All text crisp white, light slate, and easily legible
    ======================================================== */
 .dark {
   color-scheme: dark;
@@ -339,7 +433,7 @@ html:not(.dark) .bg-slate-50 p.text-slate-500 {
 
 .dark,
 .dark body {
-  color: #FFFFFF;
+  color: #F6F8FA;
 }
 
 .dark h1,
@@ -352,12 +446,12 @@ html:not(.dark) .bg-slate-50 p.text-slate-500 {
 }
 
 .dark p:not([class*="text-"]):not([class*="dark:text-"]) {
-  color: #F8FAFC !important;
+  color: #F6F8FA !important;
 }
 
-/* Dark mode text contrast upgrades: all dark/navy/slate text classes become white/light-slate */
 .dark [class*="text-[#07345C]"]:not([class*="dark:text-"]),
 .dark [class*="text-[#162638]"]:not([class*="dark:text-"]),
+.dark [class*="text-[#162631]"]:not([class*="dark:text-"]),
 .dark [class*="text-slate-900"]:not([class*="dark:text-"]),
 .dark [class*="text-slate-800"]:not([class*="dark:text-"]),
 .dark [class*="text-gray-900"]:not([class*="dark:text-"]),
@@ -370,28 +464,27 @@ html:not(.dark) .bg-slate-50 p.text-slate-500 {
 .dark [class*="text-slate-700"]:not([class*="dark:text-"]),
 .dark [class*="text-gray-700"]:not([class*="dark:text-"]),
 .dark [class*="text-zinc-700"]:not([class*="dark:text-"]) {
-  color: #F8FAFC !important;
+  color: #F6F8FA !important;
 }
 
 .dark [class*="text-slate-600"]:not([class*="dark:text-"]),
 .dark [class*="text-gray-600"]:not([class*="dark:text-"]),
 .dark [class*="text-zinc-600"]:not([class*="dark:text-"]) {
-  color: #F1F5F9 !important;
+  color: #E2E8F0 !important;
 }
 
 .dark [class*="text-slate-500"]:not([class*="dark:text-"]),
 .dark [class*="text-gray-500"]:not([class*="dark:text-"]),
 .dark [class*="text-zinc-500"]:not([class*="dark:text-"]) {
-  color: #E2E8F0 !important;
+  color: #CBD5E1 !important;
 }
 
 .dark [class*="text-slate-400"]:not([class*="dark:text-"]),
 .dark [class*="text-gray-400"]:not([class*="dark:text-"]),
 .dark [class*="text-zinc-400"]:not([class*="dark:text-"]) {
-  color: #CBD5E1 !important;
+  color: #94A7BF !important;
 }
 
-/* Ensure classes with dark:text- also have vibrant high-contrast visibility */
 .dark [class*="dark:text-slate-200"],
 .dark [class*="dark:text-gray-200"],
 .dark [class*="dark:text-slate-100"],
@@ -401,7 +494,7 @@ html:not(.dark) .bg-slate-50 p.text-slate-500 {
 
 .dark [class*="dark:text-slate-300"],
 .dark [class*="dark:text-gray-300"] {
-  color: #F1F5F9 !important;
+  color: #F6F8FA !important;
 }
 
 .dark [class*="dark:text-slate-400"],
@@ -415,12 +508,11 @@ html:not(.dark) .bg-slate-50 p.text-slate-500 {
 
 /* ========================================================
    ADMIN PANEL THEME ISOLATION (LIGHT & DARK MODES)
-   High contrast, clear typography, comfortable for eyes
-   100% Decoupled from public customer website theme
+   High contrast, clear typography, unified with Brand Tokens
    ======================================================== */
 #admin-root:not(.dark) {
-  background-color: #F5F8FC;
-  color: #0F172A;
+  background-color: #F6F8FA;
+  color: #162631;
 }
 
 #admin-root:not(.dark) h1,
@@ -435,7 +527,7 @@ html:not(.dark) .bg-slate-50 p.text-slate-500 {
 #admin-root.dark,
 .dark #admin-root {
   background-color: #041728 !important;
-  color: #F8FAFC !important;
+  color: #F6F8FA !important;
 }
 
 #admin-root.dark .bg-slate-900,
@@ -469,7 +561,7 @@ html:not(.dark) .bg-slate-50 p.text-slate-500 {
 .dark #admin-root h4,
 .dark #admin-root h5,
 .dark #admin-root h6 {
-  color: #F8FAFC !important;
+  color: #FFFFFF !important;
 }
 
 #admin-root.dark .text-slate-900,
@@ -478,7 +570,7 @@ html:not(.dark) .bg-slate-50 p.text-slate-500 {
 .dark #admin-root .text-slate-800,
 #admin-root.dark .text-slate-700,
 .dark #admin-root .text-slate-700 {
-  color: #F8FAFC !important;
+  color: #F6F8FA !important;
 }
 
 #admin-root.dark .text-slate-600,
@@ -487,7 +579,7 @@ html:not(.dark) .bg-slate-50 p.text-slate-500 {
 .dark #admin-root .text-slate-500,
 #admin-root.dark .text-slate-400,
 .dark #admin-root .text-slate-400 {
-  color: #94A3B8 !important;
+  color: #94A7BF !important;
 }
 
 #admin-root.dark input,
@@ -496,7 +588,7 @@ html:not(.dark) .bg-slate-50 p.text-slate-500 {
 .dark #admin-root input,
 .dark #admin-root select,
 .dark #admin-root textarea {
-  color: #F8FAFC !important;
+  color: #F6F8FA !important;
   background-color: #072540 !important;
   border-color: #133B61 !important;
 }
@@ -505,15 +597,9 @@ html:not(.dark) .bg-slate-50 p.text-slate-500 {
 #admin-root.dark textarea::placeholder,
 .dark #admin-root input::placeholder,
 .dark #admin-root textarea::placeholder {
-  color: #94A3B8 !important;
+  color: #94A7BF !important;
 }
 
-/* ========================================================
-   ADMIN BUTTON DESIGN SYSTEM (LIGHT & DARK THEMES)
-   User Requirement:
-   - Light Theme: Primary buttons should be dark (Cleanzo Navy #07345C) with white text.
-   - Dark Theme: Primary buttons should be a bright/light color (Cleanzo Luminous Cyan #38BDF8) with dark text (#041728) for maximum visibility and pop.
-   ======================================================== */
 #admin-root:not(.dark) .admin-btn-primary,
 #admin-root:not(.dark) button.bg-\[\#0866C6\],
 #admin-root:not(.dark) a.bg-\[\#0866C6\],
@@ -537,10 +623,10 @@ html:not(.dark) .bg-slate-50 p.text-slate-500 {
 .dark #admin-root a.bg-\[\#0866C6\],
 #admin-root.dark button[type="submit"]:not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-emerald"]):not([class*="bg-green"]):not([class*="border"]):not([class*="text-slate"]),
 .dark #admin-root button[type="submit"]:not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-emerald"]):not([class*="bg-green"]):not([class*="border"]):not([class*="text-slate"]) {
-  background-color: #38BDF8 !important;
-  color: #041728 !important;
-  font-weight: 800 !important;
-  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.25) !important;
+  background-color: #0866C6 !important;
+  color: #FFFFFF !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 14px rgba(8, 102, 198, 0.3) !important;
 }
 
 #admin-root.dark .admin-btn-primary:hover,
@@ -551,8 +637,8 @@ html:not(.dark) .bg-slate-50 p.text-slate-500 {
 .dark #admin-root a.bg-\[\#0866C6\]:hover,
 #admin-root.dark button[type="submit"]:not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-emerald"]):not([class*="bg-green"]):not([class*="border"]):not([class*="text-slate"]):hover,
 .dark #admin-root button[type="submit"]:not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-emerald"]):not([class*="bg-green"]):not([class*="border"]):not([class*="text-slate"]):hover {
-  background-color: #7DD3FC !important;
-  color: #041728 !important;
+  background-color: #06529E !important;
+  color: #FFFFFF !important;
 }
 
 /* Custom modern Cleanzo scrollbar */
@@ -619,6 +705,22 @@ html:not(.dark) .bg-slate-50 p.text-slate-500 {
   }
   .animate-float-subtle {
     animation: float-subtle 3s ease-in-out infinite;
+  }
+  @keyframes cleanzo-marquee {
+    0% {
+      transform: translateX(0%);
+    }
+    100% {
+      transform: translateX(-50%);
+    }
+  }
+  .animate-cleanzo-marquee {
+    animation: cleanzo-marquee 22s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-cleanzo-marquee {
+      animation: none !important;
+    }
   }
 }
 

@@ -9,6 +9,13 @@ export interface BookingSlot {
   labelEn: string;
   isAvailable: boolean;
   reason?: string;
+  interval?: string;
+  intervalEn?: string;
+  totalOccupiedMinutes?: number;
+  serviceDurationMinutes?: number;
+  travelTimeMinutes?: number;
+  scheduledStart?: string;
+  scheduledEnd?: string;
 }
 
 export interface BookingDateOption {
@@ -393,7 +400,56 @@ export function isSameTime(timeA?: string, timeB?: string): boolean {
 }
 
 /**
- * Checks if an order belongs to the same service by ID or title.
+ * Extracts all service IDs associated with an order (primary + multi-service snapshots/metadata).
+ */
+export function getOrderServiceIds(order: any): string[] {
+  const ids = new Set<string>();
+  if (order.serviceId) ids.add(String(order.serviceId));
+  if (order.service?.id) ids.add(String(order.service.id));
+  if (order.serviceSnapshot?.id) ids.add(String(order.serviceSnapshot.id));
+
+  // Multi-service items in metadata
+  if (Array.isArray(order.metadata?.services)) {
+    for (const s of order.metadata.services) {
+      if (s.serviceId) ids.add(String(s.serviceId));
+      if (s.id) ids.add(String(s.id));
+    }
+  }
+  if (Array.isArray(order.metadata?.serviceIds)) {
+    for (const id of order.metadata.serviceIds) {
+      if (id) ids.add(String(id));
+    }
+  }
+
+  // Multi-service items in serviceSnapshot
+  if (Array.isArray(order.serviceSnapshot?.services)) {
+    for (const s of order.serviceSnapshot.services) {
+      if (s.serviceId) ids.add(String(s.serviceId));
+      if (s.id) ids.add(String(s.id));
+    }
+  }
+
+  // Frontend multi-service items
+  if (Array.isArray(order.selectedServices)) {
+    for (const s of order.selectedServices) {
+      if (s.service?.id) ids.add(String(s.service.id));
+      if (s.id) ids.add(String(s.id));
+      if (s.serviceId) ids.add(String(s.serviceId));
+    }
+  }
+  if (Array.isArray(order.services)) {
+    for (const s of order.services) {
+      if (s.service?.id) ids.add(String(s.service.id));
+      if (s.id) ids.add(String(s.id));
+      if (s.serviceId) ids.add(String(s.serviceId));
+    }
+  }
+
+  return Array.from(ids);
+}
+
+/**
+ * Checks if an order belongs to the same service by ID or title (multi-service aware).
  */
 export function isSameService(
   order: Order,
@@ -402,17 +458,28 @@ export function isSameService(
 ): boolean {
   if (!targetServiceId && !targetServiceTitle) return false;
 
-  // 1. By ID match
+  const orderServices = getOrderServiceIds(order);
+
+  // 1. By ID match across all services included in the order
   if (targetServiceId) {
-    if (order.serviceId && order.serviceId === targetServiceId) return true;
-    if (order.service?.id && order.service.id === targetServiceId) return true;
-    if ((order as any)?.serviceSnapshot?.id && (order as any).serviceSnapshot.id === targetServiceId) return true;
+    if (orderServices.includes(String(targetServiceId))) {
+      return true;
+    }
   }
 
   // 2. By Title match
   if (targetServiceTitle) {
-    const orderTitle = order.service?.title || (order as any)?.serviceSnapshot?.title;
-    if (orderTitle && orderTitle.trim().toLowerCase() === targetServiceTitle.trim().toLowerCase()) {
+    const cleanTarget = targetServiceTitle.trim().toLowerCase();
+    const orderTitle = order.service?.title || (order as any)?.serviceSnapshot?.title || '';
+    if (orderTitle && orderTitle.trim().toLowerCase() === cleanTarget) {
+      return true;
+    }
+    const allTitles = [
+      ...(Array.isArray((order as any).metadata?.services) ? (order as any).metadata.services.map((s: any) => s.title) : []),
+      ...(Array.isArray((order as any).serviceSnapshot?.services) ? (order as any).serviceSnapshot.services.map((s: any) => s.title) : []),
+      ...(Array.isArray((order as any).selectedServices) ? (order as any).selectedServices.map((s: any) => s.service?.title || s.title) : []),
+    ];
+    if (allTitles.some((t) => t && String(t).trim().toLowerCase() === cleanTarget)) {
       return true;
     }
   }
@@ -433,7 +500,8 @@ export function getTimeSlotsForDate(
   serviceTitle?: string,
   existingOrders?: Order[],
   serviceDuration?: number,
-  travelDuration?: number
+  travelDuration?: number,
+  serviceIds?: string[]
 ): BookingSlot[] {
   const isBlocked = (settings?.blockedDates || []).includes(dateString);
   const holiday = (settings?.holidays || []).find((h) => h.date === dateString);
@@ -451,7 +519,9 @@ export function getTimeSlotsForDate(
   const travelMin = travelDuration !== undefined ? travelDuration : (settings?.bufferTime !== undefined ? Number(settings.bufferTime) : 15);
   const totalOccupancy = durationMin + travelMin;
 
-  if (totalOccupancy <= 0 || startMin + totalOccupancy > endMin) {
+  const stepMinutes = Math.max(15, Number(settings?.slotInterval) || 60);
+
+  if (totalOccupancy <= 0 || startMin + durationMin > endMin) {
     return [];
   }
 
@@ -470,7 +540,7 @@ export function getTimeSlotsForDate(
   const slots: BookingSlot[] = [];
   let cursor = startMin;
 
-  while (cursor + totalOccupancy <= endMin) {
+  while (cursor + durationMin <= endMin) {
     const slotStart = cursor;
     const slotEnd = cursor + totalOccupancy;
 
@@ -479,29 +549,38 @@ export function getTimeSlotsForDate(
       breakStartMin !== null &&
       breakEndMin !== null &&
       slotStart < breakEndMin &&
-      slotEnd > breakStartMin;
+      (slotStart + durationMin) > breakStartMin;
 
     const start24 = minutesTo24H(slotStart);
-    const end24 = minutesTo24H(slotEnd);
+    const end24 = minutesTo24H(Math.min(endMin, slotEnd));
     const intervalLabel = `${start24} – ${end24}`;
 
     // Filter past times for current day
     if (isToday && slotStart <= currentMinutes) {
-      cursor += totalOccupancy;
+      cursor += stepMinutes;
       continue;
     }
 
     let isAvailable = !isBreak;
     let reason: string | undefined = isBreak ? 'استراحة عمل' : undefined;
 
-    // Check overlap with active orders
+    // Check overlap with active orders (multi-service collision aware)
     if (existingOrders && existingOrders.length > 0 && isAvailable) {
       const isBooked = existingOrders.some((o) => {
         if (o.status === 'cancelled') return false;
         if (o.date !== dateString) return false;
-        if (serviceId || serviceTitle) {
-          if (!isSameService(o, serviceId, serviceTitle)) return false;
+
+        const targetIds = Array.isArray(serviceIds) && serviceIds.length > 0
+          ? serviceIds.filter(Boolean)
+          : serviceId ? [serviceId] : [];
+
+        if (targetIds.length > 0) {
+          const matches = targetIds.some((sId) => isSameService(o, sId, undefined));
+          if (!matches) return false;
+        } else if (serviceTitle) {
+          if (!isSameService(o, undefined, serviceTitle)) return false;
         }
+
         const oStart = timeStringToMinutes(o.time);
         const oDur = (o as any).totalOccupiedMinutes || (o.duration ? o.duration + 15 : totalOccupancy);
         const oEnd = oStart + oDur;
@@ -521,9 +600,16 @@ export function getTimeSlotsForDate(
       labelEn: time12,
       isAvailable,
       reason,
+      interval: intervalLabel,
+      intervalEn: intervalLabel,
+      totalOccupiedMinutes: totalOccupancy,
+      serviceDurationMinutes: durationMin,
+      travelTimeMinutes: travelMin,
+      scheduledStart: start24,
+      scheduledEnd: end24,
     });
 
-    cursor += totalOccupancy;
+    cursor += stepMinutes;
   }
 
   return slots;

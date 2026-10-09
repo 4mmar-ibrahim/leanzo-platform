@@ -194,10 +194,18 @@ export const cleanzoApi = {
 
   // Availability Engine
   availability: {
-    checkDate: (date: string, serviceId?: string, duration?: number) => {
+    checkDate: (
+      date: string,
+      serviceId?: string,
+      duration?: number,
+      serviceIds?: string[],
+      excludeBookingId?: string
+    ) => {
       const params = new URLSearchParams({ date });
       if (serviceId) params.append('serviceId', serviceId);
       if (duration) params.append('duration', String(duration));
+      if (serviceIds && serviceIds.length > 0) params.append('serviceIds', serviceIds.join(','));
+      if (excludeBookingId) params.append('excludeBookingId', excludeBookingId);
       return apiRequest<{
         date: string;
         isDayAvailable: boolean;
@@ -217,10 +225,10 @@ export const cleanzoApi = {
         }>;
       }>(`/availability?${params.toString()}`);
     },
-    validateSlot: (date: string, time: string, serviceId?: string, duration?: number) =>
+    validateSlot: (date: string, time: string, serviceId?: string, duration?: number, serviceIds?: string[]) =>
       apiRequest<{ valid: boolean; message: string }>('/availability/check-slot', {
         method: 'POST',
-        body: JSON.stringify({ date, time, serviceId, duration }),
+        body: JSON.stringify({ date, time, serviceId, duration, serviceIds }),
       }),
   },
 
@@ -239,6 +247,7 @@ export const cleanzoApi = {
       promoCode?: string;
       guestName?: string;
       guestPhone?: string;
+      saveAddress?: boolean;
     }) =>
       apiRequest<Order>('/bookings', {
         method: 'POST',
@@ -265,6 +274,14 @@ export const cleanzoApi = {
       apiRequest<Order>(`/bookings/${id}/cancel`, {
         method: 'POST',
         body: JSON.stringify({ reason, customerPhone }),
+      }),
+    reschedule: (
+      id: string,
+      data: { newDate: string; newTime: string; reason?: string; customerPhone?: string }
+    ) =>
+      apiRequest<Order>(`/bookings/${id}/reschedule`, {
+        method: 'POST',
+        body: JSON.stringify(data),
       }),
   },
 

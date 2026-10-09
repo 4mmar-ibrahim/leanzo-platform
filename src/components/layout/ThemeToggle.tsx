@@ -49,7 +49,7 @@ export function ThemeToggle({ className, iconClassName }: ThemeToggleProps = {})
       title={getLabel()}
       aria-label="Toggle theme"
       className={cn(
-        'inline-flex items-center justify-center w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-2xs',
+        'inline-flex items-center justify-center w-9 h-9 rounded-xl border border-[#DDE7EC] dark:border-[#133B61] bg-white dark:bg-[#072540] text-[#162631] dark:text-[#F6F8FA] hover:bg-[#EAF8FC] dark:hover:bg-[#082845] transition-colors shadow-2xs font-sans',
         className
       )}
     >

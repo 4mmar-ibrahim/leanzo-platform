@@ -78,7 +78,7 @@ export function AdminTopbar({ onOpenSearch, onOpenMobileMenu, onOpenQuickAction 
   };
 
   return (
-    <header className="h-16 px-4 lg:px-8 bg-white/95 dark:bg-[#072540]/95 backdrop-blur-md border-b border-slate-200/80 dark:border-[#133B61] text-[#0F172A] dark:text-[#F8FAFC] flex items-center justify-between sticky top-0 z-20 shadow-xs transition-colors duration-200">
+    <header className="h-16 px-4 lg:px-8 bg-white/95 dark:bg-[#072540]/95 backdrop-blur-md border-b border-[#DDE7EC] dark:border-[#133B61] text-[#162631] dark:text-[#F6F8FA] flex items-center justify-between sticky top-0 z-20 shadow-xs transition-colors duration-200 font-sans">
       {/* Left: Mobile Toggle & Global Search */}
       <div className="flex items-center gap-3">
         <button
@@ -92,7 +92,7 @@ export function AdminTopbar({ onOpenSearch, onOpenMobileMenu, onOpenQuickAction 
         {/* Search Bar Trigger */}
         <button
           onClick={onOpenSearch}
-          className="flex items-center gap-3 px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-[#041728] text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-[#061e35] text-xs font-medium border border-slate-200/80 dark:border-[#133B61] transition-colors w-48 sm:w-64 md:w-80"
+          className="flex items-center gap-3 px-3.5 py-1.5 rounded-xl bg-[#F6F8FA] dark:bg-[#041728] text-[#162631] dark:text-[#F6F8FA] hover:bg-[#EAF8FC] dark:hover:bg-[#061e35] text-xs font-medium border border-[#DDE7EC] dark:border-[#133B61] transition-colors w-48 sm:w-64 md:w-80 font-sans"
         >
           <Search className="w-4 h-4 shrink-0 text-slate-400" />
           <span className="truncate">بحث سريع في الطلبات، العملاء، الخدمات...</span>
@@ -132,9 +132,9 @@ export function AdminTopbar({ onOpenSearch, onOpenMobileMenu, onOpenQuickAction 
                   <button
                     onClick={() => {
                       setQuickActionOpen(false);
-                      onOpenQuickAction('order');
+                      router.push('/admin/orders/new');
                     }}
-                    className="w-full text-right px-3 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center gap-2.5 transition-colors"
+                    className="w-full text-right px-3 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center gap-2.5 transition-colors cursor-pointer"
                   >
                     <ShoppingBag className="w-4 h-4 text-[#0866C6]" />
                     <span>إنشاء حجز / طلب جديد</span>
@@ -144,9 +144,9 @@ export function AdminTopbar({ onOpenSearch, onOpenMobileMenu, onOpenQuickAction 
                   <button
                     onClick={() => {
                       setQuickActionOpen(false);
-                      onOpenQuickAction('service');
+                      router.push('/admin/services/new');
                     }}
-                    className="w-full text-right px-3 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center gap-2.5 transition-colors"
+                    className="w-full text-right px-3 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center gap-2.5 transition-colors cursor-pointer"
                   >
                     <Sparkles className="w-4 h-4 text-[#0866C6]" />
                     <span>إضافة خدمة جديدة</span>
@@ -156,9 +156,9 @@ export function AdminTopbar({ onOpenSearch, onOpenMobileMenu, onOpenQuickAction 
                   <button
                     onClick={() => {
                       setQuickActionOpen(false);
-                      onOpenQuickAction('offer');
+                      router.push('/admin/offers?action=new');
                     }}
-                    className="w-full text-right px-3 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center gap-2.5 transition-colors"
+                    className="w-full text-right px-3 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center gap-2.5 transition-colors cursor-pointer"
                   >
                     <Tag className="w-4 h-4 text-amber-500" />
                     <span>إطلاق عرض ترويجي</span>
@@ -168,9 +168,9 @@ export function AdminTopbar({ onOpenSearch, onOpenMobileMenu, onOpenQuickAction 
                   <button
                     onClick={() => {
                       setQuickActionOpen(false);
-                      onOpenQuickAction('technician');
+                      router.push('/admin/technicians?action=new');
                     }}
-                    className="w-full text-right px-3 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center gap-2.5 transition-colors"
+                    className="w-full text-right px-3 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center gap-2.5 transition-colors cursor-pointer"
                   >
                     <HardHat className="w-4 h-4 text-indigo-500" />
                     <span>إضافة فني جديد</span>

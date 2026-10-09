@@ -73,7 +73,7 @@ export interface ItemizedPricingCalculation {
 
 /**
  * Calculates authoritative display pricing for an individual service
- * Strictly returns the exact Admin configured price without any auto-discount.
+ * Honors explicit originalPrice / discount when configured by Admin.
  */
 export function getServiceDisplayPrice(service: PricingServiceInput): {
   originalPrice: number;
@@ -82,10 +82,43 @@ export function getServiceDisplayPrice(service: PricingServiceInput): {
   discountPercent: number;
   hasDiscount: boolean;
 } {
-  const configuredPrice = Number(service.price) || 0;
+  const sellingPrice = Number(service.price) || 0;
+  const origPrice =
+    service.originalPrice !== undefined && service.originalPrice !== null
+      ? Number(service.originalPrice)
+      : null;
+  const discountPercent =
+    service.discount !== undefined && service.discount !== null
+      ? Number(service.discount)
+      : 0;
+
+  if (origPrice !== null && origPrice > sellingPrice) {
+    const diff = origPrice - sellingPrice;
+    const computedPercent = Math.round((diff / origPrice) * 100);
+    return {
+      originalPrice: origPrice,
+      sellingPrice,
+      discountAmount: diff,
+      discountPercent: discountPercent > 0 ? discountPercent : computedPercent,
+      hasDiscount: true,
+    };
+  }
+
+  if (origPrice === null && discountPercent > 0) {
+    const discountAmount = Math.round((sellingPrice * discountPercent) / 100);
+    const finalSellingPrice = Math.max(0, sellingPrice - discountAmount);
+    return {
+      originalPrice: sellingPrice,
+      sellingPrice: finalSellingPrice,
+      discountAmount,
+      discountPercent,
+      hasDiscount: true,
+    };
+  }
+
   return {
-    originalPrice: configuredPrice,
-    sellingPrice: configuredPrice,
+    originalPrice: sellingPrice,
+    sellingPrice,
     discountAmount: 0,
     discountPercent: 0,
     hasDiscount: false,

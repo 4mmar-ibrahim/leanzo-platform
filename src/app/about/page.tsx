@@ -41,7 +41,7 @@ export default function AboutPage() {
   );
 
   return (
-    <div className="py-12 bg-[#F8FAFD] dark:bg-[#041728] min-h-screen space-y-20">
+    <div className="py-12 bg-[#EAF8FC] dark:bg-[#041728] min-h-screen space-y-20">
       {!hasAboutContent ? (
         <div className="max-w-3xl mx-auto px-4 py-28 text-center space-y-4">
           <div className="w-16 h-16 rounded-3xl bg-sky-50 dark:bg-slate-900 border border-sky-100 dark:border-slate-800 text-[#0866C6] mx-auto flex items-center justify-center shadow-xs">

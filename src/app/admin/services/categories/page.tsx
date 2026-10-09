@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Layers,
@@ -27,6 +27,7 @@ import { ImageUploader } from '@/components/admin/ImageUploader';
 
 export default function AdminCategoriesPage() {
   const categories = useServiceStore((s) => s.categories);
+  const fetchCategories = useServiceStore((s) => s.fetchCategories);
   const addCategory = useServiceStore((s) => s.addCategory);
   const updateCategory = useServiceStore((s) => s.updateCategory);
   const deleteCategory = useServiceStore((s) => s.deleteCategory);
@@ -34,6 +35,10 @@ export default function AdminCategoriesPage() {
 
   const currentAdmin = useAdminStore((s) => s.currentAdmin);
   const addLog = useActivityLogStore((s) => s.addLog);
+
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
@@ -68,12 +73,35 @@ export default function AdminCategoriesPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!catName || !catSlug) {
-      toast.error('يرجى كتابة اسم التصنيف والمعرف البرمجي');
+    if (!catName.trim()) {
+      toast.error('يرجى كتابة اسم التصنيف');
       return;
     }
 
-    const cleanSlug = catSlug.toLowerCase().trim().replace(/\s+/g, '-');
+    // Auto-generate clean slug if not already set (e.g. when creating a new category)
+    let cleanSlug = catSlug.trim();
+    if (!cleanSlug) {
+      if (catNameEn && catNameEn.trim()) {
+        cleanSlug = catNameEn
+          .toLowerCase()
+          .trim()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '');
+      }
+      if (!cleanSlug) {
+        cleanSlug = catName
+          .toLowerCase()
+          .trim()
+          .replace(/[\s\W]+/gu, '-')
+          .replace(/^-+|-+$/g, '');
+      }
+      if (!cleanSlug) {
+        cleanSlug = `cat-${Date.now().toString(36)}`;
+      }
+    } else {
+      cleanSlug = cleanSlug.toLowerCase().trim().replace(/\s+/g, '-');
+    }
+
     setIsSaving(true);
 
     try {
@@ -178,7 +206,7 @@ export default function AdminCategoriesPage() {
                 </span>
               </div>
               <h3 className="text-base font-bold text-slate-900 dark:text-white">{cat.name}</h3>
-              <p className="text-[11px] text-sky-500 font-semibold mt-0.5">{cat.nameEn} ({cat.slug})</p>
+              <p className="text-[11px] text-sky-500 font-semibold mt-0.5">{cat.nameEn || cat.name}</p>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
                 {cat.description}
               </p>
@@ -288,21 +316,6 @@ export default function AdminCategoriesPage() {
                       className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#041728] border border-slate-200 dark:border-[#133B61] text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0866C6] text-xs transition"
                     />
                   </div>
-                </div>
-
-                {/* Slug */}
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-200 mb-1">
-                    المعرف البرمجي (Slug) <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={catSlug}
-                    onChange={(e) => setCatSlug(e.target.value)}
-                    placeholder="commercial"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#041728] border border-slate-200 dark:border-[#133B61] text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0866C6] text-xs font-mono transition"
-                  />
                 </div>
 
                 {/* Description */}

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useBookingStore } from '@/store/useBookingStore';
+import { useAddressStore } from '@/store/useAddressStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useOrderStore } from '@/store/useOrderStore';
 import { StepService } from '@/components/booking/StepService';
@@ -92,6 +93,11 @@ function BookingContent() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMobileSummaryOpen, setIsMobileSummaryOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const steps = [
     { num: 1, label: t.booking.step1, icon: Sparkles },
@@ -112,9 +118,9 @@ function BookingContent() {
     if (currentStep === 2) return !!selectedDate && !!selectedTime;
     if (currentStep === 3) {
       if (!selectedAddress) return false;
-      const effectiveName = (!isAuthenticated ? guestName : (user?.name || guestName || '')).trim();
+      const effectiveName = (!isAuthenticated ? (guestName || selectedAddress?.customerName || '') : (user?.name || guestName || selectedAddress?.customerName || '')).trim();
       const isNameValid = validateCustomerName(effectiveName, isAr).isValid;
-      const effectivePhone = (!isAuthenticated ? guestPhone : (user?.phone || guestPhone || selectedAddress?.customerPhone || '')).trim();
+      const effectivePhone = (!isAuthenticated ? (guestPhone || selectedAddress?.customerPhone || '') : (user?.phone || guestPhone || selectedAddress?.customerPhone || '')).trim();
       const isPhoneValid = validateEgyptianPhone(effectivePhone).isValid;
       return isNameValid && isPhoneValid;
     }
@@ -132,9 +138,10 @@ function BookingContent() {
 
   // Step Guards: Protect direct URLs, refresh, and state corruption
   useEffect(() => {
-    const effectiveName = (!isAuthenticated ? guestName : (user?.name || guestName || '')).trim();
+    if (!mounted) return;
+    const effectiveName = (!isAuthenticated ? (guestName || selectedAddress?.customerName || '') : (user?.name || guestName || selectedAddress?.customerName || '')).trim();
     const isNameValid = validateCustomerName(effectiveName, isAr).isValid;
-    const effectivePhone = (!isAuthenticated ? guestPhone : (user?.phone || guestPhone || selectedAddress?.customerPhone || '')).trim();
+    const effectivePhone = (!isAuthenticated ? (guestPhone || selectedAddress?.customerPhone || '') : (user?.phone || guestPhone || selectedAddress?.customerPhone || '')).trim();
     const isPhoneValid = validateEgyptianPhone(effectivePhone).isValid;
 
     if (currentStep > 1 && !hasServices) {
@@ -144,7 +151,7 @@ function BookingContent() {
     } else if (currentStep > 3 && (!selectedAddress || !isNameValid || !isPhoneValid)) {
       setStep(3);
     }
-  }, [currentStep, hasServices, selectedDate, selectedTime, selectedAddress, isAuthenticated, user?.name, user?.phone, guestName, guestPhone, isAr, setStep]);
+  }, [mounted, currentStep, hasServices, selectedDate, selectedTime, selectedAddress, isAuthenticated, user?.name, user?.phone, guestName, guestPhone, isAr, setStep]);
 
   const handleNext = () => {
     if (!canProceed()) {
@@ -165,9 +172,9 @@ function BookingContent() {
       }
       if (currentStep === 2) toast.error(isAr ? 'يرجى اختيار التاريخ والوقت' : 'Please select date and time');
       if (currentStep === 3) {
-        const effectiveName = (!isAuthenticated ? guestName : (user?.name || guestName || '')).trim();
+        const effectiveName = (!isAuthenticated ? (guestName || selectedAddress?.customerName || '') : (user?.name || guestName || selectedAddress?.customerName || '')).trim();
         const nameVal = validateCustomerName(effectiveName, isAr);
-        const effectivePhone = (!isAuthenticated ? guestPhone : (user?.phone || guestPhone || selectedAddress?.customerPhone || '')).trim();
+        const effectivePhone = (!isAuthenticated ? (guestPhone || selectedAddress?.customerPhone || '') : (user?.phone || guestPhone || selectedAddress?.customerPhone || '')).trim();
         const phoneVal = validateEgyptianPhone(effectivePhone);
         if (!selectedAddress) {
           toast.error(isAr ? 'يرجى اختيار وتأكيد عنوان الخدمة' : 'Please select and confirm service address');
@@ -320,6 +327,7 @@ function BookingContent() {
         promoCode: promoCode || undefined,
         guestName: effectiveName,
         guestPhone: effectivePhone,
+        saveAddress: true,
       });
 
       if (!createdBooking || !createdBooking.id) {
@@ -328,6 +336,17 @@ function BookingContent() {
 
       // Save authoritative server booking to store
       addOrder(createdBooking);
+
+      // Permanently ensure the address and customer contact info are saved for all future orders
+      if (selectedAddress) {
+        useAddressStore.getState().addAddress({
+          ...selectedAddress,
+          customerName: effectiveName,
+          customerPhone: effectivePhone,
+          isDefault: true,
+        });
+      }
+      useBookingStore.getState().setGuestInfo(effectiveName, effectivePhone);
 
       // Trigger celebratory reaction
       useZoStudioStore.getState().emitTrigger('action', {
@@ -358,8 +377,19 @@ function BookingContent() {
     executeOrderCreation();
   };
 
+  if (!mounted) {
+    return (
+      <div className="py-24 sm:py-32 min-h-[70vh] bg-[#EAF8FC] dark:bg-[#041728] flex flex-col items-center justify-center text-center space-y-4">
+        <Loader2 className="w-10 h-10 text-[#0866C6] animate-spin" />
+        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+          {isAr ? 'جاري تهيئة وتأمين صفحة الحجز...' : 'Preparing booking experience...'}
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="py-3 sm:py-8 pb-32 sm:pb-16 bg-slate-50 dark:bg-[#0B1120] min-h-screen">
+    <div className="py-3 sm:py-8 pb-32 sm:pb-16 bg-[#EAF8FC] dark:bg-[#041728] min-h-screen">
       <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 space-y-3.5 sm:space-y-6">
         {/* Wizard Header & Progress Bar */}
         <div className="space-y-2.5 sm:space-y-4">
@@ -464,7 +494,7 @@ function BookingContent() {
                     className={`h-10 sm:h-11 px-4 sm:px-6 rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all ${
                       !canProceed()
                         ? 'opacity-40 cursor-not-allowed bg-slate-300 dark:bg-slate-700 text-slate-500 shadow-none pointer-events-none'
-                        : 'shadow-sky-500/20 bg-[#0866C6] hover:bg-[#07345C] text-white'
+                        : 'shadow-[#0866C6]/20 bg-[#0866C6] hover:bg-[#06529E] text-white font-bold'
                     }`}
                   >
                     <span>{t.booking.continue}</span>
@@ -478,7 +508,7 @@ function BookingContent() {
                   size="sm"
                   isLoading={isSubmitting}
                   onClick={handleFinalConfirm}
-                  className="h-10 sm:h-11 px-4 sm:px-6 rounded-xl text-xs sm:text-sm shadow-xl shadow-[#0866C6]/30 font-bold bg-[#F0444C] hover:bg-[#c91219] text-white"
+                  className="h-10 sm:h-11 px-4 sm:px-6 rounded-xl text-xs sm:text-sm shadow-xl shadow-[#F0444C]/30 font-bold bg-[#F0444C] hover:bg-[#D9333B] active:bg-[#B8242C] text-white"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>{t.booking.confirmBooking}</span>

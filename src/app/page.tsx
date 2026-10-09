@@ -134,7 +134,7 @@ export default function HomePage() {
 
       {/* ======================= SECTION TRANSITION: SERVICES FOCUS ======================= */}
       {checkSectionVisible('services') && activeCategories.length > 0 && (
-      <section id="services-selection" className="py-20 bg-white dark:bg-[#082845] border-y border-slate-200/80 dark:border-[#133B61]/80">
+      <section id="services-selection" className="py-20 bg-[#F6F8FA] dark:bg-[#072540] border-y border-[#DDE7EC] dark:border-[#133B61]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
           <SectionHeader
             title={isAr ? 'اختر الخدمة المناسبة لك' : 'Choose The Right Service For You'}
@@ -289,7 +289,7 @@ export default function HomePage() {
 
       {/* ======================= HOW IT WORKS ======================= */}
       {checkSectionVisible('how_it_works') && (
-      <section className="py-20 bg-white dark:bg-slate-900 border-y border-slate-200/80 dark:border-slate-800">
+      <section className="py-20 bg-[#EAF8FC] dark:bg-[#041728] border-y border-[#DDE7EC] dark:border-[#133B61]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-16">
           <SectionHeader
             badge={isAr ? 'بساطة وسرعة' : 'Easy 4 Steps'}
@@ -308,7 +308,7 @@ export default function HomePage() {
               return (
                 <div
                   key={idx}
-                  className="relative p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 space-y-4 text-start hover:border-sky-300 dark:hover:border-sky-800 transition-colors"
+                  className="relative p-6 rounded-2xl border border-[#DDE7EC] dark:border-[#133B61] bg-white dark:bg-[#072540] shadow-xs space-y-4 text-start hover:border-[#0866C6]/40 transition-colors"
                 >
                   <div className="flex items-center justify-between">
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${step.color}`}>
@@ -362,7 +362,7 @@ export default function HomePage() {
 
       {/* ======================= WHY CHOOSE CLEANZO ======================= */}
       {checkSectionVisible('whyUs') && (
-      <section className="py-20 bg-white dark:bg-[#082845]">
+      <section className="py-20 bg-[#F6F8FA] dark:bg-[#072540] border-y border-[#DDE7EC] dark:border-[#133B61]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-16">
           <SectionHeader
             badge={isAr ? 'قيمنا ومعاييرنا' : 'Why Cleanzo'}
@@ -419,7 +419,7 @@ export default function HomePage() {
 
       {/* ======================= TESTIMONIALS ======================= */}
       {checkSectionVisible('reviews') && displayReviews.length > 0 && (
-      <section className="py-20 bg-[#F5F8FC] dark:bg-[#041728] border-t border-slate-200/80 dark:border-[#133B61]">
+      <section className="py-20 bg-[#EAF8FC] dark:bg-[#041728] border-t border-[#DDE7EC] dark:border-[#133B61]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-14">
           <SectionHeader
             badge={isAr ? 'تجارب حقيقية' : 'Testimonials'}
@@ -505,7 +505,7 @@ export default function HomePage() {
 
       {/* ======================= FINAL CONVERSION CTA ======================= */}
       {checkSectionVisible('cta') && (
-      <section className="py-20 bg-white dark:bg-slate-900 border-t border-slate-200/80 dark:border-slate-800">
+      <section className="py-20 bg-[#F6F8FA] dark:bg-[#072540] border-t border-[#DDE7EC] dark:border-[#133B61]">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="relative rounded-3xl overflow-hidden bg-gradient-to-tr from-[#07345C] via-[#0866C6] to-[#07345C] p-8 sm:p-14 text-center text-white shadow-2xl space-y-6">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-xs font-bold">

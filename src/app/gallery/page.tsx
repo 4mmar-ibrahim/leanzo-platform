@@ -73,7 +73,7 @@ export default function GalleryPage() {
   };
 
   return (
-    <div className="py-10 lg:py-16 bg-white dark:bg-[#07345C] min-h-screen space-y-14 transition-colors">
+    <div className="py-10 lg:py-16 bg-[#EAF8FC] dark:bg-[#041728] min-h-screen space-y-14 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
 
         {/* Section Header with Zo Mascot Banner */}

@@ -26,6 +26,8 @@ import { useLocaleStore } from '@/store/useLocaleStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useLocationStore } from '@/store/useLocationStore';
 import { useCustomerStore } from '@/store/useCustomerStore';
+import { useAddressStore } from '@/store/useAddressStore';
+import { useBookingStore } from '@/store/useBookingStore';
 import { getUpcomingBookingDates, getTimeSlotsForDate, isSameService, isSameTime } from '@/lib/bookingEngine';
 import { Service, ServiceCategory, Order, Address, ServicePackage, ServiceAddon } from '@/types';
 import { Button } from '@/components/ui/Button';
@@ -33,6 +35,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { validateCustomerName } from '@/lib/validation/nameValidation';
 import { calculateItemizedPricing } from '@/lib/pricing';
+import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
 
 interface QuickBookingBottomSheetProps {
   isOpen: boolean;
@@ -52,11 +55,23 @@ export function QuickBookingBottomSheet({
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
 
   const storeServices = useServiceStore((s) => s.services);
+  const categories = useServiceStore((s) => s.categories);
   const fetchServices = useServiceStore((s) => s.fetchServices);
+  const fetchCategories = useServiceStore((s) => s.fetchCategories);
 
   useEffect(() => {
     fetchServices();
-  }, [fetchServices]);
+    fetchCategories();
+  }, [fetchServices, fetchCategories]);
+
+  const activeCategories = useMemo(() => {
+    if (categories && categories.length > 0) {
+      return categories
+        .filter((c) => c.active !== false)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+    }
+    return [];
+  }, [categories]);
 
   const availableServices = useMemo(() => {
     return (storeServices || []).filter((s) => s.available !== false && !(s as any).isArchived);
@@ -72,6 +87,37 @@ export function QuickBookingBottomSheet({
   // Form selections
   const [category, setCategory] = useState<ServiceCategory>(initialCategory);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (initialCategory) {
+        setCategory(initialCategory);
+      } else if (activeCategories.length > 0) {
+        setCategory((activeCategories[0].slug || activeCategories[0].id) as ServiceCategory);
+      }
+      setSelectedService(null);
+      setSelectedPkg(null);
+      setSelectedAddonsList([]);
+      setStep(1);
+
+      // Pre-fill customer details and saved address if available
+      const savedDefaultAddr = useAddressStore.getState().getDefaultAddress();
+      const bookingStore = useBookingStore.getState();
+      const existingName = user?.name || bookingStore.guestName || savedDefaultAddr?.customerName || '';
+      const existingPhone = user?.phone || bookingStore.guestPhone || savedDefaultAddr?.customerPhone || '';
+      const existingArea = savedDefaultAddr?.area || user?.addresses?.[0]?.area || '';
+
+      if (existingName) setCustomerName(existingName);
+      if (existingPhone) setCustomerPhone(existingPhone);
+      if (existingArea) setArea(existingArea);
+      if (savedDefaultAddr?.governorateId) {
+        setGovernorateId(savedDefaultAddr.governorateId);
+        if (savedDefaultAddr.cityId) {
+          setCityId(savedDefaultAddr.cityId);
+        }
+      }
+    }
+  }, [isOpen, initialCategory, activeCategories, user]);
 
   useEffect(() => {
     if (initialServiceId && availableServices.length > 0) {
@@ -258,10 +304,38 @@ export function QuickBookingBottomSheet({
   if (!isOpen) return null;
 
   // Filter services by active category
-  const filteredServices = availableServices.filter((s) => s.category === category);
+  const filteredServices = useMemo(() => {
+    return availableServices.filter((s) => {
+      if (!category) return true;
+      if (s.category === category) return true;
+
+      const catInfo = resolveCategoryInfo(s.category, categories, isAr);
+      const targetCat = activeCategories.find((c) => c.slug === category || c.id === category);
+
+      return (
+        catInfo.slug === category ||
+        catInfo.matchedCategory?.id === category ||
+        catInfo.matchedCategory?.slug === category ||
+        (targetCat && (
+          catInfo.slug === targetCat.slug ||
+          catInfo.matchedCategory?.id === targetCat.id ||
+          s.category === targetCat.id ||
+          s.category === targetCat.slug ||
+          s.category === targetCat.name
+        )) ||
+        (category === 'car' && catInfo.isCar) ||
+        (category === 'home' && catInfo.isHome)
+      );
+    });
+  }, [availableServices, category, categories, activeCategories, isAr]);
+
+  const isSelectedServiceValid = useMemo(() => {
+    if (!selectedService) return false;
+    return filteredServices.some((s) => s.id === selectedService.id);
+  }, [selectedService, filteredServices]);
 
   const handleConfirmBooking = () => {
-    if (!selectedService || selectedService.category !== category) {
+    if (!selectedService || !isSelectedServiceValid) {
       toast.error(isAr ? 'يرجى اختيار الخدمة المطابقة للقسم المحدد' : 'Please select a valid service for this category');
       return;
     }
@@ -317,6 +391,12 @@ export function QuickBookingBottomSheet({
       city: currentCity?.name || cityId || 'المنيا الجديدة',
       area: area || currentCity?.name || 'المنيا الجديدة',
       details: notes || undefined,
+      governorateId: currentGov?.id || (currentGov as any)?._id || governorateId,
+      governorateNameSnapshot: isAr ? (currentGov?.name || '') : (currentGov?.nameEn || currentGov?.name || ''),
+      cityId: currentCity?.id || (currentCity as any)?._id || cityId,
+      cityNameSnapshot: isAr ? (currentCity?.name || '') : (currentCity?.nameEn || currentCity?.name || ''),
+      customerName: customerName.trim(),
+      customerPhone: customerPhone.trim(),
     };
 
     const newOrder: Order = {
@@ -367,6 +447,16 @@ export function QuickBookingBottomSheet({
     };
 
     addOrder(newOrder);
+
+    // Persist address and contact details across subsequent bookings for all services
+    const savedAddrPayload: Address = {
+      ...finalAddress,
+      isDefault: true,
+    };
+    useAddressStore.getState().addAddress(savedAddrPayload);
+    useBookingStore.getState().setGuestInfo(customerName.trim(), customerPhone.trim());
+    useBookingStore.getState().setAddress(savedAddrPayload);
+
     setConfirmedOrderId(orderId);
     setStep(4);
     toast.success('تم إرسال طلب الحجز بنجاح!');
@@ -426,48 +516,55 @@ export function QuickBookingBottomSheet({
           {step === 1 && (
             <div className="space-y-4 animate-in fade-in">
               {/* Category Segmented Switcher */}
-              <div className="grid grid-cols-2 gap-2 p-1.5 rounded-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCategory('car');
-                    setSelectedService(null);
-                    setSelectedPkg(null);
-                    setSelectedAddonsList([]);
-                  }}
-                  className={cn(
-                    'py-2 px-3 rounded-full text-xs font-black flex items-center justify-center gap-2 transition-all',
-                    category === 'car'
-                      ? 'bg-[#0866C6] text-white shadow-md shadow-[#0866C6]/25'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  )}
-                >
-                  <Car className="w-4 h-4" />
-                  <span>خدمات السيارات</span>
-                </button>
+              {activeCategories.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 p-1.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                  {activeCategories.map((cat, idx) => {
+                    const isSelected =
+                      category === cat.slug ||
+                      category === cat.id ||
+                      (activeCategories.length === 1);
+                    const catName = isAr ? cat.name : cat.nameEn || cat.name;
+                    const slug = (cat.slug || '').toLowerCase();
+                    const iconStr = (cat.icon || '').toLowerCase();
+                    const CatIcon =
+                      slug === 'car' || iconStr === 'car' || slug.includes('car') || catName.includes('سيار')
+                        ? Car
+                        : slug === 'home' || iconStr === 'home' || slug.includes('home') || catName.includes('منزل') || catName.includes('منازل')
+                        ? Home
+                        : Sparkles;
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCategory('home');
-                    setSelectedService(null);
-                    setSelectedPkg(null);
-                    setSelectedAddonsList([]);
-                  }}
-                  className={cn(
-                    'py-2 px-3 rounded-full text-xs font-black flex items-center justify-center gap-2 transition-all',
-                    category === 'home'
-                      ? 'bg-[#07345C] text-white shadow-md shadow-[#07345C]/25'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  )}
-                >
-                  <Home className="w-4 h-4" />
-                  <span>خدمات المنازل</span>
-                </button>
-              </div>
+                    return (
+                      <button
+                        key={cat.id || cat.slug || idx}
+                        type="button"
+                        onClick={() => {
+                          setCategory((cat.slug || cat.id) as ServiceCategory);
+                          setSelectedService(null);
+                          setSelectedPkg(null);
+                          setSelectedAddonsList([]);
+                        }}
+                        className={cn(
+                          'flex-1 min-w-[120px] py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer',
+                          isSelected
+                            ? 'bg-[#0866C6] text-white shadow-md shadow-[#0866C6]/25'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        )}
+                      >
+                        <CatIcon className="w-4 h-4" />
+                        <span>{catName}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Service Cards List */}
               <div className="space-y-2.5">
+                {filteredServices.length === 0 && (
+                  <div className="py-8 px-4 text-center rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-500 text-xs">
+                    {isAr ? 'لا توجد خدمات متاحة حالياً في هذا القسم' : 'No services available in this category'}
+                  </div>
+                )}
                 {filteredServices.map((svc) => {
                   const isSelected = selectedService?.id === svc.id;
                   return (
@@ -965,9 +1062,9 @@ export function QuickBookingBottomSheet({
               <Button
                 variant="primary"
                 size="md"
-                disabled={!selectedService || selectedService.category !== category}
+                disabled={!isSelectedServiceValid}
                 onClick={() => {
-                  if (!selectedService || selectedService.category !== category) {
+                  if (!isSelectedServiceValid) {
                     toast.error(isAr ? 'من فضلك اختر خدمة أولًا للمتابعة.' : 'Please select a service to continue.');
                     return;
                   }
@@ -975,11 +1072,11 @@ export function QuickBookingBottomSheet({
                 }}
                 className={cn(
                   'flex-1 justify-center rounded-xl text-xs font-bold transition-all',
-                  (!selectedService || selectedService.category !== category) &&
+                  !isSelectedServiceValid &&
                     'opacity-40 cursor-not-allowed bg-slate-300 dark:bg-slate-700 text-slate-500'
                 )}
               >
-                <span>متابعة: اختيار الموعد</span>
+                <span>{isAr ? 'متابعة: اختيار الموعد' : 'Continue: Select Schedule'}</span>
                 <ArrowIcon className="w-4 h-4" />
               </Button>
             )}

@@ -44,9 +44,26 @@ export function CleanzoImage({
 }: CleanzoImageProps) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+  const [useProxyFallback, setUseProxyFallback] = useState(false);
 
   const cleanSrc = src ? normalizeMediaUrl(src) : null;
   const isVideo = cleanSrc && (cleanSrc.endsWith('.mp4') || cleanSrc.endsWith('.webm') || cleanSrc.includes('/videos/'));
+
+  // Reset states whenever src prop changes
+  React.useEffect(() => {
+    setLoaded(false);
+    setError(false);
+    setUseProxyFallback(false);
+  }, [src]);
+
+  // Compute active image source (direct or weserv proxy fallback)
+  const activeImageSrc = React.useMemo(() => {
+    if (!cleanSrc) return null;
+    if (useProxyFallback && (cleanSrc.startsWith('http://') || cleanSrc.startsWith('https://')) && !cleanSrc.includes('images.weserv.nl')) {
+      return `https://images.weserv.nl/?url=${encodeURIComponent(cleanSrc)}`;
+    }
+    return cleanSrc;
+  }, [cleanSrc, useProxyFallback]);
 
   // Object position mapping
   const positionClass = {
@@ -59,11 +76,17 @@ export function CleanzoImage({
 
   const fitClass = fit === 'contain' ? 'object-contain' : 'object-cover';
 
-  // Background style based on fit mode (contain mode preserves native alpha transparency without dark backdrops)
-  const bgStyle =
-    fit === 'contain' || containerClassName?.includes('bg-transparent')
-      ? 'bg-transparent'
-      : 'bg-slate-100 dark:bg-slate-950';
+  // Default to transparent background unless an explicit background is provided in containerClassName
+  const bgStyle = containerClassName?.includes('bg-') ? '' : 'bg-transparent';
+
+  const handleImageError = () => {
+    if (!useProxyFallback && cleanSrc && (cleanSrc.startsWith('http://') || cleanSrc.startsWith('https://')) && !cleanSrc.includes('images.weserv.nl')) {
+      // Try resilient proxy fallback before declaring failure
+      setUseProxyFallback(true);
+    } else {
+      setError(true);
+    }
+  };
 
   return (
     <div
@@ -71,22 +94,22 @@ export function CleanzoImage({
       className={`relative w-full overflow-hidden select-none ${bgStyle} ${containerClassName}`}
     >
       {/* 1:1 Loading Skeleton — Prevents Layout Shift */}
-      {!loaded && !error && cleanSrc && (
+      {!loaded && !error && activeImageSrc && (
         <div
-          className="absolute inset-0 bg-gradient-to-r from-slate-200/60 via-slate-100 to-slate-200/60 dark:from-slate-800/60 dark:via-slate-700/40 dark:to-slate-800/60 animate-pulse z-10 flex items-center justify-center"
+          className="absolute inset-0 bg-transparent animate-pulse z-10 flex items-center justify-center"
           aria-hidden="true"
         >
-          <div className="w-8 h-8 rounded-full bg-slate-300/40 dark:bg-slate-700/50 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-full bg-slate-300/20 dark:bg-slate-700/30 flex items-center justify-center">
             <Sparkles className="w-4 h-4 text-[#0866C6]/50 animate-spin" />
           </div>
         </div>
       )}
 
       {/* Media Rendering */}
-      {cleanSrc && !error ? (
+      {activeImageSrc && !error ? (
         isVideo ? (
           <video
-            src={cleanSrc}
+            src={activeImageSrc}
             playsInline
             muted
             loop
@@ -99,11 +122,13 @@ export function CleanzoImage({
           />
         ) : (
           <img
-            src={cleanSrc}
+            src={activeImageSrc}
             alt={alt || 'Cleanzo Image'}
             loading={priority ? 'eager' : 'lazy'}
+            referrerPolicy="no-referrer"
+            crossOrigin="anonymous"
             onLoad={() => setLoaded(true)}
-            onError={() => setError(true)}
+            onError={handleImageError}
             className={`w-full h-full ${fitClass} ${positionClass} transition-all duration-300 ${
               loaded ? 'opacity-100' : 'opacity-0'
             } ${fit === 'contain' ? 'p-2' : ''} ${className}`}
@@ -111,22 +136,19 @@ export function CleanzoImage({
           />
         )
       ) : (
-        /* Fallback Cleanzo 1:1 Placeholder */
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-slate-100/90 dark:bg-slate-900/90 text-slate-400 dark:text-slate-500">
-          <div className="w-12 h-12 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 shadow-2xs flex items-center justify-center p-2 mb-1.5">
-            {fallbackSrc ? (
-              <img
-                src={fallbackSrc}
-                alt="Cleanzo Fallback"
-                className="w-full h-full object-contain opacity-70"
-              />
-            ) : (
-              <ImageOff className="w-5 h-5 text-slate-400" />
-            )}
-          </div>
-          <span className="text-[10px] font-bold tracking-wider uppercase text-slate-400">
-            {error ? 'تعذر تحميل الصورة' : 'CLEANZO 1:1'}
-          </span>
+        /* Transparent Fallback without dark circles or squares */
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-2 bg-transparent text-slate-400">
+          {fallbackSrc ? (
+            <img
+              src={fallbackSrc}
+              alt="Cleanzo Fallback"
+              className="w-10 h-10 object-contain opacity-60"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-sky-500/10 text-sky-500">
+              <Sparkles className="w-5 h-5" />
+            </div>
+          )}
         </div>
       )}
 

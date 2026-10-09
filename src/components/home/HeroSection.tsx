@@ -54,9 +54,9 @@ export function HeroSection() {
   };
 
   return (
-    <section className="relative overflow-hidden bg-white dark:bg-[#041728] text-[#162638] dark:text-[#F8FAFC] pt-8 pb-16 lg:pt-14 lg:pb-24 border-b border-slate-200 dark:border-[#133B61] transition-colors duration-300">
+    <section className="relative overflow-hidden bg-[#EAF8FC] dark:bg-[#041728] text-[#162631] dark:text-[#F6F8FA] pt-8 pb-16 lg:pt-14 lg:pb-24 border-b border-[#DDE7EC] dark:border-[#133B61] transition-colors duration-300 font-sans">
       {/* Subtle clean atmospheric lighting */}
-      <div className="absolute inset-0 bg-gradient-to-b from-slate-50/70 via-transparent to-transparent dark:from-slate-900/40 pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-b from-[#F6F8FA]/60 via-transparent to-transparent dark:from-slate-900/40 pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
@@ -65,7 +65,7 @@ export function HeroSection() {
           <div className="lg:col-span-6 space-y-6 sm:space-y-7 text-start order-1">
 
             {/* Brand Eyebrow with Mini Badge */}
-            <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-[#0866C6]/10 dark:bg-[#0866C6]/20 border border-[#0866C6]/25 dark:border-[#38BDF8]/30 text-xs font-bold text-[#0866C6] dark:text-[#38BDF8] shadow-2xs">
+            <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-[#EAF8FC] dark:bg-[#072540] border border-[#0866C6]/20 dark:border-[#0866C6]/40 text-xs font-bold text-[#0866C6] dark:text-[#38BDF8] shadow-2xs font-sans">
               <span className="w-2 h-2 rounded-full bg-[#0866C6] dark:bg-[#38BDF8] animate-pulse" />
               <span>
                 {heroContent.badge ||
@@ -103,19 +103,19 @@ export function HeroSection() {
             </div>
 
             {/* Clean Value Proposition */}
-            <p className="text-base sm:text-lg text-slate-700 dark:text-white font-normal leading-relaxed max-w-[500px]">
+            <p className="text-base sm:text-lg text-[#60717C] dark:text-[#94A7BF] font-normal leading-relaxed max-w-[500px]">
               {isAr
                 ? (heroContent.description || 'خدمات غسيل وتلميع متنقلة للسيارات وتنظيف عميق بالبخار للمنازل بأحدث المعدات الألمانية والمواد الآمنة حتى باب بيتك.')
                 : (heroContent.descriptionEn || heroContent.description || 'Mobile car detailing and deep home steam sanitation with professional German equipment right at your doorstep.')}
             </p>
 
-            {/* Service Category Switcher: Cleanzo Cyan & White */}
+            {/* Service Category Switcher: Cleanzo Brand Tokens */}
             <div className="space-y-2 w-full">
-              <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-200">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#60717C] dark:text-[#94A7BF]">
                 {isAr ? 'اختر فئة الخدمة المطلوبة' : 'Choose Your Service'}
               </span>
 
-              <div className="flex sm:inline-flex w-full sm:w-auto p-1.5 rounded-full bg-[#F8FAFD] dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-inner gap-1">
+              <div className="flex sm:inline-flex w-full sm:w-auto p-1.5 rounded-full bg-[#F6F8FA] dark:bg-[#072540] border border-[#DDE7EC] dark:border-[#133B61] shadow-2xs gap-1">
                 <button
                   type="button"
                   onClick={() => handleCategorySwitch('car')}
@@ -167,10 +167,10 @@ export function HeroSection() {
 
                     const commonClasses =
                       variant === 'primary'
-                        ? 'w-full sm:w-auto px-7 py-3.5 rounded-full font-black text-sm sm:text-base flex items-center justify-center gap-2.5 text-white shadow-md hover:brightness-110 active:scale-[0.98] transition-all text-center'
+                        ? 'w-full sm:w-auto px-7 py-3.5 rounded-full font-bold text-sm sm:text-base flex items-center justify-center gap-2.5 text-white bg-[#0866C6] hover:bg-[#06529E] active:bg-[#054382] shadow-md shadow-[#0866C6]/25 hover:shadow-xl hover:shadow-[#0866C6]/30 active:scale-[0.98] transition-all text-center font-sans'
                         : variant === 'outline'
-                        ? 'w-full sm:w-auto px-6 py-3.5 border-2 border-[#0866C6] bg-transparent hover:bg-[#0866C6]/10 text-[#0866C6] dark:text-[#38BDF8] rounded-full font-extrabold text-sm flex items-center justify-center transition-all shadow-2xs text-center'
-                        : 'w-full sm:w-auto px-6 py-3.5 border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/80 hover:bg-[#0866C6]/5 dark:hover:bg-slate-800 text-[#07345C] dark:text-white rounded-full font-bold text-sm flex items-center justify-center transition-all shadow-2xs text-center';
+                        ? 'w-full sm:w-auto px-6 py-3.5 border-2 border-[#0866C6] bg-transparent hover:bg-[#EAF8FC] dark:hover:bg-[#082845] text-[#0866C6] dark:text-[#38BDF8] rounded-full font-bold text-sm flex items-center justify-center transition-all shadow-2xs text-center font-sans'
+                        : 'w-full sm:w-auto px-6 py-3.5 border border-[#DDE7EC] dark:border-[#133B61] bg-white dark:bg-[#072540] hover:bg-[#EAF8FC] dark:hover:bg-[#082845] text-[#07345C] dark:text-white rounded-full font-semibold text-sm flex items-center justify-center transition-all shadow-2xs text-center font-sans';
 
                     const style = variant === 'primary' ? { backgroundColor: 'var(--cleanzo-blue)' } : undefined;
 

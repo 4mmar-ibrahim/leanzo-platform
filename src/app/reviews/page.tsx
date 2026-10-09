@@ -139,7 +139,7 @@ export default function CustomerReviewsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F8FC] dark:bg-[#041728] py-10 lg:py-16 transition-colors">
+    <div className="min-h-screen bg-[#EAF8FC] dark:bg-[#041728] py-10 lg:py-16 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
         
         {/* Breadcrumb & Navigation */}

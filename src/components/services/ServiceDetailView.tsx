@@ -34,12 +34,13 @@ import { ServiceCard } from '@/components/services/ServiceCard';
 import { ServiceHowItWorks } from '@/components/services/ServiceHowItWorks';
 
 import { Button } from '@/components/ui/Button';
-import { formatDuration } from '@/lib/utils';
+import { formatDuration, cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { CleanzoImage } from '@/components/common/CleanzoImage';
 import { calculateItemizedPricing } from '@/lib/pricing';
 import { Service, ServiceCategory, ServicePackage, ServiceAddon } from '@/types';
+import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
 
 interface ServiceDetailViewProps {
   serviceId: string;
@@ -55,10 +56,22 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
 
   const storeServices = useServiceStore((s) => s.services);
   const fetchServices = useServiceStore((s) => s.fetchServices);
+  const categories = useServiceStore((s) => s.categories);
+  const fetchCategories = useServiceStore((s) => s.fetchCategories);
+
+  useEffect(() => {
+    if (!categories || categories.length === 0) {
+      fetchCategories();
+    }
+  }, [categories, fetchCategories]);
 
   const [service, setService] = useState<Service | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+
+  const catInfo = React.useMemo(() => {
+    return resolveCategoryInfo(service?.category, categories, isAr);
+  }, [service?.category, categories, isAr]);
 
   useEffect(() => {
     let isMounted = true;
@@ -143,6 +156,8 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
         service: {
           id: service.id,
           price: Number(service.price) || 0,
+          originalPrice: service.originalPrice,
+          discount: service.discount,
         },
         selectedPackage: selectedPkg
           ? {
@@ -267,7 +282,7 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
         <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link href={`/services/${service.category}/${service.id}`} className="w-full sm:w-auto">
             <Button className="w-full sm:w-auto shadow-lg shadow-sky-500/25">
-              <span>{isAr ? `عرض الخدمة في قسم ${service.category === 'car' ? 'السيارات' : 'المنازل'}` : 'View in Correct Category'}</span>
+              <span>{isAr ? `عرض الخدمة في قسم ${catInfo.name}` : 'View in Correct Category'}</span>
               <ArrowIcon className="w-4 h-4" />
             </Button>
           </Link>
@@ -295,10 +310,16 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
           </Link>
           <span>/</span>
           <Link
-            href={service.category === 'car' ? '/services/car' : '/services/home'}
+            href={
+              service.category === 'car'
+                ? '/services/car'
+                : service.category === 'home'
+                ? '/services/home'
+                : `/services?category=${service.category}`
+            }
             className="hover:text-sky-600 transition-colors"
           >
-            {service.category === 'car' ? t.nav.carServices : t.nav.homeServices}
+            {catInfo.name}
           </Link>
           <span>/</span>
           <span className="text-slate-900 dark:text-white font-semibold truncate max-w-[200px]">
@@ -313,18 +334,24 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
             {/* Top Action & Badge Bar (Cleanly Outside Image) */}
             <div className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white shadow-2xs">
-                  {service.category === 'car' ? (
-                    <>
-                      <Car className="w-4 h-4 text-sky-500" />
-                      <span>{isAr ? 'خدمات السيارات' : 'Car Service'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Home className="w-4 h-4 text-[#07345C] dark:text-[#83AED0]" />
-                      <span>{isAr ? 'خدمات المنازل' : 'Home Service'}</span>
-                    </>
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shadow-2xs',
+                    catInfo.isCar
+                      ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-200/60 dark:border-sky-800/60'
+                      : catInfo.isHome
+                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white'
+                      : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60'
                   )}
+                >
+                  {catInfo.isCar ? (
+                    <Car className="w-4 h-4 text-sky-500" />
+                  ) : catInfo.isHome ? (
+                    <Home className="w-4 h-4 text-[#07345C] dark:text-[#83AED0]" />
+                  ) : (
+                    <Sparkles className="w-4 h-4 text-emerald-500" />
+                  )}
+                  <span>{catInfo.name}</span>
                 </span>
                 {service.popular && (
                   <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500 text-white shadow-2xs">
@@ -670,12 +697,18 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
           <div className="pt-12 border-t border-slate-200/80 dark:border-slate-800 space-y-6">
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                {service.category === 'car'
-                  ? (isAr ? 'خدمات سيارات أخرى قد تناسبك' : 'Other Car Services You May Like')
-                  : (isAr ? 'خدمات منزلية أخرى قد تناسبك' : 'Other Home Services You May Like')}
+                {isAr
+                  ? `خدمات أخرى في قسم (${catInfo.name}) قد تناسبك`
+                  : `Other ${catInfo.name} Services You May Like`}
               </h3>
               <Link
-                href={service.category === 'car' ? '/services/car' : '/services/home'}
+                href={
+                  service.category === 'car'
+                    ? '/services/car'
+                    : service.category === 'home'
+                    ? '/services/home'
+                    : `/services?category=${service.category}`
+                }
                 className="text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1"
               >
                 <span>{isAr ? 'عرض الكل' : 'View All'}</span>

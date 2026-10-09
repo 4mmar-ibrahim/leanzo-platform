@@ -1,7 +1,9 @@
 'use client';
 
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { Service, ServiceCategory, ServiceCategoryItem } from '@/types';
+import { initialCategories } from '@/data/categoriesData';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 
 interface ServiceState {
@@ -32,16 +34,18 @@ interface ServiceState {
   toggleCategoryActive: (id: string) => Promise<boolean>;
 }
 
-export const useServiceStore = create<ServiceState>((set, get) => ({
-  services: [],
-  categories: [],
-  isLoading: false,
-  error: null,
+export const useServiceStore = create<ServiceState>()(
+  persist(
+    (set, get) => ({
+      services: [],
+      categories: initialCategories,
+      isLoading: false,
+      error: null,
 
-  fetchServices: async (category) => {
-    set({ isLoading: true, error: null });
-    try {
-      const services = await cleanzoApi.services.getServices(category);
+      fetchServices: async (category) => {
+        set({ isLoading: true, error: null });
+        try {
+          const services = await cleanzoApi.services.getServices(category);
       // Filter out any archived or unavailable services
       const activeOnly = (services || []).filter((s) => s.available !== false && !(s as any).isArchived);
 
@@ -259,4 +263,10 @@ export const useServiceStore = create<ServiceState>((set, get) => ({
       throw err;
     }
   },
-}));
+}),
+    {
+      name: 'cleanzo-service-store',
+      partialize: (state) => ({ categories: state.categories }),
+    }
+  )
+);

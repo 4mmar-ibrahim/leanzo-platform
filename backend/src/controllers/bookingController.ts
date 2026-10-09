@@ -115,6 +115,102 @@ function isTimeIntervalOverlapping(
   return intA.startMin < intB.endMin && intB.startMin < intA.endMin;
 }
 
+interface StatusNotificationContent {
+  title: string;
+  titleEn: string;
+  message: string;
+  messageEn: string;
+}
+
+export function getCustomerNotificationContentForStatus(
+  status: BookingStatus,
+  booking: {
+    id: string;
+    customerName?: string;
+    serviceSnapshot?: { title?: string; titleEn?: string };
+    date?: string;
+    time?: string;
+    assignedTechnicianName?: string;
+    technician?: { name?: string };
+    address?: { area?: string; city?: string; governorate?: string };
+  },
+  note?: string
+): StatusNotificationContent {
+  const serviceTitle = booking.serviceSnapshot?.title || 'خدمة كلينزو';
+  const serviceTitleEn = booking.serviceSnapshot?.titleEn || booking.serviceSnapshot?.title || 'Cleanzo Service';
+  const customerName = booking.customerName || 'عميلنا العزيز';
+  const date = booking.date || '';
+  const time = booking.time || '';
+  const techName = booking.technician?.name || booking.assignedTechnicianName || 'الفني المختص';
+  const area = booking.address?.area || booking.address?.city || booking.address?.governorate || 'موقعك المحدد';
+
+  switch (status) {
+    case 'pending':
+      return {
+        title: '⏳ تم استلام طلبك وبانتظار المراجعة',
+        titleEn: '⏳ Booking Received & Under Review',
+        message: `مرحباً ${customerName}، تم استلام طلبك #${booking.id} لخدمة (${serviceTitle}) بنجاح. فريق العمليات يراجع التفاصيل لتأكيد الموعد (${date}${time ? ` - ${time}` : ''}). سنوافيك بالتأكيد قريباً.${note ? `\nملاحظة: ${note}` : ''}`,
+        messageEn: `Hello ${customerName}, your booking #${booking.id} for (${serviceTitleEn}) was received. Our operations team is reviewing details for (${date}${time ? ` at ${time}` : ''}). We will confirm shortly.${note ? `\nNote: ${note}` : ''}`,
+      };
+
+    case 'confirmed':
+      return {
+        title: '✅ تم تأكيد موعد حجزك بنجاح',
+        titleEn: '✅ Booking Confirmed Successfully',
+        message: `يسعدنا إبلاغك بتأكيد حجزك للطلب #${booking.id} لخدمة (${serviceTitle}) ليوم ${date}${time ? ` في تمام ${time}` : ''}. أسطول كلينزو جاهز للزيارة في الموعد المحدد!${note ? `\nملاحظة: ${note}` : ''}`,
+        messageEn: `Great news! Your booking #${booking.id} for (${serviceTitleEn}) is confirmed for ${date}${time ? ` at ${time}` : ''}. The Cleanzo fleet is scheduled for your visit!${note ? `\nNote: ${note}` : ''}`,
+      };
+
+    case 'assigned':
+      return {
+        title: '👷‍♂️ تم تعيين الفني المختص لخدمتك',
+        titleEn: '👷‍♂️ Specialist Assigned to Your Booking',
+        message: `تم إسناد طلبك #${booking.id} إلى الكابتن (${techName}). تم تجهيز سيارة الخدمة المتنقلة بأحدث معدات ومواد النظافة والتعقيم الفندقية لزيارتك.${note ? `\nملاحظة: ${note}` : ''}`,
+        messageEn: `Captain (${techName}) has been assigned to your booking #${booking.id}. The mobile unit is equipped with top cleaning and sanitization gear for your visit.${note ? `\nNote: ${note}` : ''}`,
+      };
+
+    case 'on_the_way':
+      return {
+        title: '🚗 الفني في الطريق إلى موقعك الآن!',
+        titleEn: '🚗 Technician is on the Way!',
+        message: `انطلقت سيارة الخدمة المتنقلة بقيادة الكابتن (${techName}) وهي متجهة الآن إلى عنوانك (${area}) لتنفيذ طلبك #${booking.id}. يُرجى التواجد لاستقبال الفريق.${note ? `\nملاحظة: ${note}` : ''}`,
+        messageEn: `Our mobile unit with Captain (${techName}) is en route to your address (${area}) for booking #${booking.id}. Please be ready to welcome the team.${note ? `\nNote: ${note}` : ''}`,
+      };
+
+    case 'in_progress':
+      return {
+        title: '✨ بدأ تنفيذ خدمة النظافة الآن',
+        titleEn: '✨ Cleaning Service in Progress',
+        message: `بدأ فريق كلينزو الآن تنفيذ أعمال (${serviceTitle}) لطلبك #${booking.id} في موقعك. نحرص على تقديم أعلى معايير العناية والتألق لمكانك!${note ? `\nملاحظة: ${note}` : ''}`,
+        messageEn: `Our team has started performing (${serviceTitleEn}) for your booking #${booking.id}. We are dedicated to delivering pristine results and premium care!${note ? `\nNote: ${note}` : ''}`,
+      };
+
+    case 'completed':
+      return {
+        title: '🎉 تم اكتمال خدمتك بنجاح.. نعيماً!',
+        titleEn: '🎉 Service Completed Successfully!',
+        message: `تم الانتهاء من تنفيذ طلبك #${booking.id} وتسليم العمل بأعلى درجات النظافة والتعقيم. يسعدنا دائماً خدمتك ونتطلع لمعرفة تقييمك ورأيك في التجربة!${note ? `\nملاحظة: ${note}` : ''}`,
+        messageEn: `Your booking #${booking.id} has been successfully completed with the highest cleanliness standards. Thank you for choosing Cleanzo — we'd love your feedback!${note ? `\nNote: ${note}` : ''}`,
+      };
+
+    case 'cancelled':
+      return {
+        title: `❌ تم إلغاء حجز الطلب #${booking.id}`,
+        titleEn: `❌ Booking #${booking.id} Cancelled`,
+        message: `نود إبلاغك بأنه تم إلغاء حجز الطلب #${booking.id}${note ? ` (السبب: ${note})` : ''}. يمكنك إعادة جدولة الحجز أو اختيار موعد جديد في أي وقت بخطوات بسيطة.`,
+        messageEn: `Please be informed that booking #${booking.id} has been cancelled${note ? ` (Reason: ${note})` : ''}. You can easily reschedule or place a new booking anytime.`,
+      };
+
+    default:
+      return {
+        title: `حالة طلبك #${booking.id}`,
+        titleEn: `Order #${booking.id} Update`,
+        message: note || `تم تحديث حالة طلبك #${booking.id}`,
+        messageEn: note || `Your order #${booking.id} has been updated.`,
+      };
+  }
+}
+
 export async function calculateBookingPriceHandler(req: Request, res: Response): Promise<void> {
   try {
     const { serviceId, services, packageId, addonIds, promoCode, customerPhone, category: bookingCategory } = req.body;
@@ -382,8 +478,13 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
       details: finalAddressNotes || '',
     };
 
+    const isMulti = pricing.items && pricing.items.length > 1;
+    const targetServiceIds = isMulti && Array.isArray(pricing.items)
+      ? pricing.items.map((i: any) => i.serviceId).filter(Boolean)
+      : [service.id];
+
     // 4. Concurrency-Safe Authoritative Slot Assertion & Booking Creation
-    const lockKey = `${date}_${service.id}`;
+    const lockKey = `${date}_${targetServiceIds.slice().sort().join('_')}`;
     let bookingResult: { isDuplicate: boolean; booking: any };
     try {
       bookingResult = await withBookingLock(lockKey, async () => {
@@ -392,6 +493,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
           dateStr: date,
           timeStr: time,
           serviceId: service.id,
+          serviceIds: targetServiceIds,
           customDuration: pricing.totalServiceDuration,
         });
 
@@ -490,6 +592,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
             notes,
             metadata: {
               isMultiService: isMulti,
+              serviceIds: targetServiceIds,
               services: pricing.items || undefined,
             },
           });
@@ -550,8 +653,8 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
       });
     }
 
-    // Save address if explicitly requested / opted by customer
-    if (req.body.saveAddress && !address.addressId) {
+    // Automatically save customer address so it is permanently remembered for all subsequent orders
+    if (req.body.saveAddress !== false) {
       try {
         const existingAddr = await CustomerAddress.findOne({
           $or: [
@@ -604,13 +707,14 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
       });
 
       if (customerId) {
+        const notifContent = getCustomerNotificationContentForStatus('pending', newBooking);
         await Notification.create({
           target: 'customer',
           userId: customerId.toString(),
-          title: '✓ تم استلام وتأكيد طلبك',
-          titleEn: 'Booking Confirmed',
-          message: `تم استلام طلبك رقم #${newBooking.id} لخدمة ${newBooking.serviceSnapshot?.title || 'كلينزو'} بنجاح، وسنتواصل معك قريباً.`,
-          messageEn: `Your booking #${newBooking.id} was received successfully.`,
+          title: notifContent.title,
+          titleEn: notifContent.titleEn,
+          message: notifContent.message,
+          messageEn: notifContent.messageEn,
           type: 'order',
           read: false,
           link: `/account/orders/${newBooking.id}`,
@@ -1253,14 +1357,34 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
 
     const statusKey = status as BookingStatus;
 
+    const timelineDescAr: Record<BookingStatus, string> = {
+      pending: 'تم استلام طلب الحجز وبانتظار المراجعة والتأكيد.',
+      confirmed: 'تم تأكيد موعد الحجز وتثبيت الموعد في جدول الزيارات.',
+      assigned: 'تم إسناد الطلب للفني المختص وتجهيز المعدات اللازمة.',
+      on_the_way: 'انطلقت وحدة الخدمة المتنقلة وهي متجهة إلى الموقع الآن.',
+      in_progress: 'بدأ فريق العمل تنفيذ أعمال النظافة والتعقيم بالموقع.',
+      completed: 'تم تسليم العمل بالكامل بأعلى معايير الجودة والنظافة.',
+      cancelled: 'تم إلغاء طلب الحجز.',
+    };
+
+    const timelineDescEn: Record<BookingStatus, string> = {
+      pending: 'Booking received and pending review.',
+      confirmed: 'Booking confirmed and scheduled.',
+      assigned: 'Specialist technician assigned and preparing.',
+      on_the_way: 'Mobile service unit en route to your location.',
+      in_progress: 'Service execution in progress at location.',
+      completed: 'Service completed to the highest standards.',
+      cancelled: 'Booking cancelled.',
+    };
+
     booking.timeline.push({
       status: statusKey,
       label: statusLabelsAr[statusKey],
       labelEn: statusLabelsEn[statusKey],
       timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
       completed: true,
-      description: note || `تم تحديث حالة الطلب إلى (${statusLabelsAr[statusKey]})`,
-      descriptionEn: `Order status updated to ${statusLabelsEn[statusKey]}`,
+      description: note || timelineDescAr[statusKey] || `تم تحديث حالة الطلب إلى (${statusLabelsAr[statusKey]})`,
+      descriptionEn: note || timelineDescEn[statusKey] || `Order status updated to ${statusLabelsEn[statusKey]}`,
       changedBy: req.admin?.name || req.admin?.username || 'admin',
     });
 
@@ -1322,13 +1446,14 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
       });
 
       if (booking.customerId) {
+        const notifContent = getCustomerNotificationContentForStatus(statusKey, booking, note);
         await Notification.create({
           target: 'customer',
           userId: booking.customerId.toString(),
-          title: `حالة طلبك: ${statusLabelsAr[statusKey]}`,
-          titleEn: `Order Update: ${statusLabelsEn[statusKey]}`,
-          message: note || `تم تحديث حالة طلبك #${booking.id} إلى: ${statusLabelsAr[statusKey]}`,
-          messageEn: note || `Your order #${booking.id} status is now: ${statusLabelsEn[statusKey]}`,
+          title: notifContent.title,
+          titleEn: notifContent.titleEn,
+          message: notifContent.message,
+          messageEn: notifContent.messageEn,
           type: 'order',
           read: false,
           link: `/account/orders/${booking.id}`,
@@ -1545,13 +1670,23 @@ export async function assignTechnicianToBooking(req: AuthenticatedAdminRequest, 
         });
 
         if (freshBooking.customerId) {
+          const notifContent = getCustomerNotificationContentForStatus('assigned', {
+            id: freshBooking.id,
+            customerName: freshBooking.customerName,
+            serviceSnapshot: freshBooking.serviceSnapshot,
+            date: freshBooking.date,
+            time: freshBooking.time,
+            assignedTechnicianName: tech.name,
+            technician: { name: tech.name },
+            address: freshBooking.address,
+          });
           await Notification.create({
             target: 'customer',
             userId: freshBooking.customerId.toString(),
-            title: '🚗 تم تعيين الفني المختص',
-            titleEn: 'Technician Assigned',
-            message: `تم إسناد طلبك #${freshBooking.id} إلى الكابتن ${tech.name}، وجارٍ التجهيز للانطلاق.`,
-            messageEn: `Technician ${tech.name} has been assigned to your order.`,
+            title: notifContent.title,
+            titleEn: notifContent.titleEn,
+            message: notifContent.message,
+            messageEn: notifContent.messageEn,
             type: 'order',
             read: false,
             link: `/account/orders/${freshBooking.id}`,
@@ -1731,6 +1866,20 @@ export async function cancelBookingCustomer(req: AuthenticatedRequest, res: Resp
         read: false,
         link: `/admin/orders/${booking.id}`,
       });
+
+      if (booking.customerId) {
+        await Notification.create({
+          target: 'customer',
+          userId: booking.customerId.toString(),
+          title: `❌ تم تأكيد إلغاء حجز الطلب #${booking.id}`,
+          titleEn: `❌ Booking #${booking.id} Cancelled`,
+          message: `تم إلغاء طلبك #${booking.id} بنجاح بناءً على طلبك. نأمل أن نراك مجدداً قريباً ويمكنك حجز موعد جديد في أي وقت بخطوات بسيطة.`,
+          messageEn: `Your booking #${booking.id} has been cancelled upon your request. We look forward to serving you again anytime!`,
+          type: 'order',
+          read: false,
+          link: `/account/orders/${booking.id}`,
+        });
+      }
     } catch (notifErr) {
       console.warn('Non-critical: Cancellation notification error:', notifErr);
     }
@@ -1809,15 +1958,24 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       return;
     }
 
-    const lockKey = `booking_reschedule_${booking.serviceId}`;
+    const targetServiceIds: string[] = Array.from(
+      new Set([
+        booking.serviceId,
+        ...((booking.metadata as any)?.serviceIds || []),
+        ...((booking.serviceSnapshot as any)?.services?.map((s: any) => s.id) || []),
+      ])
+    ).filter(Boolean);
+
+    const lockKey = `booking_reschedule_${booking.id}`;
 
     await withBookingLock(lockKey, async () => {
-      // 1. Validate new appointment slot BEFORE releasing old reservation
+      // 1. Validate new appointment slot BEFORE releasing old reservation (multi-service aware)
       const slotTiming = await assertSlotAvailability({
         dateStr: newDate,
         timeStr: newTime,
         serviceId: booking.serviceId,
-        customDuration: booking.duration,
+        serviceIds: targetServiceIds.length > 0 ? targetServiceIds : [booking.serviceId],
+        customDuration: booking.totalOccupiedMinutes || booking.duration,
         excludeBookingId: booking.id,
       });
 
@@ -1830,6 +1988,10 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       booking.scheduledStart = slotTiming.scheduledStart;
       booking.scheduledEnd = slotTiming.scheduledEnd;
       booking.rescheduledFrom = previousTime;
+      booking.metadata = {
+        ...(booking.metadata || {}),
+        rescheduledAt: new Date(),
+      };
 
       booking.timeline.push({
         status: booking.status,
@@ -1855,6 +2017,20 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
           read: false,
           link: `/admin/orders/${booking.id}`,
         });
+
+        if (booking.customerId) {
+          await Notification.create({
+            target: 'customer',
+            userId: booking.customerId.toString(),
+            title: `🗓️ تم تحديث موعد حجزك #${booking.id}`,
+            titleEn: `🗓️ Booking #${booking.id} Rescheduled`,
+            message: `تم تعديل موعد حجزك للطلب #${booking.id} إلى يوم ${newDate} في تمام ${newTimeLabel}. نتطلع لخدمتك بأفضل جودة!`,
+            messageEn: `Your booking #${booking.id} has been rescheduled to ${newDate} at ${newTimeLabel}. Looking forward to serving you!`,
+            type: 'order',
+            read: false,
+            link: `/account/orders/${booking.id}`,
+          });
+        }
       } catch (e) {}
 
       sendSuccess(res, booking, 'تم إعادة جدولة الحجز بنجاح');

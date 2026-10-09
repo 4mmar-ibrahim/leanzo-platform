@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   Trash2,
   Sparkles,
+  Link2,
 } from 'lucide-react';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { useActivityLogStore } from '@/store/useActivityLogStore';
@@ -188,6 +189,13 @@ export default function AdminSettingsHubPage() {
       color: 'text-purple-500 bg-purple-500/10',
     },
     {
+      title: 'روابط أسفل الموقع والفوتر (Footer Links)',
+      desc: 'إدارة وحذف وإضافة الروابط السريعة وفئات الخدمات المعروضة أسفل الموقع بالكامل',
+      href: '/admin/settings/footer-links',
+      icon: Link2,
+      color: 'text-cyan-500 bg-cyan-500/10',
+    },
+    {
       title: 'تجربة الموبايل (Mobile Experience)',
       desc: 'التحكم في واجهة التطبيق، الحجز السريع، الأزرار العائمة، وإخفاء الهيرو',
       href: '/admin/settings/mobile',
@@ -200,13 +208,6 @@ export default function AdminSettingsHubPage() {
       href: '/admin/settings/booking',
       icon: Calendar,
       color: 'text-[#0866C6] bg-[#0866C6]/10',
-    },
-    {
-      title: 'المظهر والهوية البصرية (Appearance)',
-      desc: 'ألوان العلامة التجارية، النمط الافتراضي (داكن/فاتح)، ونصوص الشعار',
-      href: '/admin/settings/appearance',
-      icon: Palette,
-      color: 'text-purple-500 bg-purple-500/10',
     },
     {
       title: 'بيانات التواصل والدعم (Contact Info)',

@@ -14,6 +14,7 @@ import {
   RotateCcw,
   CheckCircle2,
   Loader2,
+  Link2,
 } from 'lucide-react';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useActivityLogStore } from '@/store/useActivityLogStore';
@@ -615,29 +616,61 @@ export default function AdminBrandingSettingsPage() {
 
           {/* Top Announcement Banner */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xs">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Megaphone className="w-5 h-5 text-amber-500" />
-                <span>الشريط الإعلاني العلوي (Announcement Bar)</span>
-              </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Megaphone className="w-5 h-5 text-amber-500" />
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    الشريط الإعلاني والترويجي العلوي (Top Banner)
+                  </h3>
+                  {form.topBanner.enabled ? (
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 inline-flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      مفعّل وظاهر على الموقع
+                    </span>
+                  ) : (
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 inline-flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                      معطّل ومخفي تماماً
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  تحكم في إظهار أو إخفاء الشريط الترويجي من كامل الموقع، ومحتوى كود الخصم ورابط الحجز
+                </p>
+              </div>
 
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.topBanner.enabled}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      topBanner: { ...form.topBanner, enabled: e.target.checked },
-                    })
-                  }
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
-              </label>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                  {form.topBanner.enabled ? 'إلغاء التفعيل للإخفاء' : 'تفعيل لإظهار الشريط'}
+                </span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.topBanner.enabled}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        topBanner: { ...form.topBanner, enabled: e.target.checked },
+                      })
+                    }
+                    className="sr-only peer"
+                  />
+                  <div className="w-12 h-6.5 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2.5px] after:start-[3px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 shadow-inner"></div>
+                </label>
+              </div>
             </div>
 
-            <div className="space-y-4">
+            {!form.topBanner.enabled && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
+                <span>
+                  <strong>الشريط مخفي حالياً:</strong> تم إخفاء هذا الشريط بالكامل من جميع صفحات الموقع ولن يظهر للزوار حتى تقوم بإعادة تفعيله وحفظ التعديلات.
+                </span>
+              </div>
+            )}
+
+            <div className={`space-y-4 transition-opacity ${!form.topBanner.enabled ? 'opacity-60' : ''}`}>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-700 dark:text-slate-300">شارة الخصم (Badge)</label>
@@ -683,6 +716,9 @@ export default function AdminBrandingSettingsPage() {
                   }
                   className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
                 />
+                <p className="text-[11px] text-slate-400">
+                  على شاشات الموبايل: يتحرك النص تلقائياً بشريط متحرك انسيابي (Marquee) لعرض كامل النص دون اقتطاع.
+                </p>
               </div>
 
               <div className="space-y-1.5">
@@ -699,6 +735,32 @@ export default function AdminBrandingSettingsPage() {
                   className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Footer & Quick Links Section */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 space-y-4 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Link2 className="w-5 h-5 text-[#0866C6]" />
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    روابط أسفل الموقع والفوتر (Footer & Quick Links)
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  إدارة وحذف الروابط السريعة وفئات الخدمات المعروضة أسفل الموقع، والتحكم في ظهورها أو مسحها نهائياً.
+                </p>
+              </div>
+
+              <Link
+                href="/admin/settings/footer-links"
+                className="px-4 py-2.5 rounded-xl bg-[#0866C6] hover:bg-[#07529E] text-white text-xs font-bold transition-all shadow-md shadow-[#0866C6]/20 flex items-center justify-center gap-2 shrink-0"
+              >
+                <Link2 className="w-4 h-4" />
+                <span>إدارة وحذف روابط الفوتر</span>
+                <ArrowRight className="w-4 h-4 rtl:rotate-180" />
+              </Link>
             </div>
           </div>
         </div>
@@ -736,10 +798,14 @@ export default function AdminBrandingSettingsPage() {
               </div>
 
               {/* Fake Top Banner */}
-              {form.topBanner.enabled && (
-                <div className="px-2.5 py-1.5 rounded-lg bg-sky-600 text-[10px] flex items-center justify-between gap-2">
+              {form.topBanner.enabled ? (
+                <div className="px-2.5 py-1.5 rounded-lg bg-sky-600 text-[10px] flex items-center justify-between gap-2 shadow-xs">
                   <span className="bg-white/20 px-1.5 py-0.5 rounded font-black">{form.topBanner.discountBadge}</span>
                   <span className="truncate flex-1 text-center">{form.topBanner.text}</span>
+                </div>
+              ) : (
+                <div className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-dashed border-slate-800 text-[10px] text-slate-500 text-center">
+                  (الشريط الترويجي العلوي مخفي حالياً)
                 </div>
               )}
 

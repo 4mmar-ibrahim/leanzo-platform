@@ -33,10 +33,65 @@ export function generateOrderId(): string {
   return `CLZ-${year}-${randomNum}`;
 }
 
+export function extractDirectImageUrl(rawUrl?: string | null): string {
+  if (!rawUrl) return '';
+  let url = String(rawUrl).trim();
+  if (!url) return '';
+
+  // Google Images preview link: extract actual target image URL
+  if (url.includes('google.') && url.includes('imgres')) {
+    try {
+      const parsed = new URL(url.startsWith('http') ? url : `https://${url}`);
+      const imgurl = parsed.searchParams.get('imgurl');
+      if (imgurl) {
+        url = decodeURIComponent(imgurl);
+      }
+    } catch {}
+  }
+
+  // Google Drive sharing link conversion to direct viewable stream
+  const gDriveMatch = url.match(/drive\.google\.com\/(?:file\/d\/([a-zA-Z0-9_-]+)|open\?id=([a-zA-Z0-9_-]+)|uc\?(?:export=view&)?id=([a-zA-Z0-9_-]+))/);
+  if (gDriveMatch) {
+    const fileId = gDriveMatch[1] || gDriveMatch[2] || gDriveMatch[3];
+    if (fileId) {
+      return `https://lh3.googleusercontent.com/d/${fileId}`;
+    }
+  }
+
+  // Dropbox link: switch dl=0 to raw=1 for direct binary stream
+  if (url.includes('dropbox.com') && url.includes('dl=0')) {
+    url = url.replace('dl=0', 'raw=1');
+  }
+
+  // Imgur page link to direct image link
+  const imgurMatch = url.match(/^https?:\/\/(?:i\.)?imgur\.com\/([a-zA-Z0-9]+)$/);
+  if (imgurMatch) {
+    return `https://i.imgur.com/${imgurMatch[1]}.jpg`;
+  }
+
+  // If URL has no protocol but starts with www or domain-like string
+  if (
+    !url.startsWith('http://') &&
+    !url.startsWith('https://') &&
+    !url.startsWith('data:') &&
+    !url.startsWith('/') &&
+    (url.startsWith('www.') || /^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}\//i.test(url))
+  ) {
+    url = `https://${url}`;
+  }
+
+  return url;
+}
+
 export function normalizeMediaUrl(url?: string | null, version?: number | string | null): string {
   if (!url) return '';
-  let cleaned = String(url).trim();
+  let cleaned = extractDirectImageUrl(url);
   if (!cleaned) return '';
+
+  // If already absolute http/https or data URI, return immediately (preserving search params)
+  if (cleaned.startsWith('http://') || cleaned.startsWith('https://') || cleaned.startsWith('data:')) {
+    return cleaned;
+  }
 
   // Remove accidental trailing slashes from common file extensions (e.g. cleanzo-logo.png/ -> cleanzo-logo.png)
   cleaned = cleaned.replace(/(\.(?:png|jpg|jpeg|svg|webp|ico|gif|mp4|webm))\/*$/i, '$1');
@@ -46,19 +101,13 @@ export function normalizeMediaUrl(url?: string | null, version?: number | string
     cleaned = cleaned.replace(/\/+$/, '');
   }
 
-  // If it's a relative path not starting with http, https, data:, or /, prefix with /
-  if (
-    cleaned &&
-    !cleaned.startsWith('http://') &&
-    !cleaned.startsWith('https://') &&
-    !cleaned.startsWith('data:') &&
-    !cleaned.startsWith('/')
-  ) {
+  // If it's a relative path not starting with /, prefix with /
+  if (!cleaned.startsWith('/')) {
     cleaned = '/' + cleaned;
   }
 
   // If a specific version timestamp is provided and url isn't data URL, append stable query
-  if (version && !cleaned.startsWith('data:') && !cleaned.includes('v=')) {
+  if (version && !cleaned.includes('v=')) {
     const separator = cleaned.includes('?') ? '&' : '?';
     cleaned = `${cleaned}${separator}v=${version}`;
   }

@@ -28,7 +28,7 @@ export function HeroShowcase() {
   return (
     <div className="relative w-full max-w-xl mx-auto space-y-4 select-none">
       {/* Interactive Mode Pills */}
-      <div className="flex items-center justify-center sm:justify-start gap-1.5 p-1.5 rounded-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800 shadow-xs w-fit mx-auto sm:mx-0">
+      <div className="flex items-center justify-center sm:justify-start gap-1.5 p-1.5 rounded-2xl bg-white/90 dark:bg-[#072540]/80 backdrop-blur-md border border-[#DDE7EC] dark:border-[#133B61] shadow-xs w-fit mx-auto sm:mx-0 font-sans">
         <button
           type="button"
           onClick={() => setActiveTab('both')}

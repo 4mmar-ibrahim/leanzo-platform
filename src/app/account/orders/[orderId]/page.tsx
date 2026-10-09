@@ -23,6 +23,7 @@ import { StatusBadge } from '@/components/common/StatusBadge';
 import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
+import { RescheduleModal } from '@/components/orders/RescheduleModal';
 import { toast } from 'sonner';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { formatTimeTo12Hour } from '@/lib/timeUtils';
@@ -39,6 +40,7 @@ export default function OrderDetailsPage() {
   const order = getOrderById(orderId);
 
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
 
   if (!order) {
     return (
@@ -118,25 +120,42 @@ export default function OrderDetailsPage() {
         <div className="flex items-center gap-3">
           <StatusBadge status={order.status} />
           {isCancellable && (
-            canSelfCancel ? (
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => setIsCancelModalOpen(true)}
-                className="text-xs"
-              >
-                {isAr ? 'إلغاء الحجز' : 'Cancel'}
-              </Button>
-            ) : (
+            <>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setIsSupportModalOpen(true)}
-                className="text-xs text-rose-500 border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/20"
+                onClick={() => {
+                  if (canSelfCancel) {
+                    setIsRescheduleModalOpen(true);
+                  } else {
+                    setIsSupportModalOpen(true);
+                  }
+                }}
+                className="text-xs flex items-center gap-1.5 border-sky-300 dark:border-sky-800 text-[#0866C6] dark:text-[#83AED0] hover:bg-sky-50 dark:hover:bg-slate-800"
               >
-                {isAr ? 'تواصل مع الدعم للإلغاء' : 'Contact Support'}
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>{isAr ? 'تعديل الموعد' : 'Reschedule'}</span>
               </Button>
-            )
+              {canSelfCancel ? (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => setIsCancelModalOpen(true)}
+                  className="text-xs"
+                >
+                  {isAr ? 'إلغاء الحجز' : 'Cancel'}
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsSupportModalOpen(true)}
+                  className="text-xs text-rose-500 border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/20"
+                >
+                  {isAr ? 'تواصل مع الدعم للإلغاء' : 'Contact Support'}
+                </Button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -248,6 +267,28 @@ export default function OrderDetailsPage() {
               <Clock className="w-4 h-4 text-[#0866C6] shrink-0" />
               <span>{formatTimeTo12Hour(order.time)}</span>
             </div>
+            {order.rescheduledFrom && (
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 p-2 rounded-xl border border-amber-200/80 dark:border-amber-800/80">
+                <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                <span>{isAr ? `تم تعديل الموعد (السابق: ${order.rescheduledFrom})` : `Rescheduled from ${order.rescheduledFrom}`}</span>
+              </div>
+            )}
+            {isCancellable && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (canSelfCancel) {
+                    setIsRescheduleModalOpen(true);
+                  } else {
+                    setIsSupportModalOpen(true);
+                  }
+                }}
+                className="mt-1 w-full py-2 px-3 rounded-xl border border-sky-300 dark:border-sky-800 text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-slate-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>{isAr ? 'تعديل موعد الحجز' : 'Reschedule Appointment'}</span>
+              </button>
+            )}
             <div className="flex items-start gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <MapPin className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
               <div>
@@ -457,6 +498,16 @@ export default function OrderDetailsPage() {
           </div>
         </div>
       </Dialog>
+
+      {/* Reschedule Modal */}
+      <RescheduleModal
+        isOpen={isRescheduleModalOpen}
+        onClose={() => setIsRescheduleModalOpen(false)}
+        order={order}
+        onSuccess={() => {
+          // React state in useOrderStore is already updated, order details refresh seamlessly
+        }}
+      />
     </div>
   );
 }

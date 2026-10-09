@@ -76,7 +76,7 @@ export default function FAQPage() {
   return (
     <div className="flex flex-col w-full min-h-screen">
       {/* Top Banner / Hero with Living Zo Character */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-[#0866C6]/10 via-slate-50/50 to-transparent dark:from-[#0866C6]/15 dark:via-[#0B1120] dark:to-[#0B1120] py-12 sm:py-16 border-b border-slate-200/70 dark:border-slate-800/70">
+      <section className="relative overflow-hidden bg-gradient-to-b from-[#0866C6]/10 via-[#EAF8FC]/60 to-transparent dark:from-[#0866C6]/15 dark:via-[#041728] dark:to-[#041728] py-12 sm:py-16 border-b border-[#DDE7EC] dark:border-[#133B61]">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-8 text-center md:text-start">
             {/* Headline & Search */}
@@ -125,7 +125,7 @@ export default function FAQPage() {
       </section>
 
       {/* Main FAQ Content Area */}
-      <section className="py-12 sm:py-16 bg-slate-50/50 dark:bg-[#0B1120]">
+      <section className="py-12 sm:py-16 bg-[#EAF8FC] dark:bg-[#041728]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
           
           {/* Category Chips Switcher */}

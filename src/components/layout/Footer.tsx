@@ -17,6 +17,8 @@ import { useSettingsStore } from '@/store/useSettingsStore';
 import { usePathname } from 'next/navigation';
 import { normalizeMediaUrl } from '@/lib/utils';
 
+import { DEFAULT_FOOTER_QUICK_LINKS, DEFAULT_FOOTER_CATEGORY_LINKS } from '@/data/settingsData';
+
 export function Footer() {
   const { t, locale } = useLocaleStore();
   const isAr = locale === 'ar';
@@ -30,6 +32,16 @@ export function Footer() {
   const logoText = branding?.logoText || 'CLEANZO';
   const footerText = isAr ? (branding?.footerText || `جميع الحقوق محفوظة © ${logoText}`) : (branding?.footerTextEn || `All rights reserved © ${logoText}`);
 
+  const quickLinks = (branding?.footerQuickLinks && branding.footerQuickLinks.length > 0
+    ? branding.footerQuickLinks
+    : DEFAULT_FOOTER_QUICK_LINKS
+  ).filter((link) => link.visible !== false);
+
+  const categoryLinks = (branding?.footerCategoryLinks && branding.footerCategoryLinks.length > 0
+    ? branding.footerCategoryLinks
+    : DEFAULT_FOOTER_CATEGORY_LINKS
+  ).filter((link) => link.visible !== false);
+
   React.useEffect(() => {
     fetchPublishedContent();
   }, [fetchPublishedContent]);
@@ -39,7 +51,7 @@ export function Footer() {
   }
 
   return (
-    <footer className="w-full bg-[#04213B] text-slate-300 border-t border-[#072C4F] transition-colors">
+    <footer className="w-full bg-[#07345C] text-[#DDE7EC] border-t border-[#0B467B] transition-colors font-sans">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10">
           {/* Brand Col */}
@@ -61,15 +73,15 @@ export function Footer() {
               </div>
             </Link>
 
-            <p className="text-sm text-slate-200 leading-relaxed max-w-sm">
+            <p className="text-sm text-[#DDE7EC] leading-relaxed max-w-sm">
               {isAr
                 ? 'CLEANZO — مساحات نظيفة، أيام أسعد. حلول تنظيف احترافية متنقلة للعناية بالسيارات والمنازل بالبخار والتعقيم بأعلى معايير الجودة والضمان.'
                 : 'CLEANZO — Cleaner Spaces, Happier Days. Premier mobile car detailing and steam home care.'}
             </p>
 
-            <div className="flex items-center gap-3 text-xs text-[#3B82F6] font-medium">
+            <div className="flex items-center gap-3 text-xs text-[#25B8E6] font-medium">
               <ShieldCheck className="w-4 h-4 text-[#F0444C]" />
-              <span>
+              <span className="text-[#DDE7EC]">
                 {locale === 'ar'
                   ? 'ضمان جودة 100% ورضا تام عن كل زيارة'
                   : '100% Quality & Satisfaction Guarantee'}
@@ -117,98 +129,51 @@ export function Footer() {
           </div>
 
           {/* Quick Links */}
-          <div className="space-y-4">
-            <h4 className="text-sm font-bold text-white tracking-wider uppercase">
-              {locale === 'ar' ? 'روابط سريعة' : 'Quick Links'}
-            </h4>
-            <ul className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
-              <li>
-                <Link href="/" className="hover:text-sky-400 transition-colors">
-                  {t.nav.home}
-                </Link>
-              </li>
-              <li>
-                <Link href="/services" className="hover:text-sky-400 transition-colors">
-                  {t.nav.services}
-                </Link>
-              </li>
-              <li>
-                <Link href="/offers" className="hover:text-sky-400 transition-colors">
-                  {t.nav.offers}
-                </Link>
-              </li>
-              <li>
-                <Link href="/gallery" className="hover:text-sky-400 transition-colors">
-                  {t.nav.gallery}
-                </Link>
-              </li>
-              <li>
-                <Link href="/reviews" className="hover:text-sky-400 transition-colors">
-                  {locale === 'ar' ? 'آراء العملاء' : 'Customer Reviews'}
-                </Link>
-              </li>
-              <li>
-                <Link href="/about" className="hover:text-sky-400 transition-colors">
-                  {t.nav.about}
-                </Link>
-              </li>
-              <li>
-                <Link href="/faq" className="hover:text-sky-400 transition-colors">
-                  {locale === 'ar' ? 'الأسئلة الشائعة' : 'FAQ'}
-                </Link>
-              </li>
-              <li>
-                <Link href="/contact" className="hover:text-sky-400 transition-colors">
-                  {t.nav.contact}
-                </Link>
-              </li>
-            </ul>
-          </div>
+          {quickLinks.length > 0 && (
+            <div className="space-y-4">
+              <h4 className="text-sm font-bold text-white tracking-wider uppercase">
+                {locale === 'ar' ? 'روابط سريعة' : 'Quick Links'}
+              </h4>
+              <ul className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
+                {quickLinks.map((link) => (
+                  <li key={link.id || link.url}>
+                    <Link href={link.url} className="text-[#DDE7EC] hover:text-[#25B8E6] transition-colors">
+                      {isAr ? link.label : (link.labelEn || link.label)}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Services Col */}
-          <div className="space-y-4">
-            <h4 className="text-sm font-bold text-white tracking-wider uppercase">
-              {locale === 'ar' ? 'فئات الخدمات' : 'Service Categories'}
-            </h4>
-            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
-              <li>
-                <Link href="/services/car" className="hover:text-sky-400 transition-colors">
-                  {t.nav.carServices}
-                </Link>
-              </li>
-              <li>
-                <Link href="/services/home" className="hover:text-sky-400 transition-colors">
-                  {t.nav.homeServices}
-                </Link>
-              </li>
-              <li>
-                <Link href="/services/car-full-detailing" className="hover:text-sky-400 transition-colors">
-                  {locale === 'ar' ? 'ديتيلينج سيارات VIP' : 'VIP Car Detailing'}
-                </Link>
-              </li>
-              <li>
-                <Link href="/services/home-deep-clean" className="hover:text-sky-400 transition-colors">
-                  {locale === 'ar' ? 'التنظيف العميق للمنازل' : 'Deep Home Cleaning'}
-                </Link>
-              </li>
-              <li>
-                <Link href="/services/home-upholstery-steam" className="hover:text-sky-400 transition-colors">
-                  {locale === 'ar' ? 'غسيل المفروشات والكنب' : 'Upholstery Steam Clean'}
-                </Link>
-              </li>
-            </ul>
-          </div>
+          {categoryLinks.length > 0 && (
+            <div className="space-y-4">
+              <h4 className="text-sm font-bold text-white tracking-wider uppercase">
+                {locale === 'ar' ? 'فئات الخدمات' : 'Service Categories'}
+              </h4>
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
+                {categoryLinks.map((link) => (
+                  <li key={link.id || link.url}>
+                    <Link href={link.url} className="text-[#DDE7EC] hover:text-[#25B8E6] transition-colors">
+                      {isAr ? link.label : (link.labelEn || link.label)}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
             {/* Contact Details */}
             <div className="space-y-4">
               <h4 className="text-sm font-bold text-white tracking-wider uppercase">
                 {locale === 'ar' ? 'تواصل معنا' : 'Contact Us'}
               </h4>
-              <ul className="space-y-3 text-sm text-slate-400">
+              <ul className="space-y-3 text-sm text-[#DDE7EC]">
                 {contact?.phone && (
                   <li className="flex items-center gap-3">
                     <Phone className="w-4 h-4 text-sky-400 shrink-0" />
-                    <a href={`tel:${contact.phone}`} dir="ltr" className="hover:text-white transition-colors">
+                    <a href={`tel:${contact.phone}`} dir="ltr" className="text-[#DDE7EC] hover:text-white transition-colors">
                       {contact.phone}
                     </a>
                   </li>
@@ -216,7 +181,7 @@ export function Footer() {
                 {contact?.email && (
                   <li className="flex items-center gap-3">
                     <Mail className="w-4 h-4 text-[#83AED0] shrink-0" />
-                    <a href={`mailto:${contact.email}`} className="hover:text-white transition-colors">
+                    <a href={`mailto:${contact.email}`} className="text-[#DDE7EC] hover:text-white transition-colors">
                       {contact.email}
                     </a>
                   </li>
@@ -224,7 +189,7 @@ export function Footer() {
                 {(contact?.address || contact?.addressEn) && (
                   <li className="flex items-start gap-3">
                     <MapPin className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                    <span>
+                    <span className="text-[#DDE7EC]">
                       {isAr ? (contact?.address || contact?.addressEn) : (contact?.addressEn || contact?.address)}
                     </span>
                   </li>
@@ -232,13 +197,13 @@ export function Footer() {
                 {(contact?.workingHours || contact?.workingHoursEn) && (
                   <li className="flex items-center gap-3">
                     <Clock className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span>
+                    <span className="text-[#DDE7EC]">
                       {isAr ? (contact?.workingHours || contact?.workingHoursEn) : (contact?.workingHoursEn || contact?.workingHours)}
                     </span>
                   </li>
                 )}
                 {!contact?.phone && !contact?.email && !contact?.address && !contact?.workingHours && (
-                  <li className="text-xs text-slate-500 py-1">
+                  <li className="text-xs text-[#DDE7EC]/80 py-1">
                     {locale === 'ar' ? 'لم يتم تعيين بيانات تواصل بعد' : 'No contact details configured yet'}
                   </li>
                 )}
@@ -247,16 +212,16 @@ export function Footer() {
         </div>
 
         {/* Bottom Bar */}
-        <div className="mt-12 pt-8 border-t border-slate-800/80 flex flex-col md:flex-row items-center justify-between gap-5 text-xs text-slate-500">
-          <p className="order-2 md:order-1 text-center md:text-start">© {new Date().getFullYear()} {footerText}</p>
+        <div className="mt-12 pt-8 border-t border-[#0B467B] flex flex-col md:flex-row items-center justify-between gap-5 text-xs text-[#DDE7EC]/70">
+          <p className="order-2 md:order-1 text-center md:text-start text-[#DDE7EC]/70">© {new Date().getFullYear()} {footerText}</p>
 
 
-          <div className="order-3 flex items-center gap-4">
-            <Link href="/about" className="hover:text-slate-300 transition-colors">
+          <div className="order-3 flex items-center gap-4 text-[#DDE7EC]/70">
+            <Link href="/about" className="hover:text-white transition-colors">
               {locale === 'ar' ? 'عن الشركة' : 'About'}
             </Link>
             <span>•</span>
-            <Link href="/contact" className="hover:text-slate-300 transition-colors">
+            <Link href="/contact" className="hover:text-white transition-colors">
               {locale === 'ar' ? 'الدعم الفني' : 'Support'}
             </Link>
           </div>

@@ -307,7 +307,7 @@ export default function SubscriptionsPage() {
   const ArrowPrev = direction === 'rtl' ? ArrowRight : ArrowLeft;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#071321] text-slate-900 dark:text-slate-100 py-8 sm:py-12 transition-colors">
+    <div className="min-h-screen bg-[#EAF8FC] dark:bg-[#041728] text-slate-900 dark:text-slate-100 py-8 sm:py-12 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
         
         {/* ================= HERO HEADER ================= */}

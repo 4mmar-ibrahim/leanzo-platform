@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import {
   CheckCircle2,
@@ -30,6 +30,7 @@ import {
   getOrderStepIndex,
   getAuthoritativeStatusBanner,
 } from '@/lib/orderStatusConfig';
+import { RescheduleModal } from './RescheduleModal';
 
 interface OrderTrackerProps {
   order: Order;
@@ -40,6 +41,7 @@ export function OrderTracker({ order, onOpenReview }: OrderTrackerProps) {
   const { locale, direction } = useLocaleStore();
   const isAr = locale === 'ar';
   const router = useRouter();
+  const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
 
   const { selectService, setAddress, setCategory } = useBookingStore();
 
@@ -308,6 +310,22 @@ export function OrderTracker({ order, onOpenReview }: OrderTrackerProps) {
               <Clock className="w-3.5 h-3.5 text-[#0866C6] shrink-0" />
               <span>التاريخ: {order.date} — الوقت: {formatTimeTo12Hour(order.time)}</span>
             </p>
+            {order.rescheduledFrom && (
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 p-2 rounded-xl border border-amber-200/80 dark:border-amber-800/80">
+                <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                <span>{isAr ? `تم تعديل الموعد (السابق: ${order.rescheduledFrom})` : `Rescheduled from ${order.rescheduledFrom}`}</span>
+              </div>
+            )}
+            {['pending', 'confirmed', 'assigned'].includes(order.status) && (
+              <button
+                type="button"
+                onClick={() => setIsRescheduleOpen(true)}
+                className="w-full mt-2 py-2 px-3 rounded-xl border border-sky-300 dark:border-sky-800 bg-sky-50/50 dark:bg-sky-950/30 text-sky-600 dark:text-sky-400 hover:bg-sky-100/60 dark:hover:bg-slate-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>{isAr ? 'تعديل موعد الحجز' : 'Reschedule Appointment'}</span>
+              </button>
+            )}
           </div>
 
           {(order.packageSnapshot || (order.addons && order.addons.length > 0)) && (
@@ -342,6 +360,16 @@ export function OrderTracker({ order, onOpenReview }: OrderTrackerProps) {
           </div>
         </div>
       </div>
+
+      {/* Reschedule Modal */}
+      <RescheduleModal
+        isOpen={isRescheduleOpen}
+        onClose={() => setIsRescheduleOpen(false)}
+        order={order}
+        onSuccess={() => {
+          router.refresh();
+        }}
+      />
     </div>
   );
 }

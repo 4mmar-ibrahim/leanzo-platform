@@ -29,6 +29,7 @@ import { ServiceCategory, ServicePackage, ServiceAddon } from '@/types';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { toast } from 'sonner';
 import { ImageUploader } from '@/components/admin/ImageUploader';
+import { PriceDisplay } from '@/components/common/PriceDisplay';
 
 export default function AdminServiceEditPage() {
   const params = useParams();
@@ -62,6 +63,14 @@ export default function AdminServiceEditPage() {
   const [desc, setDesc] = useState(existingService?.description || '');
   const [descEn, setDescEn] = useState(existingService?.descriptionEn || '');
   const [price, setPrice] = useState(existingService?.price?.toString() || '300');
+  const [basePrice, setBasePrice] = useState(
+    existingService?.originalPrice && existingService.originalPrice > existingService.price
+      ? existingService.originalPrice.toString()
+      : existingService?.price?.toString() || '300'
+  );
+  const [discount, setDiscount] = useState(
+    existingService?.discount ? existingService.discount.toString() : '0'
+  );
   const [serviceDurationMinutes, setServiceDurationMinutes] = useState(
     existingService?.serviceDurationMinutes?.toString() || existingService?.duration?.toString() || '45'
   );
@@ -105,7 +114,22 @@ export default function AdminServiceEditPage() {
       setShortDescEn(existingService.shortDescriptionEn || '');
       setDesc(existingService.description || '');
       setDescEn(existingService.descriptionEn || '');
-      setPrice(existingService.price?.toString() || '300');
+      const orig = Number(existingService.originalPrice);
+      const curr = Number(existingService.price);
+      const disc = Number(existingService.discount);
+
+      if (orig && orig > curr) {
+        setBasePrice(orig.toString());
+        setDiscount(disc > 0 ? disc.toString() : Math.round(((orig - curr) / orig) * 100).toString());
+      } else if (disc > 0 && curr > 0) {
+        const calculatedBase = Math.round(curr / (1 - disc / 100));
+        setBasePrice(calculatedBase.toString());
+        setDiscount(disc.toString());
+      } else {
+        setBasePrice(curr ? curr.toString() : '300');
+        setDiscount('0');
+      }
+      setPrice(curr ? curr.toString() : '300');
       setServiceDurationMinutes(
         existingService.serviceDurationMinutes?.toString() || existingService.duration?.toString() || '45'
       );
@@ -474,7 +498,13 @@ export default function AdminServiceEditPage() {
       toast.error('يرجى اختيار قطاع أو تصنيف للخدمة');
       return;
     }
-    const numPrice = Number(price) || 100;
+    const numBasePrice = Math.max(0, Number(basePrice) || 0);
+    const numDiscount = Math.max(0, Math.min(99, Number(discount) || 0));
+    const finalPrice = numDiscount > 0
+      ? Math.round(numBasePrice * (1 - numDiscount / 100))
+      : numBasePrice;
+    const finalOriginalPrice = numDiscount > 0 ? numBasePrice : undefined;
+
     const numServiceDuration = Math.max(1, Number(serviceDurationMinutes) || 45);
     const numTravelTime = Math.max(0, Number(travelTimeMinutes) || 0);
     const totalOccupancy = numServiceDuration + numTravelTime;
@@ -496,9 +526,9 @@ export default function AdminServiceEditPage() {
             (category === 'home'
               ? 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=800&q=80'
               : 'https://images.unsplash.com/photo-1520340356584-f9917d1eea6f?auto=format&fit=crop&w=800&q=80'),
-          price: numPrice,
-          originalPrice: undefined,
-          discount: 0,
+          price: finalPrice,
+          originalPrice: finalOriginalPrice,
+          discount: numDiscount,
           duration: numServiceDuration,
           serviceDurationMinutes: numServiceDuration,
           travelTimeMinutes: numTravelTime,
@@ -538,7 +568,7 @@ export default function AdminServiceEditPage() {
           action: 'إنشاء خدمة جديدة',
           module: 'services',
           target: title,
-          details: `السعر: ${numPrice} ج.م | باقات مضافة: ${packages.length} | إضافات مضافة: ${addons.length}`,
+          details: `السعر: ${finalPrice} ج.م ${numDiscount > 0 ? `(قبل الخصم: ${numBasePrice} ج.م | خصم: ${numDiscount}%)` : ''} | باقات مضافة: ${packages.length} | إضافات مضافة: ${addons.length}`,
         });
 
         toast.success('تم إنشاء الخدمة وباقاتها وإضافاتها بنجاح!');
@@ -553,9 +583,9 @@ export default function AdminServiceEditPage() {
           description: desc,
           descriptionEn: descEn,
           image,
-          price: numPrice,
-          originalPrice: undefined,
-          discount: 0,
+          price: finalPrice,
+          originalPrice: finalOriginalPrice,
+          discount: numDiscount,
           duration: numServiceDuration,
           serviceDurationMinutes: numServiceDuration,
           travelTimeMinutes: numTravelTime,
@@ -571,7 +601,7 @@ export default function AdminServiceEditPage() {
           action: 'تحديث بيانات الخدمة',
           module: 'services',
           target: title,
-          details: `السعر: ${numPrice} ج.م | مدة الخدمة: ${numServiceDuration} دقيقة + تنقل: ${numTravelTime} دقيقة = إشغال: ${totalOccupancy} دقيقة`,
+          details: `السعر: ${finalPrice} ج.م ${numDiscount > 0 ? `(قبل الخصم: ${numBasePrice} ج.م | خصم: ${numDiscount}%)` : ''} | مدة الخدمة: ${numServiceDuration} دقيقة + تنقل: ${numTravelTime} دقيقة = إشغال: ${totalOccupancy} دقيقة`,
         });
 
         toast.success('تم حفظ تعديلات الخدمة فوراً!');
@@ -678,25 +708,83 @@ export default function AdminServiceEditPage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold mb-1 text-slate-800 dark:text-slate-200">
-                    سعر الخدمة النهائي (ج.م) <span className="text-red-500">*</span>
+                    السعر الأساسي (ج.م) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
                     min="0"
                     required
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    placeholder="أدخل السعر النهائي للخدمة بالجنيه المصري"
-                    className="w-full p-2.5 text-sm rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-emerald-600 dark:text-emerald-400"
+                    value={basePrice}
+                    onChange={(e) => setBasePrice(e.target.value)}
+                    placeholder="مثال: 100"
+                    className="w-full p-2.5 text-sm rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
                   />
                   <p className="text-[11px] text-slate-500 mt-1">
-                    هذا السعر هو السعر النهائي الرسمي الذي يدفعه العميل بالكامل بدون أي خصم تلقائي.
+                    السعر الأساسي للخدمة قبل تطبيق أي خصم
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold mb-1 text-slate-800 dark:text-slate-200">
+                    نسبة الخصم (%)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      max="99"
+                      value={discount}
+                      onChange={(e) => setDiscount(e.target.value)}
+                      placeholder="0"
+                      className="w-full p-2.5 text-sm rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-rose-600 dark:text-rose-400"
+                    />
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      %
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    اكتب نسبة الخصم (مثلاً 10%) أو اتركها 0 إذا كانت بدون خصم
                   </p>
                 </div>
               </div>
+
+              {/* Live Price Summary Box */}
+              {(() => {
+                const bPrice = Math.max(0, Number(basePrice) || 0);
+                const dPercent = Math.max(0, Math.min(99, Number(discount) || 0));
+                const finalP = dPercent > 0 ? Math.round(bPrice * (1 - dPercent / 100)) : bPrice;
+                return (
+                  <div className="p-3.5 rounded-2xl bg-sky-50/70 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/40 flex flex-wrap items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">
+                        معاينة السعر كما يظهر للعميل في الموقع وصفحة الحجز:
+                      </span>
+                      <div className="flex items-center gap-2 pt-1">
+                        <PriceDisplay
+                          price={finalP}
+                          originalPrice={dPercent > 0 ? bPrice : undefined}
+                          size="md"
+                        />
+                        {dPercent > 0 && (
+                          <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
+                            (توفير للعميل: {bPrice - finalP} ج.م)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="text-left font-mono text-xs">
+                      <span className="text-slate-400 text-[10px] block font-sans">السعر النهائي للدفع:</span>
+                      <span className="text-base font-black text-[#0866C6] dark:text-sky-400">
+                        {finalP} ج.م
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
                 <div>

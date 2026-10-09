@@ -64,14 +64,33 @@ export default function AdminBookingSettingsPage() {
     );
   };
 
+  const normalizeTimeString = (val: string): string => {
+    if (!val) return '09:00';
+    const clean = val.trim();
+    if (/^\d{1,2}$/.test(clean)) {
+      const h = parseInt(clean, 10);
+      return `${h.toString().padStart(2, '0')}:00`;
+    }
+    if (/^\d{1,2}:\d{1,2}$/.test(clean)) {
+      const [h, m] = clean.split(':');
+      return `${parseInt(h, 10).toString().padStart(2, '0')}:${parseInt(m, 10).toString().padStart(2, '0')}`;
+    }
+    return clean;
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
 
+    const normStart = normalizeTimeString(workingHoursStart);
+    const normEnd = normalizeTimeString(workingHoursEnd);
+    setWorkingHoursStart(normStart);
+    setWorkingHoursEnd(normEnd);
+
     const updatedBooking = {
       ...booking,
-      workingHoursStart,
-      workingHoursEnd,
+      workingHoursStart: normStart,
+      workingHoursEnd: normEnd,
       slotDuration: Number(slotDuration) || 60,
       slotInterval: Number(slotInterval) || 60,
       bufferTime: Number(bufferTime) || 15,
@@ -186,6 +205,7 @@ export default function AdminBookingSettingsPage() {
                 required
                 value={workingHoursStart}
                 onChange={(e) => setWorkingHoursStart(e.target.value)}
+                onBlur={() => setWorkingHoursStart(normalizeTimeString(workingHoursStart))}
                 placeholder="09:00"
                 className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
               />
@@ -197,6 +217,7 @@ export default function AdminBookingSettingsPage() {
                 required
                 value={workingHoursEnd}
                 onChange={(e) => setWorkingHoursEnd(e.target.value)}
+                onBlur={() => setWorkingHoursEnd(normalizeTimeString(workingHoursEnd))}
                 placeholder="22:00"
                 className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
               />

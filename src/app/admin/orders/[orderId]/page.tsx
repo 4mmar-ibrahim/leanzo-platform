@@ -475,6 +475,12 @@ export default function AdminOrderDetailPage() {
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300">
                 المصدر المعتمد
               </span>
+              {order.rescheduledFrom && (
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300/60 dark:border-amber-800/60 flex items-center gap-1">
+                  <RefreshCw className="w-2.5 h-2.5" />
+                  <span>تم تعديل الموعد (السابق: {order.rescheduledFrom})</span>
+                </span>
+              )}
             </div>
             <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white mt-0.5">
               موعد وتوقيت تنفيذ الخدمة

@@ -244,18 +244,53 @@ export async function withBookingLock<T>(lockKey: string, task: () => Promise<T>
 }
 
 /**
+ * Extracts all service IDs associated with a booking or visit (primary + multi-service snapshots/metadata).
+ */
+export function getBookingServiceIds(b: any): string[] {
+  const ids = new Set<string>();
+  if (b.serviceId) ids.add(String(b.serviceId));
+  if (b.service?.id) ids.add(String(b.service.id));
+  if (b.serviceSnapshot?.id) ids.add(String(b.serviceSnapshot.id));
+
+  // Multi-service items in metadata
+  if (Array.isArray(b.metadata?.services)) {
+    for (const s of b.metadata.services) {
+      if (s.serviceId) ids.add(String(s.serviceId));
+      if (s.id) ids.add(String(s.id));
+    }
+  }
+  if (Array.isArray(b.metadata?.serviceIds)) {
+    for (const id of b.metadata.serviceIds) {
+      if (id) ids.add(String(id));
+    }
+  }
+
+  // Multi-service items in serviceSnapshot
+  if (Array.isArray(b.serviceSnapshot?.services)) {
+    for (const s of b.serviceSnapshot.services) {
+      if (s.serviceId) ids.add(String(s.serviceId));
+      if (s.id) ids.add(String(s.id));
+    }
+  }
+
+  return Array.from(ids);
+}
+
+/**
  * Availability Engine (Model A: Dynamic Continuous Sequential Scheduling)
  * Generates continuous sequential appointments:
  * - Next appointment starts exactly when previous ends.
  * - Total duration = serviceDuration + travelDuration.
- * - Active bookings block their exact occupied intervals.
+ * - Active bookings block their exact occupied intervals across all included services.
  * - Cancelled bookings release future remaining time.
  * - In-progress and completed bookings cannot release time.
  */
 export async function getAvailableSlots(
   dateStr: string,
   serviceId?: string,
-  customDuration?: number
+  customDuration?: number,
+  serviceIds?: string[],
+  excludeBookingId?: string
 ): Promise<{
   date: string;
   isDayAvailable: boolean;
@@ -335,15 +370,14 @@ export async function getAvailableSlots(
     ? currentMinutesNow + (settings.minNoticeHours || 0) * 60
     : 0;
 
-  // 4. Fetch all bookings on this date for this service (or all services if not scoped)
-  const bookingQuery: any = { date: dateStr };
-  if (serviceId) {
-    bookingQuery.serviceId = serviceId;
-  }
-
-  const allBookings = await Booking.find(bookingQuery).select(
-    'id status scheduledStart scheduledEnd timeSlotStart time duration serviceDurationMinutes travelTimeMinutes totalOccupiedMinutes cancelledAt timeline assignedTechnicianId metadata'
+  // 4. Fetch all bookings on this date (multi-service collision aware)
+  const allBookings = await Booking.find({ date: dateStr }).select(
+    'id status scheduledStart scheduledEnd timeSlotStart time duration serviceDurationMinutes travelTimeMinutes totalOccupiedMinutes cancelledAt timeline assignedTechnicianId serviceId serviceSnapshot metadata'
   );
+
+  const requestedServiceIds = Array.isArray(serviceIds) && serviceIds.length > 0
+    ? serviceIds.filter(Boolean)
+    : serviceId ? [serviceId] : [];
 
   // 5. Build occupied intervals
   // An interval is occupied if:
@@ -359,6 +393,19 @@ export async function getAvailableSlots(
   const occupiedIntervals: DetailedInterval[] = [];
 
   for (const b of allBookings) {
+    if (excludeBookingId && (b.id === excludeBookingId || String(b._id) === excludeBookingId)) {
+      continue;
+    }
+
+    // If specific service(s) requested, check if this booking contains ANY of the requested services
+    if (requestedServiceIds.length > 0) {
+      const bServices = getBookingServiceIds(b);
+      const matches = requestedServiceIds.some((sId) => bServices.includes(sId));
+      if (!matches) {
+        continue;
+      }
+    }
+
     const bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
     const bDuration =
       b.totalOccupiedMinutes ||
@@ -392,15 +439,19 @@ export async function getAvailableSlots(
   }
 
   // 4.1 Fetch all confirmed/active subscription visits on this date
-  const visitQuery: any = { date: dateStr };
-  if (serviceId) {
-    visitQuery.serviceId = serviceId;
-  }
-  const allVisits = await SubscriptionVisit.find(visitQuery).select(
-    'id status scheduledStart scheduledEnd timeSlotStart time duration serviceDurationMinutes travelTimeMinutes totalOccupiedMinutes cancelledAt timeline assignedTechnicianId metadata'
+  const allVisits = await SubscriptionVisit.find({ date: dateStr }).select(
+    'id status scheduledStart scheduledEnd timeSlotStart time duration serviceDurationMinutes travelTimeMinutes totalOccupiedMinutes cancelledAt timeline assignedTechnicianId serviceId serviceSnapshot metadata'
   );
 
   for (const v of allVisits) {
+    if (requestedServiceIds.length > 0) {
+      const vServices = getBookingServiceIds(v);
+      const matches = requestedServiceIds.some((sId) => vServices.includes(sId));
+      if (!matches) {
+        continue;
+      }
+    }
+
     const vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart || v.time);
     const vDuration =
       v.totalOccupiedMinutes ||
@@ -489,17 +540,18 @@ export async function getAvailableSlots(
   // - Occupied blocks produce unavailable slots (so they are visible and not silently missing).
   const slots: TimeSlotOption[] = [];
   const requiredDuration = timing.totalOccupiedMinutes;
+  const slotStep = Math.max(15, Number(settings.slotInterval) || 60);
 
   // 7.1 Available slots from free blocks
   for (const block of freeBlocks) {
     let slotStart = block.start;
 
-    while (slotStart + requiredDuration <= block.end) {
-      const slotEnd = slotStart + requiredDuration;
+    while (slotStart + timing.serviceDurationMinutes <= block.end) {
+      const slotEnd = Math.min(block.end, slotStart + requiredDuration);
 
       // Current time filtering: past slots for today must not be offered
       if (isToday && slotStart < earliestAllowedMinutes) {
-        slotStart = slotEnd;
+        slotStart += slotStep;
         continue;
       }
 
@@ -521,7 +573,7 @@ export async function getAvailableSlots(
         scheduledEnd: end24,
       });
 
-      slotStart = slotEnd;
+      slotStart += slotStep;
     }
   }
 
@@ -626,6 +678,7 @@ export async function assertSlotAvailability(params: {
   dateStr: string;
   timeStr: string;
   serviceId: string;
+  serviceIds?: string[];
   customDuration?: number;
   excludeBookingId?: string;
   excludeVisitId?: string;
@@ -637,7 +690,7 @@ export async function assertSlotAvailability(params: {
   travelTimeMinutes: number;
   totalOccupiedMinutes: number;
 }> {
-  const { dateStr, timeStr, serviceId, customDuration, excludeBookingId, excludeVisitId, technicianId } = params;
+  const { dateStr, timeStr, serviceId, serviceIds, customDuration, excludeBookingId, excludeVisitId, technicianId } = params;
 
   if (!serviceId) {
     throw new Error('معرف الخدمة مطلوب للتحقق من الموعد');
@@ -672,7 +725,7 @@ export async function assertSlotAvailability(params: {
   const workEndMin = timeStringToMinutes(settings.workingHoursEnd);
 
   // 2. Working Hours & Day Boundary Check
-  if (slotStartMin < workStartMin || slotEndMin > workEndMin) {
+  if (slotStartMin < workStartMin || (slotStartMin + timing.serviceDurationMinutes) > workEndMin) {
     throw new Error('الوقت المحدد يقع خارج ساعات العمل الرسمية لسيارات الخدمة');
   }
 
@@ -699,27 +752,32 @@ export async function assertSlotAvailability(params: {
     }
   }
 
-  // 5. Query active bookings on that date for this service or technician
-  const conflictOr: any[] = [{ serviceId }];
-  if (technicianId) {
-    conflictOr.push({ assignedTechnicianId: technicianId });
-  }
-
-  const query: any = {
-    date: dateStr,
-    $or: conflictOr,
-  };
+  // 5. Query active bookings on that date (multi-service collision aware)
+  const query: any = { date: dateStr };
   if (excludeBookingId) {
     query.id = { $ne: excludeBookingId };
   }
 
   const existingBookings = await Booking.find(query).select(
-    'id status scheduledStart scheduledEnd timeSlotStart time duration totalOccupiedMinutes travelTimeMinutes serviceId assignedTechnicianId cancelledAt timeline'
+    'id status scheduledStart scheduledEnd timeSlotStart time duration totalOccupiedMinutes travelTimeMinutes serviceId serviceSnapshot assignedTechnicianId cancelledAt timeline metadata'
   );
+
+  const targetServiceIds = Array.isArray(serviceIds) && serviceIds.length > 0
+    ? serviceIds.filter(Boolean)
+    : serviceId ? [serviceId] : [];
 
   for (const b of existingBookings) {
     if (technicianId && b.assignedTechnicianId && b.assignedTechnicianId !== technicianId) {
       continue;
+    }
+
+    if (targetServiceIds.length > 0) {
+      const bServices = getBookingServiceIds(b);
+      const serviceMatch = targetServiceIds.some((sId) => bServices.includes(sId));
+      const technicianMatch = technicianId && b.assignedTechnicianId === technicianId;
+      if (!serviceMatch && !technicianMatch) {
+        continue;
+      }
     }
 
     const bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
@@ -757,22 +815,28 @@ export async function assertSlotAvailability(params: {
     }
   }
 
-  // 6. Query active subscription visits on that date for this service or technician
-  const subVisitQuery: any = {
-    date: dateStr,
-    $or: conflictOr,
-  };
+  // 6. Query active subscription visits on that date for this service or technician (multi-service aware)
+  const subVisitQuery: any = { date: dateStr };
   if (excludeVisitId) {
     subVisitQuery.id = { $ne: excludeVisitId };
   }
 
   const existingVisits = await SubscriptionVisit.find(subVisitQuery).select(
-    'id status scheduledStart scheduledEnd timeSlotStart time duration totalOccupiedMinutes travelTimeMinutes serviceId assignedTechnicianId cancelledAt timeline'
+    'id status scheduledStart scheduledEnd timeSlotStart time duration totalOccupiedMinutes travelTimeMinutes serviceId serviceSnapshot assignedTechnicianId cancelledAt timeline metadata'
   );
 
   for (const v of existingVisits) {
     if (technicianId && v.assignedTechnicianId && v.assignedTechnicianId !== technicianId) {
       continue;
+    }
+
+    if (targetServiceIds.length > 0) {
+      const vServices = getBookingServiceIds(v);
+      const serviceMatch = targetServiceIds.some((sId) => vServices.includes(sId));
+      const technicianMatch = technicianId && v.assignedTechnicianId === technicianId;
+      if (!serviceMatch && !technicianMatch) {
+        continue;
+      }
     }
 
     const vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart || v.time);

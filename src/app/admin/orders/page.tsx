@@ -39,6 +39,7 @@ import GlobalFilterEngine, {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAdminStore } from '@/store/useAdminStore';
+import { useServiceStore } from '@/store/useServiceStore';
 import { hasPermission } from '@/lib/permissions';
 
 const ORDER_STATUS_OPTIONS: StatusOption[] = [
@@ -49,26 +50,6 @@ const ORDER_STATUS_OPTIONS: StatusOption[] = [
   { label: 'قيد التنفيذ', value: 'in_progress', colorClass: 'bg-blue-600 text-white' },
   { label: 'مكتمل', value: 'completed', colorClass: 'bg-emerald-600 text-white' },
   { label: 'ملغي', value: 'cancelled', colorClass: 'bg-rose-600 text-white' },
-];
-
-const ORDER_DYNAMIC_FIELDS: DynamicFilterField[] = [
-  {
-    id: 'category',
-    label: 'نوع الخدمة',
-    type: 'select',
-    placeholder: 'كافة التصنيفات',
-    options: [
-      { label: 'خدمات غسيل وتنظيف السيارات (Car)', value: 'car' },
-      { label: 'خدمات تنظيف المنازل والأثاث (Home)', value: 'home' },
-    ],
-  },
-  {
-    id: 'priceRange',
-    label: 'نطاق السعر الإجمالي (ج.م)',
-    type: 'number-range',
-    minPlaceholder: 'أدنى سعر',
-    maxPlaceholder: 'أعلى سعر',
-  },
 ];
 
 const ORDER_SORT_OPTIONS: SortOption[] = [
@@ -92,6 +73,42 @@ export default function AdminOrdersPage() {
   const isLoading = useOrderStore((s) => s.isLoading);
   const technicians = useTechnicianStore((s) => s.technicians);
   const fetchTechnicians = useTechnicianStore((s) => s.fetchTechnicians);
+
+  const categories = useServiceStore((s) => s.categories);
+  const fetchCategories = useServiceStore((s) => s.fetchCategories);
+
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
+
+  const dynamicFields = React.useMemo<DynamicFilterField[]>(() => {
+    const catOptions = (categories && categories.length > 0)
+      ? categories.map((c) => ({
+          label: `${c.name} (${c.slug})`,
+          value: c.slug,
+        }))
+      : [
+          { label: 'خدمات غسيل وتنظيف السيارات (Car)', value: 'car' },
+          { label: 'خدمات تنظيف المنازل والأثاث (Home)', value: 'home' },
+        ];
+
+    return [
+      {
+        id: 'category',
+        label: 'نوع الخدمة',
+        type: 'select' as const,
+        placeholder: 'كافة التصنيفات',
+        options: catOptions,
+      },
+      {
+        id: 'priceRange',
+        label: 'نطاق السعر الإجمالي (ج.م)',
+        type: 'number-range' as const,
+        minPlaceholder: 'أدنى سعر',
+        maxPlaceholder: 'أعلى سعر',
+      },
+    ];
+  }, [categories]);
 
   const [filterValues, setFilterValues] = useState<GlobalFilterValues>({
     search: '',
@@ -380,6 +397,13 @@ export default function AdminOrdersPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Link
+            href="/admin/orders/new"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black bg-[#0866C6] hover:bg-[#07529E] text-white shadow-md shadow-[#0866C6]/20 transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>إنشاء حجز جديد</span>
+          </Link>
           <button
             onClick={() => loadOrders()}
             disabled={isLoading}
@@ -463,7 +487,7 @@ export default function AdminOrdersPage() {
       <GlobalFilterEngine
         searchPlaceholder="بحث برقم الطلب أو الزيارة، اسم العميل، الهاتف، أو الخدمة..."
         statusOptions={ORDER_STATUS_OPTIONS}
-        dynamicFields={ORDER_DYNAMIC_FIELDS}
+        dynamicFields={dynamicFields}
         sortOptions={ORDER_SORT_OPTIONS}
         onFilterChange={handleFilterChange}
       />

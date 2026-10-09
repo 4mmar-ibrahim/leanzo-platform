@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { Search, CheckCircle2, Car, Home, Layers, X, AlertCircle } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Search, CheckCircle2, Car, Home, Layers, X, AlertCircle, Sparkles, Package } from 'lucide-react';
+import { useServiceStore } from '@/store/useServiceStore';
 import { Service } from '@/types';
 
 interface SubscriptionServiceSelectorProps {
@@ -18,7 +19,14 @@ export function SubscriptionServiceSelector({
   disabled = false,
 }: SubscriptionServiceSelectorProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<'all' | 'car' | 'home'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  const categories = useServiceStore((s) => s.categories);
+  const fetchCategories = useServiceStore((s) => s.fetchCategories);
+
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
 
   // Filter to active, non-archived services only (TASK 08 & 12)
   const activeServices = useMemo(() => {
@@ -27,10 +35,48 @@ export function SubscriptionServiceSelector({
     );
   }, [services]);
 
+  // Dynamic categories combined from store and any active service category slugs
+  const dynamicCategories = useMemo(() => {
+    const list = Array.isArray(categories) && categories.length > 0
+      ? categories.filter((c) => c.active !== false)
+      : [];
+
+    const existingSlugs = new Set(list.map((c) => c.slug));
+    const orphanSlugs = Array.from(new Set(activeServices.map((s: any) => s.category))).filter(
+      (slug): slug is string => Boolean(slug) && !existingSlugs.has(slug)
+    );
+
+    const merged = [...list];
+    for (const orphan of orphanSlugs) {
+      merged.push({
+        id: `cat-${orphan}`,
+        slug: orphan,
+        name: orphan === 'car' ? 'خدمات السيارات' : orphan === 'home' ? 'خدمات المنازل' : orphan,
+        nameEn: orphan === 'car' ? 'Car Services' : orphan === 'home' ? 'Home Services' : orphan,
+        description: '',
+        descriptionEn: '',
+        icon: 'Sparkles',
+        image: '',
+        active: true,
+        order: 999,
+      });
+    }
+
+    // If still empty (e.g. initial load without backend), provide sensible defaults
+    if (merged.length === 0) {
+      return [
+        { id: 'cat-car', slug: 'car', name: 'خدمات السيارات', nameEn: 'Car Services', icon: 'Car', image: '', active: true, order: 1, description: '', descriptionEn: '' },
+        { id: 'cat-home', slug: 'home', name: 'خدمات المنازل', nameEn: 'Home Services', icon: 'Home', image: '', active: true, order: 2, description: '', descriptionEn: '' },
+      ];
+    }
+
+    return merged.sort((a, b) => (a.order || 0) - (b.order || 0));
+  }, [categories, activeServices]);
+
   // Filtered by Search & Category
   const filteredServices = useMemo(() => {
     return activeServices.filter((s: any) => {
-      // Category Filter (TASK 10)
+      // Dynamic Category Filter
       if (selectedCategory !== 'all' && s.category !== selectedCategory) {
         return false;
       }
@@ -60,6 +106,15 @@ export function SubscriptionServiceSelector({
     return activeServices.find((s) => s.id === selectedServiceId);
   }, [activeServices, selectedServiceId]);
 
+  const getCategoryIcon = (slug: string, iconStr?: string) => {
+    const s = (slug || '').toLowerCase();
+    const ic = (iconStr || '').toLowerCase();
+    if (s === 'car' || ic === 'car') return <Car className="w-3 h-3" />;
+    if (s === 'home' || ic === 'home') return <Home className="w-3 h-3" />;
+    if (ic === 'package') return <Package className="w-3 h-3" />;
+    return <Sparkles className="w-3 h-3" />;
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
@@ -72,44 +127,41 @@ export function SubscriptionServiceSelector({
           )}
         </label>
 
-        {/* Category Filter Tabs (TASK 10) */}
-        <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl border border-border/50 text-[11px] font-bold self-start sm:self-auto">
+        {/* Dynamic Category Filter Tabs */}
+        <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl border border-border/50 text-[11px] font-bold self-start sm:self-auto overflow-x-auto max-w-full">
           <button
             type="button"
             onClick={() => setSelectedCategory('all')}
-            className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 ${
+            className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 whitespace-nowrap shrink-0 ${
               selectedCategory === 'all'
                 ? 'bg-card text-foreground shadow-xs'
                 : 'text-foreground/60 hover:text-foreground'
             }`}
           >
             <Layers className="w-3 h-3" />
-            <span>الكل</span>
+            <span>الكل ({activeServices.length})</span>
           </button>
-          <button
-            type="button"
-            onClick={() => setSelectedCategory('car')}
-            className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 ${
-              selectedCategory === 'car'
-                ? 'bg-card text-primary shadow-xs'
-                : 'text-foreground/60 hover:text-foreground'
-            }`}
-          >
-            <Car className="w-3 h-3" />
-            <span>خدمات السيارات</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedCategory('home')}
-            className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 ${
-              selectedCategory === 'home'
-                ? 'bg-card text-primary shadow-xs'
-                : 'text-foreground/60 hover:text-foreground'
-            }`}
-          >
-            <Home className="w-3 h-3" />
-            <span>خدمات المنازل</span>
-          </button>
+
+          {dynamicCategories.map((cat) => {
+            const count = activeServices.filter((s: any) => s.category === cat.slug).length;
+            const isSelected = selectedCategory === cat.slug;
+            return (
+              <button
+                key={cat.id || cat.slug}
+                type="button"
+                onClick={() => setSelectedCategory(cat.slug)}
+                className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 whitespace-nowrap shrink-0 ${
+                  isSelected
+                    ? 'bg-card text-primary shadow-xs'
+                    : 'text-foreground/60 hover:text-foreground'
+                }`}
+              >
+                {getCategoryIcon(cat.slug, cat.icon)}
+                <span>{cat.name}</span>
+                <span className="text-[10px] opacity-60">({count})</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 

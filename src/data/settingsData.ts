@@ -1,6 +1,22 @@
-import { SystemSettings } from '@/types';
+import { SystemSettings, FooterLinkItem } from '@/types';
 import { initialSocialLinks } from './cmsData';
 import { INITIAL_ZO_SETTINGS } from './zoAssets';
+
+export const DEFAULT_FOOTER_QUICK_LINKS: FooterLinkItem[] = [
+  { id: 'fl-1', label: 'الرئيسية', labelEn: 'Home', url: '/', visible: true, order: 1 },
+  { id: 'fl-2', label: 'الخدمات', labelEn: 'Services', url: '/services', visible: true, order: 2 },
+  { id: 'fl-3', label: 'العروض', labelEn: 'Offers', url: '/offers', visible: true, order: 3 },
+  { id: 'fl-4', label: 'معرض الأعمال', labelEn: 'Gallery', url: '/gallery', visible: true, order: 4 },
+  { id: 'fl-5', label: 'آراء العملاء', labelEn: 'Customer Reviews', url: '/reviews', visible: true, order: 5 },
+  { id: 'fl-6', label: 'من نحن', labelEn: 'About Us', url: '/about', visible: true, order: 6 },
+  { id: 'fl-7', label: 'الأسئلة الشائعة', labelEn: 'FAQ', url: '/faq', visible: true, order: 7 },
+  { id: 'fl-8', label: 'اتصل بنا', labelEn: 'Contact Us', url: '/contact', visible: true, order: 8 },
+];
+
+export const DEFAULT_FOOTER_CATEGORY_LINKS: FooterLinkItem[] = [
+  { id: 'fcl-1', label: 'خدمات السيارات', labelEn: 'Car Services', url: '/services/car', visible: true, order: 1 },
+  { id: 'fcl-2', label: 'خدمات المنازل', labelEn: 'Home Services', url: '/services/home', visible: true, order: 2 },
+];
 
 export const initialSystemSettings: SystemSettings = {
   general: {
@@ -75,6 +91,8 @@ export const initialSystemSettings: SystemSettings = {
     ctaTextEn: 'Book Your Service Now',
     footerText: 'CLEANZO — مساحات نظيفة، أيام أسعد. حلول تنظيف احترافية متنقلة للعناية بالسيارات والمنازل بأعلى معايير الجودة.',
     footerTextEn: 'CLEANZO — Cleaner Spaces, Happier Days. Mobile car and home care.',
+    footerQuickLinks: DEFAULT_FOOTER_QUICK_LINKS,
+    footerCategoryLinks: DEFAULT_FOOTER_CATEGORY_LINKS,
     topBanner: {
       enabled: true,
       text: 'خصم 20% لفتره محدودة على جميع باقات الغسيل والديتيلينج بمناسبه التحديث الجديد! كود: WELCOME20',

@@ -187,8 +187,8 @@ export async function calculateBookingPrice(
     service: {
       id: service.id,
       price: Number(service.price) || 0,
-      originalPrice: null,
-      discount: 0,
+      originalPrice: service.originalPrice !== undefined ? service.originalPrice : null,
+      discount: Number(service.discount) || 0,
     },
     selectedPackage: selectedPackageForCalc,
     addons: addonsForCalc,
@@ -231,8 +231,8 @@ export async function calculateBookingPrice(
     service: {
       id: service.id,
       price: Number(service.price) || 0,
-      originalPrice: null,
-      discount: 0,
+      originalPrice: service.originalPrice !== undefined ? service.originalPrice : null,
+      discount: Number(service.discount) || 0,
     },
     selectedPackage: selectedPackageForCalc,
     addons: addonsForCalc,
