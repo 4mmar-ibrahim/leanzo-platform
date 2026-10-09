@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Sparkles,
@@ -76,16 +76,19 @@ function BookingContent() {
   const queryCat = searchParams.get('category');
   const queryServiceId = searchParams.get('serviceId');
 
-  // Synchronize category or direct service from URL search params
+  // Synchronize category or direct service from URL search params ONCE on initial arrival
+  const hasInitializedFromQuery = useRef(false);
   useEffect(() => {
+    if (hasInitializedFromQuery.current) return;
+    hasInitializedFromQuery.current = true;
+
     if (queryCat) {
       setCategory(queryCat as ServiceCategory);
     }
     if (queryServiceId) {
       selectServiceById(queryServiceId);
-      setStep(1);
     }
-  }, [queryCat, queryServiceId, setCategory, selectServiceById, setStep]);
+  }, [queryCat, queryServiceId, setCategory, selectServiceById]);
 
   const isAr = locale === 'ar';
   const ArrowNext = direction === 'rtl' ? ArrowLeft : ArrowRight;
@@ -98,15 +101,14 @@ function BookingContent() {
 
   useEffect(() => {
     setMounted(true);
-    // On fresh page load / arrival at booking page without explicit step param, always start on Step 1
     const queryStep = searchParams.get('step');
-    if (!queryStep) {
-      setStep(1);
+    if (queryStep) {
+      const parsed = parseInt(queryStep, 10);
+      if (parsed >= 1 && parsed <= 4) {
+        setStep(parsed);
+      }
     }
-    if (!isAuthenticated) {
-      useBookingStore.getState().clearCustomerInfo();
-    }
-  }, [searchParams, setStep, isAuthenticated]);
+  }, []);
 
   const steps = [
     { num: 1, label: t.booking.step1, icon: Sparkles },

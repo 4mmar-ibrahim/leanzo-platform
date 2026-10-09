@@ -540,6 +540,9 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
 
       setIsEditingExisting(false);
       setIsModalOpen(false);
+      if (typeof nextStep === 'function') {
+        nextStep();
+      }
     } catch (err: any) {
       toast.error(err.message || (isAr ? 'فشل حفظ العنوان' : 'Failed to save address'));
     } finally {

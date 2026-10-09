@@ -239,11 +239,13 @@ export const useBookingStore = create<BookingState>()(
           get().clearServices();
           return;
         }
+        if (get().selectedService?.id === service.id) {
+          return;
+        }
         const updated = [{ service, selectedPackage: null, selectedAddons: [] }];
         set({
           category: service.category,
           ...syncLegacy(updated),
-          currentStep: 1,
           selectedDate: '',
           selectedTime: '',
           appliedCoupon: null,
