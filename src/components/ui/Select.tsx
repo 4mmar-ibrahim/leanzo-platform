@@ -18,7 +18,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           <label
             htmlFor={selectId}
             className={cn(
-              "block font-semibold text-slate-700 dark:text-slate-300",
+              "block font-semibold text-slate-700 dark:text-slate-300 truncate whitespace-nowrap",
               compact ? "text-[11px]" : "text-[11px] sm:text-xs"
             )}
           >

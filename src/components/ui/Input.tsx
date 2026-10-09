@@ -18,7 +18,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           <label
             htmlFor={inputId}
             className={cn(
-              "block font-semibold text-[#162631] dark:text-[#F6F8FA] font-sans",
+              "block font-semibold text-[#162631] dark:text-[#F6F8FA] font-sans truncate whitespace-nowrap",
               compact ? "text-[11px]" : "text-[11px] sm:text-xs"
             )}
           >

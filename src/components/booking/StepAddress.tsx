@@ -669,7 +669,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
               </Select>
 
               <Select
-                label={isAr ? 'المدينة / المنطقة' : 'City / Area'}
+                label={isAr ? 'المدينة' : 'City'}
                 value={cityId}
                 onChange={(e) => setCityId(e.target.value)}
                 disabled={activeCities.length === 0}
@@ -693,14 +693,14 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
             {/* Row 2: تسمية العنوان و اسم الشارع */}
             <div className="grid grid-cols-2 gap-2 sm:gap-3">
               <Input
-                label={isAr ? 'تسمية العنوان (مثل: المنزل)' : 'Address Label'}
+                label={isAr ? 'تسمية العنوان' : 'Address Label'}
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder={isAr ? 'المنزل' : 'Home'}
                 required
               />
               <Input
-                label={isAr ? 'اسم الشارع / الحي / المنطقة' : 'Street / Area'}
+                label={isAr ? 'الشارع / الحي' : 'Street / District'}
                 placeholder={isAr ? 'شارع النصر، متفرع من عباس العقاد' : 'Street name, district'}
                 value={area}
                 onChange={(e) => setArea(e.target.value)}
@@ -711,7 +711,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
             {/* Row 3: رقم الهاتف و رقم العمارة و الطابق و الشقة */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
               <Input
-                label={isAr ? 'رقم الهاتف للتواصل' : 'Contact Phone'}
+                label={isAr ? 'رقم الهاتف' : 'Phone'}
                 type="tel"
                 inputMode="numeric"
                 maxLength={11}
@@ -1029,7 +1029,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
             </Select>
 
             <Select
-              label={isAr ? 'المدينة / المنطقة' : 'City / Area'}
+              label={isAr ? 'المدينة' : 'City'}
               value={cityId}
               onChange={(e) => setCityId(e.target.value)}
               disabled={activeCities.length === 0}
@@ -1053,14 +1053,14 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
           {/* Row 2: تسمية العنوان و اسم الشارع */}
           <div className="grid grid-cols-2 gap-2 sm:gap-3">
             <Input
-              label={isAr ? 'تسمية العنوان (مثل: المنزل)' : 'Address Label'}
+              label={isAr ? 'تسمية العنوان' : 'Address Label'}
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder={isAr ? 'المنزل' : 'Home'}
               required
             />
             <Input
-              label={isAr ? 'الشارع / الحي' : 'Street / Area'}
+              label={isAr ? 'الشارع / الحي' : 'Street / District'}
               value={area}
               onChange={(e) => setArea(e.target.value)}
               placeholder={isAr ? 'اسم الشارع والحي' : 'Street name and district'}
@@ -1071,7 +1071,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
           {/* Row 3: رقم الهاتف و المبنى و الطابق و الشقة */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
             <Input
-              label={isAr ? 'رقم الهاتف للتواصل' : 'Contact Phone'}
+              label={isAr ? 'رقم الهاتف' : 'Phone'}
               type="tel"
               inputMode="numeric"
               maxLength={11}

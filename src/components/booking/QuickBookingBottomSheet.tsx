@@ -889,7 +889,7 @@ export function QuickBookingBottomSheet({
                 <div className="space-y-1">
                   <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-amber-500" />
-                    <span>المدينة / المنطقة</span>
+                    <span>المدينة</span>
                   </label>
                   <select
                     value={cityId}

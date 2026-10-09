@@ -112,17 +112,17 @@ function ServicesContent() {
           </div>
 
           {/* Category Tabs Switcher (Sleek Horizontal Segmented Control) */}
-          <div className="grid grid-cols-3 sm:flex items-center p-1 sm:p-1.5 rounded-xl sm:rounded-2xl bg-white/95 dark:bg-[#082845] border border-slate-200/80 dark:border-[#133B61] shadow-xs z-10 w-full sm:w-auto gap-1">
+          <div className="flex items-center justify-center sm:justify-start p-1.5 rounded-xl sm:rounded-2xl bg-white/95 dark:bg-[#082845] border border-slate-200/80 dark:border-[#133B61] shadow-xs z-10 w-full sm:w-auto gap-1.5 overflow-x-auto no-scrollbar scroll-smooth">
             <button
               onClick={() => setSelectedCategory('all')}
-              className={`flex items-center justify-center gap-1.5 px-2 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all text-center ${
+              className={`flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all text-center whitespace-nowrap shrink-0 cursor-pointer ${
                 selectedCategory === 'all'
                   ? 'bg-[#0866C6] text-white shadow-sm shadow-[#0866C6]/30'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/50'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">{t.services.all}</span>
+              <span className="whitespace-nowrap">{t.services.all}</span>
             </button>
 
             {categories.length > 0 ? (
@@ -134,7 +134,7 @@ function ServicesContent() {
                     <button
                       key={cat.id || cat.slug}
                       onClick={() => setSelectedCategory(cat.slug as ServiceCategory)}
-                      className={`flex items-center justify-center gap-1.5 px-2 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all text-center ${
+                      className={`flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all text-center whitespace-nowrap shrink-0 cursor-pointer ${
                         isSelected
                           ? 'bg-[#0866C6] text-white shadow-sm shadow-[#0866C6]/30'
                           : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/50'
@@ -147,7 +147,7 @@ function ServicesContent() {
                       ) : (
                         <Sparkles className="w-3.5 h-3.5 shrink-0" />
                       )}
-                      <span className="truncate">{isAr ? cat.name : (cat.nameEn || cat.name)}</span>
+                      <span className="whitespace-nowrap">{isAr ? cat.name : (cat.nameEn || cat.name)}</span>
                     </button>
                   );
                 })
@@ -155,26 +155,26 @@ function ServicesContent() {
               <>
                 <button
                   onClick={() => setSelectedCategory('car')}
-                  className={`flex items-center justify-center gap-1.5 px-2 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all text-center ${
+                  className={`flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all text-center whitespace-nowrap shrink-0 cursor-pointer ${
                     selectedCategory === 'car'
                       ? 'bg-[#0866C6] text-white shadow-sm shadow-[#0866C6]/30'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/50'
                   }`}
                 >
                   <Car className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">{t.services.carOnly}</span>
+                  <span className="whitespace-nowrap">{t.services.carOnly}</span>
                 </button>
 
                 <button
                   onClick={() => setSelectedCategory('home')}
-                  className={`flex items-center justify-center gap-1.5 px-2 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all text-center ${
+                  className={`flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all text-center whitespace-nowrap shrink-0 cursor-pointer ${
                     selectedCategory === 'home'
                       ? 'bg-[#0866C6] text-white shadow-sm shadow-[#0866C6]/30'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/50'
                   }`}
                 >
                   <Home className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">{t.services.homeOnly}</span>
+                  <span className="whitespace-nowrap">{t.services.homeOnly}</span>
                 </button>
               </>
             )}
