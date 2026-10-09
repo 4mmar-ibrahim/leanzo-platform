@@ -102,7 +102,12 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
         if (!isMounted) return;
         setIsDayAvailable(res?.isDayAvailable ?? true);
         setDayReason(res?.dayReason || '');
-        setAvailableSlots(res?.slots || []);
+        const slots = res?.slots || [];
+        setAvailableSlots(slots);
+        const firstAvail = slots.find((s: any) => s.available !== false);
+        if (firstAvail) {
+          setSelectedSlotTime(firstAvail.time24 || firstAvail.time);
+        }
       })
       .catch((err) => {
         if (!isMounted) return;
@@ -222,16 +227,16 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
           </div>
         </div>
 
-        {/* Time Slots Selection */}
+        {/* Time Slots Selection - Dropdown */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-              {isAr ? '2. اختر التوقيت من المواعيد المتاحة' : '2. Pick an Available Time Slot'}
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+              {isAr ? '2. اختر توقيت الموعد الجديد' : '2. Pick an Available Time Slot'}
             </label>
             {isLoadingSlots && (
               <span className="text-[11px] text-sky-600 dark:text-sky-400 flex items-center gap-1 font-semibold">
                 <Loader2 className="w-3 h-3 animate-spin" />
-                {isAr ? 'جاري فحص المواعيد المتاحة...' : 'Checking availability...'}
+                {isAr ? 'جاري فحص المواعيد...' : 'Checking availability...'}
               </span>
             )}
           </div>
@@ -241,68 +246,35 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
               <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
               <span>{dayReason || (isAr ? 'هذا اليوم غير متاح للحجز' : 'This day is not available')}</span>
             </div>
-          ) : isLoadingSlots ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 py-4">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div
-                  key={i}
-                  className="h-12 rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse border border-slate-200/50 dark:border-slate-700/50"
-                />
-              ))}
-            </div>
-          ) : availableSlots.length === 0 ? (
-            <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-center text-xs text-slate-500 space-y-1">
-              <Clock className="w-6 h-6 mx-auto text-slate-400" />
-              <p className="font-bold">{isAr ? 'لا توجد مواعيد متاحة في هذا اليوم' : 'No available slots for this day'}</p>
-              <p className="text-[11px] text-slate-400">{isAr ? 'يرجى اختيار يوم آخر من القائمة' : 'Please select another date'}</p>
-            </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-60 overflow-y-auto p-1">
-              {availableSlots.map((slot: any, idx: number) => {
-                const slotVal = slot.time24 || slot.time;
-                const isSelected = selectedSlotTime === slotVal;
-                const isAvailable = Boolean(slot.available);
-                const displayLabel = formatTimeTo12Hour(slot.label || slot.time);
-
-                return (
-                  <button
-                    key={slotVal || idx}
-                    type="button"
-                    disabled={!isAvailable || isSubmitting}
-                    onClick={() => {
-                      if (isAvailable) setSelectedSlotTime(slotVal);
-                    }}
-                    className={cn(
-                      'relative p-3 rounded-2xl border text-xs font-bold text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer select-none',
-                      isSelected
-                        ? 'bg-[#0866C6] text-white border-[#0866C6] shadow-md shadow-[#0866C6]/20 ring-2 ring-[#0866C6]/30'
-                        : isAvailable
-                        ? 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 hover:border-[#0866C6] hover:bg-sky-50/50 dark:hover:bg-slate-800'
-                        : 'bg-slate-100/70 dark:bg-slate-800/40 border-slate-200/50 dark:border-slate-800/50 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-55'
-                    )}
-                  >
-                    <span className="font-mono text-xs font-black" dir="ltr">
-                      {displayLabel}
-                    </span>
-
-                    {isAvailable ? (
-                      <span
-                        className={cn(
-                          'text-[10px] font-medium',
-                          isSelected ? 'text-white/90' : 'text-emerald-600 dark:text-emerald-400'
-                        )}
-                      >
-                        {isSelected ? (isAr ? '✓ الموعد المختار' : 'Selected') : (isAr ? 'متاح للحجز' : 'Available')}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-medium text-slate-400 flex items-center gap-1">
-                        <Lock className="w-2.5 h-2.5" />
-                        {isAr ? 'غير متاح' : 'Booked'}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+            <div className="relative">
+              <select
+                value={selectedSlotTime}
+                onChange={(e) => setSelectedSlotTime(e.target.value)}
+                disabled={isSubmitting || isLoadingSlots || availableSlots.length === 0}
+                className="w-full p-3 ps-10 pe-10 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white appearance-none focus:outline-hidden focus:border-[#0866C6] focus:ring-2 focus:ring-[#0866C6]/20 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <option value="">
+                  {isLoadingSlots
+                    ? (isAr ? 'جاري تحميل المواعيد...' : 'Loading slots...')
+                    : availableSlots.filter((s: any) => s.available !== false).length === 0
+                    ? (isAr ? 'لا توجد مواعيد متاحة في هذا اليوم' : 'No available slots for this day')
+                    : (isAr ? '-- اختر التوقيت المناسب --' : '-- Choose a time --')}
+                </option>
+                {availableSlots
+                  .filter((s: any) => s.available !== false)
+                  .map((slot: any, idx: number) => {
+                    const slotVal = slot.time24 || slot.time;
+                    const displayLabel = formatTimeTo12Hour(slot.label || slot.time);
+                    return (
+                      <option key={slotVal || idx} value={slotVal}>
+                        {displayLabel}
+                      </option>
+                    );
+                  })}
+              </select>
+              <Clock className="w-4 h-4 text-sky-500 absolute start-3.5 top-3.5 pointer-events-none" />
+              <ChevronDown className="w-4 h-4 text-slate-400 absolute end-3.5 top-3.5 pointer-events-none" />
             </div>
           )}
         </div>

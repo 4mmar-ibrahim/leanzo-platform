@@ -25,8 +25,8 @@ router.post('/calculate-price', calculateBookingPriceHandler);
 router.post('/', optionalCustomerAuth, createBooking);
 router.get('/my', authenticateCustomer, getCustomerBookings);
 router.get('/track/:id', trackOrderPublic);
-router.post('/:id/cancel', optionalCustomerAuth, cancelBookingCustomer);
-router.post('/:id/reschedule', optionalCustomerAuth, rescheduleBookingCustomer);
+router.post(['/:id/cancel', '/cancel/:id'], optionalCustomerAuth, cancelBookingCustomer);
+router.post(['/:id/reschedule', '/reschedule/:id'], optionalCustomerAuth, rescheduleBookingCustomer);
 
 // Admin Booking & Order management endpoints (Registered BEFORE /:id wildcard)
 router.get('/admin/all', authenticateAdmin, authorize('orders', 'view'), getAllBookingsAdmin);

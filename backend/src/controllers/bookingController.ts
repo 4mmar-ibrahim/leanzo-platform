@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import { Booking, BookingStatus, ITimelineEvent } from '../models/Booking.js';
 import { CouponUsage } from '../models/CouponUsage.js';
 import { Service } from '../models/Service.js';
@@ -1900,9 +1901,12 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       return;
     }
 
-    let booking = await Booking.findById(id);
+    let booking: any = null;
+    if (mongoose.isValidObjectId(id)) {
+      booking = await Booking.findById(id);
+    }
     if (!booking) {
-      booking = await Booking.findOne({ $or: [{ id }, { bookingNumber: id }] });
+      booking = await Booking.findOne({ $or: [{ id }, { bookingNumber: id }, { orderNumber: id }] });
     }
 
     if (!booking) {
