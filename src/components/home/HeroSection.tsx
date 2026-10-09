@@ -120,28 +120,28 @@ export function HeroSection() {
                   type="button"
                   onClick={() => handleCategorySwitch('car')}
                   style={{ backgroundColor: activeCategory === 'car' ? 'var(--cleanzo-blue)' : undefined }}
-                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 sm:gap-2.5 px-5 sm:px-6 py-2.5 rounded-full text-xs sm:text-sm font-black transition-all duration-200 ${
+                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 sm:gap-2.5 px-5 sm:px-6 py-2.5 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 ${
                     activeCategory === 'car'
                       ? 'text-white shadow-md'
                       : 'text-slate-700 dark:text-white hover:text-[#0866C6] dark:hover:text-[#38BDF8]'
                   }`}
                 >
                   <Car className="w-4 h-4 shrink-0" />
-                  <span className="truncate">{isAr ? 'خدمات السيارات 🚗' : 'Car Services'}</span>
+                  <span className="whitespace-nowrap">{isAr ? 'خدمات السيارات 🚗' : 'Car Services'}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => handleCategorySwitch('home')}
                   style={{ backgroundColor: activeCategory === 'home' ? 'var(--cleanzo-blue)' : undefined }}
-                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 sm:gap-2.5 px-5 sm:px-6 py-2.5 rounded-full text-xs sm:text-sm font-black transition-all duration-200 ${
+                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 sm:gap-2.5 px-5 sm:px-6 py-2.5 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 ${
                     activeCategory === 'home'
                       ? 'text-white shadow-md'
                       : 'text-slate-700 dark:text-white hover:text-[#0866C6] dark:hover:text-[#38BDF8]'
                   }`}
                 >
                   <Home className="w-4 h-4 shrink-0" />
-                  <span className="truncate">{isAr ? 'خدمات المنازل 🏡' : 'Home Care'}</span>
+                  <span className="whitespace-nowrap">{isAr ? 'خدمات المنازل 🏡' : 'Home Care'}</span>
                 </button>
               </div>
             </div>

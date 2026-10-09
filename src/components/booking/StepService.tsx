@@ -249,33 +249,33 @@ export function StepService() {
                 type="button"
                 id={`category-${cat.slug}-btn`}
                 onClick={() => setCategory(cat.slug as ServiceCategory)}
-                className={`p-3.5 sm:px-5 sm:py-4 rounded-2xl sm:rounded-3xl border-2 flex items-center justify-between gap-3.5 transition-all text-start cursor-pointer ${
+                className={`relative p-3 sm:px-4 sm:py-3.5 rounded-2xl border-2 flex items-center gap-2.5 sm:gap-3 transition-all text-start cursor-pointer ${
                   isSelected
                     ? 'border-[#0866C6] bg-sky-50/70 dark:bg-sky-950/40 text-[#07345C] dark:text-sky-200 shadow-md ring-2 ring-[#0866C6]/20'
                     : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center shrink-0 transition-all ${
-                      isSelected
-                        ? 'bg-[#0866C6] text-white shadow-md shadow-[#0866C6]/30'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                    }`}
-                  >
-                    <CatIcon className="w-5 h-5 sm:w-6 sm:h-6" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs sm:text-sm font-black truncate">{catName}</p>
-                    {catDesc && (
-                      <p className="text-[10px] sm:text-[11px] text-slate-500 truncate">
-                        {catDesc}
-                      </p>
-                    )}
-                  </div>
+                <div
+                  className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center shrink-0 transition-all ${
+                    isSelected
+                      ? 'bg-[#0866C6] text-white shadow-md shadow-[#0866C6]/30'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                  }`}
+                >
+                  <CatIcon className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm font-bold leading-snug break-words text-slate-900 dark:text-white">
+                    {catName}
+                  </p>
+                  {catDesc && (
+                    <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5 line-clamp-2 break-words">
+                      {catDesc}
+                    </p>
+                  )}
                 </div>
                 {selectedCount > 0 && (
-                  <span className="text-xs font-black px-2.5 py-1 rounded-full bg-[#0866C6] text-white shrink-0">
+                  <span className="absolute top-2 end-2 text-[10px] font-bold min-w-5 h-5 px-1.5 flex items-center justify-center rounded-full bg-[#0866C6] text-white shadow-xs">
                     {selectedCount}
                   </span>
                 )}
@@ -478,7 +478,7 @@ export function StepService() {
                       </div>
 
                       {/* Service Title */}
-                      <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white line-clamp-2 leading-snug pt-0.5">
+                      <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white line-clamp-2 leading-snug pt-0.5 break-words">
                         {isAr ? srv.title : srv.titleEn}
                       </h4>
 
@@ -535,10 +535,10 @@ export function StepService() {
                             : 'bg-sky-50 dark:bg-sky-950/60 text-[#0866C6] dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900 border border-sky-200/80 dark:border-sky-800'
                         )}
                       >
-                        <div className="flex items-center gap-1.5 truncate">
+                        <div className="flex items-center gap-1.5 min-w-0">
                           <Sparkles className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-                          <span className="truncate">
-                            {isAr ? 'عرض الباقات و الإضافات' : 'View Packages & Add-ons'}
+                          <span className="text-[11px] sm:text-xs font-bold leading-tight">
+                            {isAr ? 'عرض الباقات والإضافات' : 'View Packages & Add-ons'}
                           </span>
                         </div>
                         {selectedItem?.selectedPackage ? (
@@ -739,7 +739,7 @@ export function StepService() {
                                   {isPkgSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                                 </div>
                                 <div>
-                                  <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white block truncate">
+                                  <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white block break-words leading-tight">
                                     {isAr ? pkg.name : pkg.nameEn || pkg.name}
                                   </span>
                                   {pkg.durationMinutes && (
@@ -798,7 +798,7 @@ export function StepService() {
                                 >
                                   {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
                                 </div>
-                                <span className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
+                                <span className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 break-words leading-tight">
                                   {isAr ? addon.name : addon.nameEn || addon.name}
                                 </span>
                               </div>

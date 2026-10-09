@@ -544,7 +544,7 @@ export function QuickBookingBottomSheet({
                           setSelectedAddonsList([]);
                         }}
                         className={cn(
-                          'flex-1 min-w-[120px] py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer',
+                          'flex-1 min-w-[110px] py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer whitespace-nowrap',
                           isSelected
                             ? 'bg-[#0866C6] text-white shadow-md shadow-[#0866C6]/25'
                             : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -578,7 +578,7 @@ export function QuickBookingBottomSheet({
                           : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                       )}
                     >
-                      <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
                         {svc.image ? (
                           <img
                             src={svc.image}
@@ -590,11 +590,11 @@ export function QuickBookingBottomSheet({
                             <Sparkles className="w-6 h-6" />
                           </div>
                         )}
-                        <div className="min-w-0">
-                          <h4 className="text-xs sm:text-sm font-bold truncate text-slate-900 dark:text-white">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white leading-snug line-clamp-2 break-words">
                             {svc.title}
                           </h4>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5 leading-tight break-words">
                             {svc.shortDescription}
                           </p>
                           <div className="flex items-center gap-2 mt-1">

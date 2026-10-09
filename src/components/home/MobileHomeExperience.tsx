@@ -364,11 +364,11 @@ export function MobileHomeExperience() {
 
                     {/* Clean Title & Subtitle Outside the Image — Pure text, no background box */}
                     <div className="text-center px-1 pb-2">
-                      <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white leading-tight">
+                      <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white leading-tight">
                         {titleText}
                       </h3>
                       {subtitleText && (
-                        <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium line-clamp-1 mt-0.5">
+                        <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium line-clamp-2 mt-0.5">
                           {subtitleText}
                         </p>
                       )}
@@ -380,7 +380,7 @@ export function MobileHomeExperience() {
                         type="button"
                         onClick={() => openBookingForCategory(cat.slug || cat.id || 'car')}
                         style={{ backgroundColor: 'var(--cleanzo-blue)' }}
-                        className="w-full py-2.5 px-3 rounded-full text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-sky-500/20 active:scale-95 transition-transform"
+                        className="w-full py-2.5 px-3 rounded-full text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-sky-500/20 active:scale-95 transition-transform whitespace-nowrap"
                       >
                         <span>{isAr ? 'حجز سريع' : 'Quick Booking'}</span>
                         <ArrowIcon className="w-3.5 h-3.5" />
