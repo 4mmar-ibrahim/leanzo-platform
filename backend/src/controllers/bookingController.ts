@@ -484,8 +484,9 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
       ? pricing.items.map((i: any) => i.serviceId).filter(Boolean)
       : [service.id];
 
-    // 4. Concurrency-Safe Authoritative Slot Assertion & Booking Creation
-    const lockKey = `${date}_${targetServiceIds.slice().sort().join('_')}`;
+    // 4. Concurrency-Safe Authoritative Category-Based Slot Assertion & Booking Creation
+    const targetCategory = bookingCategory || service.category || 'general';
+    const lockKey = `${date}_${targetCategory}`;
     let bookingResult: { isDuplicate: boolean; booking: any };
     try {
       bookingResult = await withBookingLock(lockKey, async () => {
@@ -495,6 +496,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
           timeStr: time,
           serviceId: service.id,
           serviceIds: targetServiceIds,
+          category: targetCategory,
           customDuration: pricing.totalServiceDuration,
         });
 
@@ -1970,15 +1972,17 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       ])
     ).filter(Boolean);
 
-    const lockKey = `booking_reschedule_${booking.id}`;
+    const targetCategory = booking.category || 'general';
+    const lockKey = `booking_reschedule_${booking.id}_${targetCategory}`;
 
     await withBookingLock(lockKey, async () => {
-      // 1. Validate new appointment slot BEFORE releasing old reservation (multi-service aware)
+      // 1. Validate new appointment slot BEFORE releasing old reservation (category-based aware)
       const slotTiming = await assertSlotAvailability({
         dateStr: newDate,
         timeStr: newTime,
         serviceId: booking.serviceId,
         serviceIds: targetServiceIds.length > 0 ? targetServiceIds : [booking.serviceId],
+        category: targetCategory,
         customDuration: booking.totalOccupiedMinutes || booking.duration,
         excludeBookingId: booking.id,
       });

@@ -72,6 +72,7 @@ export default function AdminCalendarPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [showCancelled, setShowCancelled] = useState<boolean>(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'car' | 'home'>('all');
 
   const updateOrderStatusStore = useOrderStore((s) => s.updateOrderStatus);
   const technicians = useTechnicianStore((s) => s.technicians);
@@ -196,14 +197,18 @@ export default function AdminCalendarPage() {
     }
   };
 
-  // Filter orders based on cancelled & status toggles
+  // Filter orders based on cancelled, status, and category toggles
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
       if (!showCancelled && o.status === 'cancelled') return false;
       if (statusFilter !== 'all' && o.status !== statusFilter) return false;
+      if (categoryFilter !== 'all') {
+        const cat = o.category || o.service?.category || (o as any).serviceSnapshot?.category;
+        if (cat !== categoryFilter) return false;
+      }
       return true;
     });
-  }, [orders, showCancelled, statusFilter]);
+  }, [orders, showCancelled, statusFilter, categoryFilter]);
 
   // Calendar Month Grid Calculation
   const monthGridDays = useMemo(() => {
@@ -426,6 +431,43 @@ export default function AdminCalendarPage() {
               )}
             >
               نوفمبر
+            </button>
+          </div>
+
+          {/* Category Filter Selector */}
+          <div className="flex items-center p-1 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs shadow-2xs">
+            <button
+              onClick={() => setCategoryFilter('all')}
+              className={cn(
+                'px-2.5 py-1 rounded-lg font-bold transition-all',
+                categoryFilter === 'all'
+                  ? 'bg-[#0866C6] text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              )}
+            >
+              جميع الأقسام
+            </button>
+            <button
+              onClick={() => setCategoryFilter('car')}
+              className={cn(
+                'px-2.5 py-1 rounded-lg font-bold transition-all',
+                categoryFilter === 'car'
+                  ? 'bg-[#0866C6] text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              )}
+            >
+              السيارات 🚗
+            </button>
+            <button
+              onClick={() => setCategoryFilter('home')}
+              className={cn(
+                'px-2.5 py-1 rounded-lg font-bold transition-all',
+                categoryFilter === 'home'
+                  ? 'bg-[#0866C6] text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              )}
+            >
+              المنازل 🏠
             </button>
           </div>
 

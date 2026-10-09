@@ -199,13 +199,15 @@ export const cleanzoApi = {
       serviceId?: string,
       duration?: number,
       serviceIds?: string[],
-      excludeBookingId?: string
+      excludeBookingId?: string,
+      category?: string
     ) => {
       const params = new URLSearchParams({ date });
       if (serviceId) params.append('serviceId', serviceId);
       if (duration) params.append('duration', String(duration));
       if (serviceIds && serviceIds.length > 0) params.append('serviceIds', serviceIds.join(','));
       if (excludeBookingId) params.append('excludeBookingId', excludeBookingId);
+      if (category && category !== 'all') params.append('category', category);
       return apiRequest<{
         date: string;
         isDayAvailable: boolean;
@@ -225,10 +227,17 @@ export const cleanzoApi = {
         }>;
       }>(`/availability?${params.toString()}`);
     },
-    validateSlot: (date: string, time: string, serviceId?: string, duration?: number, serviceIds?: string[]) =>
+    validateSlot: (
+      date: string,
+      time: string,
+      serviceId?: string,
+      duration?: number,
+      serviceIds?: string[],
+      category?: string
+    ) =>
       apiRequest<{ valid: boolean; message: string }>('/availability/check-slot', {
         method: 'POST',
-        body: JSON.stringify({ date, time, serviceId, duration, serviceIds }),
+        body: JSON.stringify({ date, time, serviceId, duration, serviceIds, category }),
       }),
   },
 

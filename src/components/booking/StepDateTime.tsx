@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 
 export function StepDateTime() {
   const { t, locale } = useLocaleStore();
-  const { selectedDate, setDate, selectedTime, setTime, selectedService, selectedServices, getTotalDuration, nextStep } = useBookingStore();
+  const { selectedDate, setDate, selectedTime, setTime, selectedService, selectedServices, category, getTotalDuration, nextStep } = useBookingStore();
   const bookingSettings = useSettingsStore((s) => s.settings.booking);
   const fetchPublicSettings = useSettingsStore((s) => s.fetchPublicSettings);
   const orders = useOrderStore((s) => s.orders);
@@ -66,13 +66,15 @@ export function StepDateTime() {
     }
   }, [selectedDate, dateOptions, setDate]);
 
-  // Query live availability from backend when date, service, or booking settings change (multi-service aware)
+  // Query live availability from backend when date, service, addons, duration, or category changes (category-based aware)
   useEffect(() => {
     if (!selectedDate) return;
     let isMounted = true;
     const duration = getTotalDuration() || selectedService?.serviceDurationMinutes || selectedService?.duration || 45;
+    const effectiveCategory = category || selectedService?.category;
+
     cleanzoApi.availability
-      .checkDate(selectedDate, selectedService?.id, duration, currentServiceIds)
+      .checkDate(selectedDate, selectedService?.id, duration, currentServiceIds, undefined, effectiveCategory)
       .then((res) => {
         if (isMounted) {
           if (res?.slots && Array.isArray(res.slots) && res.slots.length > 0) {
@@ -101,13 +103,14 @@ export function StepDateTime() {
     return () => {
       isMounted = false;
     };
-  }, [selectedDate, selectedService?.id, currentServiceIds, getTotalDuration, bookingSettings]);
+  }, [selectedDate, selectedService?.id, currentServiceIds, getTotalDuration, bookingSettings, category, selectedService?.category]);
 
-  // Compute available time slots for the chosen date & services:
-  // Strict Multi-Service rule: If an active booking exists for ANY of the order's services at date & time, mark slot closed!
+  // Compute available time slots for the chosen date & category:
+  // Strict Category rule: All services within the same category share the schedule pool.
   const timeSlots = useMemo(() => {
     if (!selectedDate) return [];
 
+    const effectiveCategory = category || selectedService?.category;
     let baseSlots: BookingSlot[] = [];
     if (liveSlots !== null) {
       baseSlots = [...liveSlots];
@@ -120,20 +123,20 @@ export function StepDateTime() {
         orders,
         getTotalDuration() || selectedService?.serviceDurationMinutes || selectedService?.duration,
         selectedService?.travelTimeMinutes,
-        currentServiceIds
+        currentServiceIds,
+        effectiveCategory
       );
     }
 
-    // Cross-reference with all active orders in store to guarantee local and remote sync
+    // Cross-reference with all active orders in store using category isolation
     return baseSlots.map((slot) => {
       const isAlreadyBooked = orders.some((o) => {
         if (o.status === 'cancelled') return false;
         if (o.date !== selectedDate) return false;
 
-        const matchesAny = currentServiceIds.some((sId) => isSameService(o, sId, undefined));
-        if (!matchesAny && selectedService?.title) {
-          if (!isSameService(o, undefined, selectedService.title)) return false;
-        } else if (!matchesAny && currentServiceIds.length > 0) {
+        // Category-based check: bookings in another category do not block
+        const oCat = o.category || o.service?.category || (o as any).serviceSnapshot?.category;
+        if (effectiveCategory && oCat && oCat !== effectiveCategory) {
           return false;
         }
 
@@ -149,9 +152,9 @@ export function StepDateTime() {
       }
       return slot;
     });
-  }, [selectedDate, liveSlots, bookingSettings, selectedService, currentServiceIds, orders, isAr]);
+  }, [selectedDate, liveSlots, bookingSettings, selectedService, currentServiceIds, orders, category, isAr, getTotalDuration]);
 
-  // Auto-select first available slot if current slot is invalid or empty
+  // Auto-select first available slot if current slot is invalid, or invalidate clearly if none available
   useEffect(() => {
     if (timeSlots.length > 0) {
       const isCurrentSlotValid = timeSlots.some((s) => s.time === selectedTime && s.isAvailable);
@@ -159,8 +162,12 @@ export function StepDateTime() {
         const firstAvailable = timeSlots.find((s) => s.isAvailable);
         if (firstAvailable) {
           setTime(firstAvailable.time);
+        } else {
+          setTime('');
         }
       }
+    } else {
+      setTime('');
     }
   }, [timeSlots, selectedTime, setTime]);
 

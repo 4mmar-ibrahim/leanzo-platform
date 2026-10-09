@@ -4,7 +4,7 @@ import { sendSuccess, sendError } from '../utils/responseHandler.js';
 
 export async function checkDateAvailability(req: Request, res: Response): Promise<void> {
   try {
-    const { date, duration, serviceId, serviceIds, excludeBookingId } = req.query;
+    const { date, duration, serviceId, serviceIds, excludeBookingId, category } = req.query;
     if (!date || typeof date !== 'string') {
       sendError(res, 'يرجى تحديد التاريخ المراد فحصه (YYYY-MM-DD)', 422);
       return;
@@ -22,7 +22,8 @@ export async function checkDateAvailability(req: Request, res: Response): Promis
       serviceId as string,
       durationNum,
       parsedServiceIds,
-      excludeBookingId as string | undefined
+      excludeBookingId as string | undefined,
+      category as string | undefined
     );
     sendSuccess(res, result);
   } catch (err: any) {
@@ -32,7 +33,7 @@ export async function checkDateAvailability(req: Request, res: Response): Promis
 
 export async function validateSlot(req: Request, res: Response): Promise<void> {
   try {
-    const { date, time, duration, serviceId, serviceIds } = req.body;
+    const { date, time, duration, serviceId, serviceIds, category } = req.body;
     if (!date || !time) {
       sendError(res, 'يرجى تحديد التاريخ والوقت المراد التحقق منهما', 422);
       return;
@@ -50,6 +51,7 @@ export async function validateSlot(req: Request, res: Response): Promise<void> {
       timeStr: time,
       serviceId: (serviceId as string) || (parsedServiceIds?.[0] || ''),
       serviceIds: parsedServiceIds,
+      category: category as string | undefined,
       customDuration: durationNum,
     });
 

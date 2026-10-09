@@ -449,6 +449,29 @@ export function getOrderServiceIds(order: any): string[] {
 }
 
 /**
+ * Extracts category from an order record.
+ */
+export function getOrderCategory(order: any): string | undefined {
+  if (!order) return undefined;
+  if (order.category && order.category !== 'all') return order.category;
+  if (order.service?.category) return order.service.category;
+  if (order.serviceSnapshot?.category) return order.serviceSnapshot.category;
+  if (Array.isArray(order.selectedServices) && order.selectedServices[0]?.service?.category) {
+    return order.selectedServices[0].service.category;
+  }
+  return undefined;
+}
+
+/**
+ * Checks if an order belongs to the target category.
+ */
+export function isSameCategory(order: any, targetCategory?: string): boolean {
+  if (!targetCategory || targetCategory === 'all') return true;
+  const orderCat = getOrderCategory(order);
+  return orderCat === targetCategory;
+}
+
+/**
  * Checks if an order belongs to the same service by ID or title (multi-service aware).
  */
 export function isSameService(
@@ -488,10 +511,11 @@ export function isSameService(
 }
 
 /**
- * Dynamic Continuous Sequential Availability Generator (Model A)
+ * Dynamic Continuous Sequential Availability Generator (Category-Based)
  * TOTAL OCCUPANCY = SERVICE DURATION + TRAVEL/ARRIVAL DURATION
  * Appointments are continuous sequential intervals: Next starts exactly when previous ends.
- * No arbitrary 30-minute or 60-minute roundings.
+ * Services in the SAME category share one unified schedule.
+ * Different categories have completely independent schedules.
  */
 export function getTimeSlotsForDate(
   dateString: string,
@@ -501,7 +525,8 @@ export function getTimeSlotsForDate(
   existingOrders?: Order[],
   serviceDuration?: number,
   travelDuration?: number,
-  serviceIds?: string[]
+  serviceIds?: string[],
+  category?: string
 ): BookingSlot[] {
   const isBlocked = (settings?.blockedDates || []).includes(dateString);
   const holiday = (settings?.holidays || []).find((h) => h.date === dateString);
@@ -564,21 +589,27 @@ export function getTimeSlotsForDate(
     let isAvailable = !isBreak;
     let reason: string | undefined = isBreak ? 'استراحة عمل' : undefined;
 
-    // Check overlap with active orders (multi-service collision aware)
+    // Check overlap with active orders (Category-Based Collision Aware)
     if (existingOrders && existingOrders.length > 0 && isAvailable) {
       const isBooked = existingOrders.some((o) => {
         if (o.status === 'cancelled') return false;
         if (o.date !== dateString) return false;
 
-        const targetIds = Array.isArray(serviceIds) && serviceIds.length > 0
-          ? serviceIds.filter(Boolean)
-          : serviceId ? [serviceId] : [];
+        // Category-based check: orders in different categories do not collide!
+        if (category && category !== 'all') {
+          const oCat = getOrderCategory(o);
+          if (oCat && oCat !== category) return false;
+        } else {
+          const targetIds = Array.isArray(serviceIds) && serviceIds.length > 0
+            ? serviceIds.filter(Boolean)
+            : serviceId ? [serviceId] : [];
 
-        if (targetIds.length > 0) {
-          const matches = targetIds.some((sId) => isSameService(o, sId, undefined));
-          if (!matches) return false;
-        } else if (serviceTitle) {
-          if (!isSameService(o, undefined, serviceTitle)) return false;
+          if (targetIds.length > 0) {
+            const matches = targetIds.some((sId) => isSameService(o, sId, undefined));
+            if (!matches) return false;
+          } else if (serviceTitle) {
+            if (!isSameService(o, undefined, serviceTitle)) return false;
+          }
         }
 
         const oStart = timeStringToMinutes(o.time);
