@@ -15,7 +15,7 @@ export const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100MB
  * Inspects a binary buffer to verify true magic bytes signature
  * Never trusts client headers or file extension alone.
  */
-export function validateMediaBuffer(buffer: Buffer, expectedType?: 'image' | 'video'): ValidationResult {
+export function validateMediaBuffer(buffer: Buffer, expectedType?: 'image' | 'video', contentTypeHint?: string): ValidationResult {
   if (!buffer || buffer.length < 12) {
     return {
       isValid: false,
@@ -168,6 +168,29 @@ export function validateMediaBuffer(buffer: Buffer, expectedType?: 'image' | 'vi
       mimeType: 'image/svg+xml',
       extension: 'svg',
     };
+  }
+
+  // Fallback: If HTTP response header explicitly specified a safe image/video MIME type
+  if (contentTypeHint) {
+    const cleanMime = contentTypeHint.toLowerCase().split(';')[0].trim();
+    if (cleanMime.startsWith('image/')) {
+      const ext = cleanMime.replace('image/', '').replace('jpeg', 'jpg');
+      return {
+        isValid: true,
+        type: 'image',
+        mimeType: cleanMime,
+        extension: ext || 'jpg',
+      };
+    }
+    if (cleanMime.startsWith('video/')) {
+      const ext = cleanMime.replace('video/', '');
+      return {
+        isValid: true,
+        type: 'video',
+        mimeType: cleanMime,
+        extension: ext || 'mp4',
+      };
+    }
   }
 
   // If we reach here, it's not a supported/safe format

@@ -65,6 +65,15 @@ export function CleanzoImage({
     return cleanSrc;
   }, [cleanSrc, useProxyFallback]);
 
+  const imgRef = React.useRef<HTMLImageElement>(null);
+
+  // Check if image is already cached/complete on mount or src change
+  React.useEffect(() => {
+    if (imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth > 0) {
+      setLoaded(true);
+    }
+  }, [activeImageSrc]);
+
   // Object position mapping
   const positionClass = {
     center: 'object-center',
@@ -96,7 +105,7 @@ export function CleanzoImage({
       {/* 1:1 Loading Skeleton — Prevents Layout Shift */}
       {!loaded && !error && activeImageSrc && (
         <div
-          className="absolute inset-0 bg-transparent animate-pulse z-10 flex items-center justify-center"
+          className="absolute inset-0 bg-transparent animate-pulse z-10 flex items-center justify-center pointer-events-none"
           aria-hidden="true"
         >
           <div className="w-8 h-8 rounded-full bg-slate-300/20 dark:bg-slate-700/30 flex items-center justify-center">
@@ -122,16 +131,16 @@ export function CleanzoImage({
           />
         ) : (
           <img
+            ref={imgRef}
             src={activeImageSrc}
             alt={alt || 'Cleanzo Image'}
             loading={priority ? 'eager' : 'lazy'}
             referrerPolicy="no-referrer"
-            crossOrigin="anonymous"
             onLoad={() => setLoaded(true)}
             onError={handleImageError}
             className={`w-full h-full ${fitClass} ${positionClass} transition-all duration-300 ${
-              loaded ? 'opacity-100' : 'opacity-0'
-            } ${fit === 'contain' ? 'p-2' : ''} ${className}`}
+              fit === 'contain' ? 'p-2' : ''
+            } ${className}`}
             {...rest}
           />
         )

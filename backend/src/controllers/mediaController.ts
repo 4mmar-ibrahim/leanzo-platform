@@ -133,7 +133,7 @@ export async function importUrlMedia(req: AuthenticatedAdminRequest, res: Respon
     }
 
     // 2. Validate binary magic bytes from fetched buffer
-    const validation = validateMediaBuffer(fetchResult.buffer, type);
+    const validation = validateMediaBuffer(fetchResult.buffer, type, fetchResult.contentType);
     if (!validation.isValid) {
       sendError(
         res,

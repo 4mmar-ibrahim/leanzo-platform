@@ -38,11 +38,16 @@ export function extractDirectImageUrl(rawUrl?: string | null): string {
   let url = String(rawUrl).trim();
   if (!url) return '';
 
-  // Google Images preview link: extract actual target image URL
-  if (url.includes('google.') && url.includes('imgres')) {
+  // Strip wrapping quotes, markdown image syntax ![](url), angle brackets <url>, parentheses (url)
+  url = url.replace(/^[<"'\(\[\{\s]+|[>"'\)\]\}\s]+$/g, '').trim();
+  const mdMatch = url.match(/!\[.*?\]\((.*?)\)/);
+  if (mdMatch) url = mdMatch[1].trim();
+
+  // Google Images preview / redirect link: extract actual target image URL
+  if (url.includes('google.') && (url.includes('imgres') || url.includes('/url?') || url.includes('/imglanding'))) {
     try {
       const parsed = new URL(url.startsWith('http') ? url : `https://${url}`);
-      const imgurl = parsed.searchParams.get('imgurl');
+      const imgurl = parsed.searchParams.get('imgurl') || parsed.searchParams.get('url');
       if (imgurl) {
         url = decodeURIComponent(imgurl);
       }
@@ -69,13 +74,23 @@ export function extractDirectImageUrl(rawUrl?: string | null): string {
     return `https://i.imgur.com/${imgurMatch[1]}.jpg`;
   }
 
-  // If URL has no protocol but starts with www or domain-like string
+  // Wikimedia file page link to direct thumbnail/image
+  if (url.includes('commons.wikimedia.org/wiki/File:')) {
+    try {
+      const filename = url.split('File:')[1];
+      if (filename) {
+        url = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(decodeURIComponent(filename))}`;
+      }
+    } catch {}
+  }
+
+  // If URL has no protocol but starts with domain-like string
   if (
     !url.startsWith('http://') &&
     !url.startsWith('https://') &&
     !url.startsWith('data:') &&
     !url.startsWith('/') &&
-    (url.startsWith('www.') || /^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}\//i.test(url))
+    (url.startsWith('www.') || /^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}/i.test(url))
   ) {
     url = `https://${url}`;
   }
