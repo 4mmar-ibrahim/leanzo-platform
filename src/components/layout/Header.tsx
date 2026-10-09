@@ -21,6 +21,7 @@ import {
   Info,
   HelpCircle,
   Search,
+  MessageCircle,
 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -121,10 +122,9 @@ export function Header() {
       key: 'subscriptions',
       href: '/subscriptions',
       label: isAr ? 'الاشتراكات' : 'Subscriptions',
-      badge: isAr ? 'باقات دورية' : 'Plans',
+      badge: isAr ? 'باقات' : 'Plans',
     },
     { key: 'gallery', href: '/gallery', label: isAr ? 'أعمالنا' : 'Our Work' },
-    { key: 'reviews', href: '/reviews', label: isAr ? 'آراء العملاء' : 'Reviews' },
   ];
 
   const primaryNavLinks = React.useMemo(() => {
@@ -133,6 +133,7 @@ export function Header() {
   }, [allPrimaryNavLinks, mounted, sections, isSectionVisible]);
 
   const allMoreLinks = [
+    { key: 'reviews', href: '/reviews', label: isAr ? 'آراء العملاء' : 'Reviews', desc: isAr ? 'تقييمات وتجارب العملاء' : 'Customer reviews & feedback', icon: MessageCircle },
     { key: 'about', href: '/about', label: isAr ? 'من نحن' : 'About Us', desc: isAr ? 'قصة كلينزو ورؤيتنا' : 'Our story & vision', icon: Info },
     { key: 'faq', href: '/faq', label: isAr ? 'الأسئلة الشائعة' : 'FAQs', desc: isAr ? 'إجابات على كافة استفساراتك' : 'Answers to common questions', icon: HelpCircle },
     { key: 'contact', href: '/contact', label: isAr ? 'تواصل معنا' : 'Contact Us', desc: isAr ? 'خدمة العملاء والدعم الفني' : 'Customer care & support', icon: PhoneCall },
@@ -140,7 +141,7 @@ export function Header() {
 
   const moreLinks = React.useMemo(() => {
     if (!mounted) return allMoreLinks;
-    return allMoreLinks.filter((item) => isSectionVisible(item.key));
+    return allMoreLinks.filter((item) => item.key === 'reviews' || isSectionVisible(item.key));
   }, [allMoreLinks, mounted, sections, isSectionVisible]);
 
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
@@ -154,8 +155,8 @@ export function Header() {
           : 'bg-white/85 dark:bg-[#041728]/85 backdrop-blur-md border-b border-slate-200/60 dark:border-[#133B61]/60'
       )}
     >
-      <div className="max-w-7xl mx-auto px-3 sm:px-5 lg:px-6 xl:px-8 py-2">
-        <div className="flex items-center justify-between gap-2 xl:gap-4 w-full">
+      <div className="max-w-[1440px] mx-auto px-3 sm:px-5 lg:px-6 xl:px-8 py-2">
+        <div className="flex items-center justify-between gap-2.5 xl:gap-4 w-full">
           
           {/* ========================================================= */}
           {/* 1. BRAND MODULE (المستطيل الأول: الشعار والهوية) */}
@@ -191,7 +192,7 @@ export function Header() {
           {/* 2. NAVIGATION MODULE (المستطيل الثاني: شريط الروابط الرئيسية) */}
           {/* ========================================================= */}
           <div className="hidden lg:flex items-center justify-center flex-1 min-w-0 px-1 xl:px-2">
-            <nav className="flex items-center gap-0.5 xl:gap-1 p-1 rounded-2xl bg-slate-50/90 dark:bg-[#072540]/60 backdrop-blur-md border border-slate-200/80 dark:border-[#133B61] shadow-2xs shrink-0">
+            <nav className="flex items-center gap-0.5 xl:gap-1 p-1 rounded-2xl bg-slate-50/90 dark:bg-[#072540]/60 backdrop-blur-md border border-slate-200/80 dark:border-[#133B61] shadow-2xs">
             {primaryNavLinks.map((link) => {
               const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href));
 
@@ -357,32 +358,22 @@ export function Header() {
           {/* ========================================================= */}
           {/* 3. DESKTOP ACTIONS: SEARCH + UTILITIES + AUTH + CTA */}
           {/* ========================================================= */}
-          <div className="hidden lg:flex items-center gap-1.5 xl:gap-2 2xl:gap-2.5 shrink-0">
+          <div className="hidden lg:flex items-center gap-1.5 xl:gap-2 shrink-0">
             
-            {/* Quick Search Module - Full on 2xl, compact icon on lg & xl to preserve perfect balance */}
+            {/* Quick Search Module - Compact and responsive pill */}
             <button
               type="button"
               onClick={() => setSearchModalOpen(true)}
-              className="hidden 2xl:flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-slate-50/90 dark:bg-[#072540]/60 backdrop-blur-md border border-slate-200/80 dark:border-[#133B61] hover:border-[#0866C6]/50 hover:bg-white dark:hover:bg-[#082845] text-slate-700 dark:text-white text-xs font-semibold transition-all duration-200 shadow-2xs hover:shadow-xs group active:scale-[0.98]"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl bg-slate-50/90 dark:bg-[#072540]/60 backdrop-blur-md border border-slate-200/80 dark:border-[#133B61] hover:border-[#0866C6]/50 hover:bg-white dark:hover:bg-[#082845] text-slate-700 dark:text-white text-xs font-semibold transition-all duration-200 shadow-2xs hover:shadow-xs group active:scale-[0.98] shrink-0"
               title={isAr ? 'بحث سريع (Ctrl + K)' : 'Quick Search (Ctrl + K)'}
             >
               <Search className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#0866C6] dark:group-hover:text-[#38BDF8] group-hover:scale-110 transition-all duration-200" />
-              <span className="text-slate-600 dark:text-white font-medium">
-                {isAr ? 'بحث سريع...' : 'Search...'}
+              <span className="hidden xl:inline text-slate-600 dark:text-slate-300 font-medium text-[11px]">
+                {isAr ? 'بحث...' : 'Search...'}
               </span>
-              <kbd className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono font-bold bg-white dark:bg-[#041728] border border-slate-200 dark:border-[#133B61] rounded-md text-slate-600 dark:text-white shadow-2xs group-hover:border-[#0866C6]/40 transition-colors">
+              <kbd className="hidden xl:inline-flex items-center px-1.5 py-0.5 text-[9px] font-mono font-bold bg-white dark:bg-[#041728] border border-slate-200 dark:border-[#133B61] rounded text-slate-500 dark:text-slate-400 shadow-2xs">
                 ⌘K
               </kbd>
-            </button>
-
-            {/* Compact Search for medium desktop (lg to 2xl) */}
-            <button
-              type="button"
-              onClick={() => setSearchModalOpen(true)}
-              className="hidden lg:flex 2xl:hidden items-center justify-center w-8 h-8 rounded-2xl bg-slate-50/90 dark:bg-[#072540]/60 backdrop-blur-md border border-slate-200/80 dark:border-[#133B61] hover:border-[#0866C6]/50 hover:bg-white dark:hover:bg-[#082845] text-slate-700 dark:text-white shadow-2xs hover:shadow-xs group transition-all duration-200 active:scale-[0.98]"
-              title={isAr ? 'بحث سريع (Ctrl + K)' : 'Quick Search (Ctrl + K)'}
-            >
-              <Search className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#0866C6] dark:group-hover:text-[#38BDF8] group-hover:scale-110 transition-all duration-200" />
             </button>
 
             {/* Utilities Module (المستطيل الرابع: التنبيهات واللغة والثيم) */}
@@ -482,18 +473,17 @@ export function Header() {
             <Link
               href="/booking"
               onClick={() => useBookingStore.getState().startNewBooking()}
-              className="relative group overflow-hidden inline-flex items-center gap-1.5 xl:gap-2 px-3.5 py-1.5 xl:px-4 xl:py-2 2xl:px-5 2xl:py-2.5 rounded-2xl font-bold text-xs 2xl:text-sm text-white bg-[#F0444C] hover:bg-[#D9333B] active:bg-[#B8242C] shadow-md shadow-[#F0444C]/25 hover:shadow-xl hover:shadow-[#F0444C]/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 shrink-0 font-sans cursor-pointer whitespace-nowrap"
+              className="relative group overflow-hidden inline-flex items-center gap-1.5 px-3.5 py-1.5 xl:px-4 xl:py-2 rounded-2xl font-bold text-xs text-white bg-[#F0444C] hover:bg-[#D9333B] active:bg-[#B8242C] shadow-md shadow-[#F0444C]/25 hover:shadow-xl hover:shadow-[#F0444C]/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 shrink-0 font-sans cursor-pointer whitespace-nowrap"
             >
               {/* Animated Light Sweep Shimmer Effect */}
               <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/25 to-transparent -skew-x-12 -translate-x-full group-hover:animate-shimmer pointer-events-none" />
               
               <span className="relative z-10 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-white/80 group-hover:rotate-12 transition-transform duration-300" />
-                <span className="2xl:hidden">{isAr ? 'احجز الآن' : 'Book Now'}</span>
-                <span className="hidden 2xl:inline">{isAr ? (branding?.ctaText || 'احجز خدمتك الآن') : (branding?.ctaTextEn || 'Book Your Service Now')}</span>
+                <span>{isAr ? 'احجز الآن' : 'Book Now'}</span>
               </span>
               <ArrowIcon className={cn(
-                "w-3.5 h-3.5 2xl:w-4 2xl:h-4 relative z-10 transition-transform duration-300",
+                "w-3.5 h-3.5 relative z-10 transition-transform duration-300",
                 direction === 'rtl' ? "group-hover:-translate-x-1" : "group-hover:translate-x-1"
               )} />
             </Link>
