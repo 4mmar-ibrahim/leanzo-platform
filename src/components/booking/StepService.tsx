@@ -455,11 +455,11 @@ export function StepService() {
                   {/* Card Main Body */}
                   <div
                     onClick={() => handleCardToggle(srv)}
-                    className="p-2.5 sm:p-3.5 flex-1 flex flex-col justify-between gap-2 cursor-pointer text-start"
+                    className="p-2.5 sm:p-3.5 flex-1 flex flex-col justify-between gap-2 cursor-pointer text-center"
                   >
-                    <div>
+                    <div className="flex flex-col items-center text-center">
                       {/* Top Row: Checkbox + Popular badge */}
-                      <div className="flex items-center justify-between gap-1 pb-1">
+                      <div className="w-full flex items-center justify-between gap-1 pb-1">
                         <div
                           className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${
                             isSelected
@@ -478,25 +478,25 @@ export function StepService() {
                       </div>
 
                       {/* Service Title */}
-                      <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white line-clamp-2 leading-snug pt-0.5 break-words">
+                      <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white line-clamp-2 leading-snug pt-0.5 break-words text-center w-full">
                         {isAr ? srv.title : srv.titleEn}
                       </h4>
 
                       {/* Duration */}
-                      <div className="flex items-center gap-1 text-[10px] text-slate-400 pt-1">
+                      <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 pt-1 w-full">
                         <Clock className="w-3 h-3 text-sky-500 shrink-0" />
                         <span className="truncate">{formatDuration(srv.serviceDurationMinutes || srv.duration, isAr)}</span>
                       </div>
 
                       {/* Short Description */}
-                      <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 pt-1 leading-tight">
+                      <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 pt-1 leading-tight text-center w-full">
                         {isAr ? srv.shortDescription : srv.shortDescriptionEn}
                       </p>
                     </div>
 
                     {/* Bottom: Price + Selection Action */}
-                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-1.5">
-                      <div className="flex items-center justify-between">
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-1.5 w-full">
+                      <div className="flex items-center justify-center">
                         <PriceDisplay
                           price={Number(srv.price) || 0}
                           originalPrice={srv.originalPrice && srv.originalPrice > srv.price ? srv.originalPrice : undefined}
@@ -529,15 +529,15 @@ export function StepService() {
                           setModalService(srv);
                         }}
                         className={cn(
-                          'w-full mt-2 py-2 px-2.5 rounded-xl font-bold text-[11px] sm:text-xs flex items-center justify-between gap-1.5 transition-all cursor-pointer shadow-xs active:scale-[0.98]',
+                          'w-full mt-2 py-2 px-2.5 rounded-xl font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-[0.98] text-center',
                           isSelected
                             ? 'bg-[#0866C6] text-white hover:bg-[#0756A6] shadow-sm shadow-[#0866C6]/20'
                             : 'bg-sky-50 dark:bg-sky-950/60 text-[#0866C6] dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900 border border-sky-200/80 dark:border-sky-800'
                         )}
                       >
-                        <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="flex items-center justify-center gap-1.5 min-w-0">
                           <Sparkles className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-                          <span className="text-[11px] sm:text-xs font-bold leading-tight">
+                          <span className="text-[11px] sm:text-xs font-bold leading-tight text-center">
                             {isAr ? 'عرض الباقات والإضافات' : 'View Packages & Add-ons'}
                           </span>
                         </div>
