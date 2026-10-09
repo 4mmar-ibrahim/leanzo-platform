@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Sparkles, X, ArrowLeft, ArrowRight } from 'lucide-react';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useLocaleStore } from '@/store/useLocaleStore';
+import { autoTranslate } from '@/lib/i18n/autoTranslate';
 
 export function TopAnnouncementBanner() {
   const pathname = usePathname();
@@ -45,7 +46,10 @@ export function TopAnnouncementBanner() {
     return 'linear-gradient(90deg, #07345C 0%, #0866C6 100%)';
   };
 
-  const bannerText = (isAr ? bannerSettings.text : bannerSettings.textEn) || '';
+  const bannerText = (isAr ? bannerSettings.text : (bannerSettings.textEn || autoTranslate(bannerSettings.text, 'en'))) || '';
+  const badgeText = bannerSettings.discountBadge
+    ? (isAr ? bannerSettings.discountBadge : autoTranslate(bannerSettings.discountBadge, 'en'))
+    : (isAr ? 'خصم 20%' : '20% OFF');
 
   return (
     <aside
@@ -53,72 +57,66 @@ export function TopAnnouncementBanner() {
       style={{
         background: getBannerBackground(),
       }}
-      className={`relative z-50 text-white py-2 px-3 text-[11px] sm:text-xs font-bold border-b border-black/15 dark:border-[#133B61] shadow-xs transition-all ${
+      className={`relative z-50 text-white py-1.5 sm:py-2 px-2.5 sm:px-4 text-[11px] sm:text-xs font-bold border-b border-black/15 dark:border-[#133B61] shadow-xs transition-all ${
         mobileSettings?.showBannerOnMobile === false ? 'hidden lg:block' : ''
       }`}
     >
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
-        {/* Mobile View: Continuous Smooth Marquee Ticker (text moves so nothing is truncated) */}
-        <div className="flex-1 flex sm:hidden items-center gap-2 overflow-hidden min-w-0">
-          <span className="px-2 py-0.5 rounded-full bg-white/20 text-[10px] font-black tracking-wider uppercase shrink-0 animate-pulse">
-            {bannerSettings.discountBadge || (isAr ? 'خصم خاص' : 'Special')}
-          </span>
+      <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-3">
+        {/* Discount Badge on the start side */}
+        <span className="px-2 py-0.5 rounded-full bg-white/20 text-[10px] sm:text-[11px] font-black tracking-wider uppercase shrink-0 animate-pulse select-none whitespace-nowrap">
+          {badgeText}
+        </span>
 
-          <Link
-            href={bannerSettings.link || '/booking'}
-            className="flex-1 overflow-hidden relative block min-w-0 select-none py-0.5"
-            title={bannerText}
+        {/* Continuous Smooth Marquee Ticker moving to the RIGHT infinitely */}
+        <Link
+          href={bannerSettings.link || '/booking'}
+          className="flex-1 overflow-hidden relative block min-w-0 select-none py-0.5 group"
+          title={bannerText}
+        >
+          <div
+            dir="ltr"
+            className="flex w-max animate-cleanzo-marquee-right group-hover:[animation-play-state:paused] active:[animation-play-state:paused]"
           >
-            {/* Seamless gapless ticker track */}
-            <div
-              dir="ltr"
-              className="flex w-max animate-cleanzo-marquee hover:[animation-play-state:paused] active:[animation-play-state:paused]"
-            >
-              {/* Cycle 1 */}
-              <div className="flex items-center shrink-0">
-                {[0, 1, 2].map((idx) => (
-                  <div key={`c1-${idx}`} className="inline-flex items-center shrink-0 px-2" dir={direction}>
-                    <span className="text-white/95 font-bold whitespace-nowrap">{bannerText}</span>
-                    <span className="text-white/40 text-[10px] ms-2 select-none">✦</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Cycle 2 (Exact identical clone for continuous smooth loop with zero gaps) */}
-              <div className="flex items-center shrink-0" aria-hidden="true">
-                {[0, 1, 2].map((idx) => (
-                  <div key={`c2-${idx}`} className="inline-flex items-center shrink-0 px-2" dir={direction}>
-                    <span className="text-white/95 font-bold whitespace-nowrap">{bannerText}</span>
-                    <span className="text-white/40 text-[10px] ms-2 select-none">✦</span>
-                  </div>
-                ))}
-              </div>
+            {/* Cycle 1 */}
+            <div className="flex items-center shrink-0">
+              {[0, 1, 2, 3].map((idx) => (
+                <div key={`c1-${idx}`} className="inline-flex items-center shrink-0 px-3 sm:px-4" dir={direction}>
+                  <span className="text-white/95 group-hover:text-white font-bold whitespace-nowrap transition-colors">
+                    {bannerText}
+                  </span>
+                  <span className="text-white/40 text-[10px] ms-3 sm:ms-4 select-none">✦</span>
+                </div>
+              ))}
             </div>
-          </Link>
-        </div>
 
-        {/* Desktop View (sm and up): Clean centered display with Action Button */}
-        <div className="hidden sm:flex flex-1 items-center justify-center gap-2 text-center overflow-hidden">
-          <span className="px-2 py-0.5 rounded-full bg-white/20 text-[10px] font-black tracking-wider uppercase shrink-0 animate-pulse">
-            {bannerSettings.discountBadge || (isAr ? 'عرض خاص' : 'Special')}
-          </span>
-          <span className="text-white/95 truncate">
-            {bannerText}
-          </span>
-          <Link
-            href={bannerSettings.link || '/booking'}
-            className="inline-flex items-center gap-1 underline underline-offset-4 hover:text-white transition-colors shrink-0"
-          >
-            <span>{isAr ? 'احجز الآن' : 'Claim Offer'}</span>
-            <ArrowIcon className="w-3 h-3" />
-          </Link>
-        </div>
+            {/* Cycle 2 (Exact identical clone for continuous smooth loop with zero gaps) */}
+            <div className="flex items-center shrink-0" aria-hidden="true">
+              {[0, 1, 2, 3].map((idx) => (
+                <div key={`c2-${idx}`} className="inline-flex items-center shrink-0 px-3 sm:px-4" dir={direction}>
+                  <span className="text-white/95 group-hover:text-white font-bold whitespace-nowrap transition-colors">
+                    {bannerText}
+                  </span>
+                  <span className="text-white/40 text-[10px] ms-3 sm:ms-4 select-none">✦</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Link>
+
+        {/* Action Link Button */}
+        <Link
+          href={bannerSettings.link || '/booking'}
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white text-[10px] sm:text-xs font-black transition-all shrink-0 active:scale-95 whitespace-nowrap"
+        >
+          <span>{isAr ? 'احجز الآن' : 'Claim Offer'}</span>
+          <ArrowIcon className="w-3 h-3" />
+        </Link>
 
         {/* Dismiss / Close Button */}
         <button
           type="button"
           onClick={handleDismiss}
-          className="p-1 rounded-lg hover:bg-white/20 text-white/80 hover:text-white transition-colors shrink-0"
+          className="p-1 rounded-lg hover:bg-white/20 text-white/80 hover:text-white transition-colors shrink-0 cursor-pointer"
           aria-label={isAr ? 'إغلاق أو إخفاء الشريط' : 'Close banner'}
           title={isAr ? 'إغلاق الشريط' : 'Close banner'}
         >

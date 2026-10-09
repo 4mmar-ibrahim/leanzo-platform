@@ -727,9 +727,25 @@ footer li {
   .animate-cleanzo-marquee {
     animation: cleanzo-marquee 22s linear infinite;
   }
+
+  /* Continuous Infinite Marquee moving to the Right (يمين) */
+  @keyframes cleanzo-marquee-right {
+    0% {
+      transform: translateX(-50%);
+    }
+    100% {
+      transform: translateX(0%);
+    }
+  }
+  .animate-cleanzo-marquee-right {
+    animation: cleanzo-marquee-right 28s linear infinite;
+    will-change: transform;
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .animate-cleanzo-marquee {
-      animation: none !important;
+    .animate-cleanzo-marquee,
+    .animate-cleanzo-marquee-right {
+      animation-duration: 60s;
     }
   }
 }
