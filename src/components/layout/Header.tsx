@@ -154,41 +154,44 @@ export function Header() {
           : 'bg-white/85 dark:bg-[#041728]/85 backdrop-blur-md border-b border-slate-200/60 dark:border-[#133B61]/60'
       )}
     >
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2 sm:py-2.5">
-        <div className="flex items-center justify-between gap-2 xl:gap-3">
+      <div className="max-w-7xl mx-auto px-3 sm:px-5 lg:px-6 xl:px-8 py-2">
+        <div className="flex items-center justify-between gap-2 xl:gap-4 w-full">
           
           {/* ========================================================= */}
           {/* 1. BRAND MODULE (المستطيل الأول: الشعار والهوية) */}
           {/* ========================================================= */}
-          <Link
-            href="/"
-            aria-label={logoText}
-            className="group flex items-center justify-center py-1 transition-transform duration-200 hover:opacity-95 shrink-0 select-none"
-          >
-            <div className="relative h-9 sm:h-10 w-auto flex items-center justify-center shrink-0">
-              {!mounted || !isSettingsLoaded ? (
-                <div className="h-7 w-20 rounded-lg bg-slate-200/40 dark:bg-slate-800/40 animate-pulse" />
-              ) : branding?.logoUrl ? (
-                <img
-                  src={normalizeMediaUrl(branding.logoUrl, settingsVersion)}
-                  alt={logoText}
-                  className="h-full w-auto max-h-9 sm:max-h-10 object-contain transition-transform duration-200 group-hover:scale-105"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src = '/brand/zo/cleanzo-logo.png';
-                  }}
-                />
-              ) : (
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-[#0866C6] to-[#07345C] text-white flex items-center justify-center shadow-xs">
-                  <Sparkles className="w-5 h-5 text-white animate-pulse-subtle" />
-                </div>
-              )}
-            </div>
-          </Link>
+          <div className="flex items-center shrink-0">
+            <Link
+              href="/"
+              aria-label={logoText}
+              className="group flex items-center justify-center py-1 transition-transform duration-200 hover:opacity-95 shrink-0 select-none"
+            >
+              <div className="relative h-8 sm:h-9 xl:h-10 w-auto flex items-center justify-center shrink-0">
+                {!mounted || !isSettingsLoaded ? (
+                  <div className="h-7 w-20 rounded-lg bg-slate-200/40 dark:bg-slate-800/40 animate-pulse" />
+                ) : branding?.logoUrl ? (
+                  <img
+                    src={normalizeMediaUrl(branding.logoUrl, settingsVersion)}
+                    alt={logoText}
+                    className="h-full w-auto max-h-8 sm:max-h-9 xl:max-h-10 object-contain transition-transform duration-200 group-hover:scale-105"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = '/brand/zo/cleanzo-logo.png';
+                    }}
+                  />
+                ) : (
+                  <div className="w-8 h-8 sm:w-9 sm:h-9 xl:w-10 xl:h-10 rounded-xl bg-gradient-to-br from-[#0866C6] to-[#07345C] text-white flex items-center justify-center shadow-xs">
+                    <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-white animate-pulse-subtle" />
+                  </div>
+                )}
+              </div>
+            </Link>
+          </div>
 
           {/* ========================================================= */}
           {/* 2. NAVIGATION MODULE (المستطيل الثاني: شريط الروابط الرئيسية) */}
           {/* ========================================================= */}
-          <nav className="hidden lg:flex items-center gap-1 p-1 rounded-2xl bg-slate-50/90 dark:bg-[#072540]/60 backdrop-blur-md border border-slate-200/80 dark:border-[#133B61] shadow-2xs">
+          <div className="hidden lg:flex items-center justify-center flex-1 min-w-0 px-1 xl:px-2">
+            <nav className="flex items-center gap-0.5 xl:gap-1 p-1 rounded-2xl bg-slate-50/90 dark:bg-[#072540]/60 backdrop-blur-md border border-slate-200/80 dark:border-[#133B61] shadow-2xs shrink-0">
             {primaryNavLinks.map((link) => {
               const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href));
 
@@ -203,7 +206,7 @@ export function Header() {
                     <Link
                       href={link.href}
                       className={cn(
-                        'relative px-3.5 py-1.5 rounded-xl text-xs xl:text-sm font-bold transition-all duration-200 flex items-center gap-1.5 group select-none',
+                        'relative px-2.5 xl:px-3 2xl:px-3.5 py-1.5 rounded-xl text-xs xl:text-xs 2xl:text-sm font-bold transition-all duration-200 flex items-center gap-1 xl:gap-1.5 group select-none whitespace-nowrap',
                         isActive
                           ? 'bg-white dark:bg-slate-800 text-[#0866C6] dark:text-[#38BDF8] shadow-xs border border-slate-200/70 dark:border-slate-700/70'
                           : 'text-[#07345C] dark:text-white hover:text-[#0866C6] dark:hover:text-[#38BDF8] hover:bg-white/80 dark:hover:bg-slate-800/70 hover:shadow-2xs active:scale-[0.98]'
@@ -212,7 +215,7 @@ export function Header() {
                       <span>{link.label}</span>
                       <ChevronDown
                         className={cn(
-                          'w-3.5 h-3.5 text-slate-400 transition-transform duration-200',
+                          'w-3 h-3 xl:w-3.5 xl:h-3.5 text-slate-400 transition-transform duration-200',
                           servicesDropdownOpen && 'rotate-180 text-[#0866C6] dark:text-[#38BDF8]'
                         )}
                       />
@@ -266,7 +269,7 @@ export function Header() {
                   key={link.href}
                   href={link.href}
                   className={cn(
-                    'relative px-3.5 py-1.5 rounded-xl text-xs xl:text-sm font-bold transition-all duration-200 flex items-center gap-1.5 group select-none',
+                    'relative px-2.5 xl:px-3 2xl:px-3.5 py-1.5 rounded-xl text-xs xl:text-xs 2xl:text-sm font-bold transition-all duration-200 flex items-center gap-1 xl:gap-1.5 group select-none whitespace-nowrap',
                     isActive
                       ? 'bg-white dark:bg-slate-800 text-[#0866C6] dark:text-[#38BDF8] shadow-xs border border-slate-200/70 dark:border-slate-700/70'
                       : 'text-[#07345C] dark:text-white hover:text-[#0866C6] dark:hover:text-[#38BDF8] hover:bg-white/80 dark:hover:bg-slate-800/70 hover:shadow-2xs active:scale-[0.98]'
@@ -274,7 +277,7 @@ export function Header() {
                 >
                   <span>{link.label}</span>
                   {link.badge && (
-                    <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-[#F0444C] text-white animate-pulse shadow-2xs">
+                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-[#F0444C] text-white animate-pulse shadow-2xs">
                       {link.badge}
                     </span>
                   )}
@@ -293,7 +296,7 @@ export function Header() {
                   type="button"
                   onClick={() => setMoreDropdownOpen((prev) => !prev)}
                   className={cn(
-                    'relative px-3.5 py-1.5 rounded-xl text-xs xl:text-sm font-bold transition-all duration-200 flex items-center gap-1.5 group select-none',
+                    'relative px-2.5 xl:px-3 2xl:px-3.5 py-1.5 rounded-xl text-xs xl:text-xs 2xl:text-sm font-bold transition-all duration-200 flex items-center gap-1 xl:gap-1.5 group select-none whitespace-nowrap',
                     moreLinks.some((m) => pathname.startsWith(m.href))
                       ? 'bg-white dark:bg-slate-800 text-[#0866C6] dark:text-[#38BDF8] shadow-xs border border-slate-200/70 dark:border-slate-700/70'
                       : 'text-[#07345C] dark:text-white hover:text-[#0866C6] dark:hover:text-[#38BDF8] hover:bg-white/80 dark:hover:bg-slate-800/70 hover:shadow-2xs active:scale-[0.98]'
@@ -302,7 +305,7 @@ export function Header() {
                   <span>{isAr ? 'المزيد' : 'More'}</span>
                   <ChevronDown
                     className={cn(
-                      'w-3.5 h-3.5 text-slate-400 dark:text-slate-300 transition-transform duration-200',
+                      'w-3 h-3 xl:w-3.5 xl:h-3.5 text-slate-400 dark:text-slate-300 transition-transform duration-200',
                       moreDropdownOpen && 'rotate-180 text-[#0866C6] dark:text-[#38BDF8]'
                     )}
                   />
@@ -348,18 +351,19 @@ export function Header() {
                 )}
               </div>
             )}
-          </nav>
+            </nav>
+          </div>
 
           {/* ========================================================= */}
           {/* 3. DESKTOP ACTIONS: SEARCH + UTILITIES + AUTH + CTA */}
           {/* ========================================================= */}
-          <div className="hidden lg:flex items-center gap-2 xl:gap-2.5">
+          <div className="hidden lg:flex items-center gap-1.5 xl:gap-2 2xl:gap-2.5 shrink-0">
             
-            {/* Quick Search Module (المستطيل الثالث: البحث السريع) */}
+            {/* Quick Search Module - Full on 2xl, compact icon on lg & xl to preserve perfect balance */}
             <button
               type="button"
               onClick={() => setSearchModalOpen(true)}
-              className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-slate-50/90 dark:bg-[#072540]/60 backdrop-blur-md border border-slate-200/80 dark:border-[#133B61] hover:border-[#0866C6]/50 hover:bg-white dark:hover:bg-[#082845] text-slate-700 dark:text-white text-xs font-semibold transition-all duration-200 shadow-2xs hover:shadow-xs group active:scale-[0.98]"
+              className="hidden 2xl:flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-slate-50/90 dark:bg-[#072540]/60 backdrop-blur-md border border-slate-200/80 dark:border-[#133B61] hover:border-[#0866C6]/50 hover:bg-white dark:hover:bg-[#082845] text-slate-700 dark:text-white text-xs font-semibold transition-all duration-200 shadow-2xs hover:shadow-xs group active:scale-[0.98]"
               title={isAr ? 'بحث سريع (Ctrl + K)' : 'Quick Search (Ctrl + K)'}
             >
               <Search className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#0866C6] dark:group-hover:text-[#38BDF8] group-hover:scale-110 transition-all duration-200" />
@@ -371,14 +375,14 @@ export function Header() {
               </kbd>
             </button>
 
-            {/* Compact Search for medium desktop (lg-xl) */}
+            {/* Compact Search for medium desktop (lg to 2xl) */}
             <button
               type="button"
               onClick={() => setSearchModalOpen(true)}
-              className="hidden lg:flex xl:hidden items-center justify-center w-8 h-8 rounded-2xl bg-slate-50/90 dark:bg-[#072540]/60 backdrop-blur-md border border-slate-200/80 dark:border-[#133B61] hover:border-[#0866C6]/50 hover:bg-white dark:hover:bg-[#082845] text-slate-700 dark:text-white shadow-2xs hover:shadow-xs group transition-all duration-200 active:scale-[0.98]"
+              className="hidden lg:flex 2xl:hidden items-center justify-center w-8 h-8 rounded-2xl bg-slate-50/90 dark:bg-[#072540]/60 backdrop-blur-md border border-slate-200/80 dark:border-[#133B61] hover:border-[#0866C6]/50 hover:bg-white dark:hover:bg-[#082845] text-slate-700 dark:text-white shadow-2xs hover:shadow-xs group transition-all duration-200 active:scale-[0.98]"
               title={isAr ? 'بحث سريع (Ctrl + K)' : 'Quick Search (Ctrl + K)'}
             >
-              <Search className="w-4 h-4 text-slate-400 group-hover:text-[#0866C6] dark:group-hover:text-[#38BDF8] group-hover:scale-110 transition-all duration-200" />
+              <Search className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#0866C6] dark:group-hover:text-[#38BDF8] group-hover:scale-110 transition-all duration-200" />
             </button>
 
             {/* Utilities Module (المستطيل الرابع: التنبيهات واللغة والثيم) */}
@@ -467,7 +471,7 @@ export function Header() {
             ) : (
               <Link
                 href="/login"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-slate-50/90 dark:bg-[#072540]/60 backdrop-blur-md border border-slate-200/80 dark:border-[#133B61] hover:bg-white dark:hover:bg-[#082845] hover:border-[#0866C6]/40 shadow-2xs hover:shadow-xs text-xs font-bold text-slate-700 dark:text-slate-200 transition-all duration-200 group active:scale-[0.98]"
+                className="flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-2xl bg-slate-50/90 dark:bg-[#072540]/60 backdrop-blur-md border border-slate-200/80 dark:border-[#133B61] hover:bg-white dark:hover:bg-[#082845] hover:border-[#0866C6]/40 shadow-2xs hover:shadow-xs text-xs font-bold text-slate-700 dark:text-slate-200 transition-all duration-200 group active:scale-[0.98] whitespace-nowrap shrink-0"
               >
                 <UserIcon className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#0866C6] dark:group-hover:text-[#38BDF8] transition-colors" />
                 <span>{t.nav.login}</span>
@@ -478,17 +482,18 @@ export function Header() {
             <Link
               href="/booking"
               onClick={() => useBookingStore.getState().startNewBooking()}
-              className="relative group overflow-hidden inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold text-xs sm:text-sm text-white bg-[#F0444C] hover:bg-[#D9333B] active:bg-[#B8242C] shadow-md shadow-[#F0444C]/25 hover:shadow-xl hover:shadow-[#F0444C]/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 shrink-0 font-sans cursor-pointer"
+              className="relative group overflow-hidden inline-flex items-center gap-1.5 xl:gap-2 px-3.5 py-1.5 xl:px-4 xl:py-2 2xl:px-5 2xl:py-2.5 rounded-2xl font-bold text-xs 2xl:text-sm text-white bg-[#F0444C] hover:bg-[#D9333B] active:bg-[#B8242C] shadow-md shadow-[#F0444C]/25 hover:shadow-xl hover:shadow-[#F0444C]/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 shrink-0 font-sans cursor-pointer whitespace-nowrap"
             >
               {/* Animated Light Sweep Shimmer Effect */}
               <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/25 to-transparent -skew-x-12 -translate-x-full group-hover:animate-shimmer pointer-events-none" />
               
               <span className="relative z-10 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-white/80 group-hover:rotate-12 transition-transform duration-300" />
-                <span>{isAr ? (branding?.ctaText || 'احجز خدمتك الآن') : (branding?.ctaTextEn || 'Book Now')}</span>
+                <span className="2xl:hidden">{isAr ? 'احجز الآن' : 'Book Now'}</span>
+                <span className="hidden 2xl:inline">{isAr ? (branding?.ctaText || 'احجز خدمتك الآن') : (branding?.ctaTextEn || 'Book Your Service Now')}</span>
               </span>
               <ArrowIcon className={cn(
-                "w-4 h-4 relative z-10 transition-transform duration-300",
+                "w-3.5 h-3.5 2xl:w-4 2xl:h-4 relative z-10 transition-transform duration-300",
                 direction === 'rtl' ? "group-hover:-translate-x-1" : "group-hover:translate-x-1"
               )} />
             </Link>
