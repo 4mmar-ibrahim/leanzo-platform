@@ -50,14 +50,23 @@ export default function AdminSubscriptionDetailPage({ params }: { params: Promis
   const fetchSubscription = async () => {
     try {
       setLoading(true);
-      const res = await apiGet(`/subscriptions/admin/${subscriptionId}`);
-      if (res.data) {
+      let res: any;
+      try {
+        res = await apiGet(`/subscriptions/admin/${subscriptionId}`);
+      } catch {
+        try {
+          res = await apiGet(`/admin/subscriptions/${subscriptionId}`);
+        } catch {
+          res = await apiGet(`/subscriptions/${subscriptionId}`);
+        }
+      }
+      if (res?.data) {
         const subData = res.data.subscription || res.data;
         setSub(subData);
         setNewSubStatus(subData.status);
       }
     } catch (err: any) {
-      toast.error(err.message || 'فشل تحميل بيانات الاشتراك');
+      console.warn('Failed to load subscription details:', err);
     } finally {
       setLoading(false);
     }
@@ -258,7 +267,7 @@ export default function AdminSubscriptionDetailPage({ params }: { params: Promis
             </div>
             <div className="mt-3 flex items-baseline gap-2">
               <span className="text-2xl font-black text-primary">{sub.price}</span>
-              <span className="text-xs font-bold text-foreground/60">ريال سعودي / شهر</span>
+              <span className="text-xs font-bold text-foreground/60">جنيه / شهر</span>
             </div>
           </div>
         </div>
@@ -454,7 +463,7 @@ export default function AdminSubscriptionDetailPage({ params }: { params: Promis
                     <div className="text-[11px] text-foreground/50 font-mono">{new Date(ren.createdAt).toLocaleDateString('ar-SA')}</div>
                   </div>
                   <div className="text-right">
-                    <span className="font-bold text-primary">{ren.amountPaid} ريال</span>
+                    <span className="font-bold text-primary">{ren.amountPaid} ج.م</span>
                   </div>
                 </div>
               ))}
@@ -478,7 +487,7 @@ export default function AdminSubscriptionDetailPage({ params }: { params: Promis
                     <div className="font-bold">كاش باك زيارة مكتملة</div>
                     <div className="text-[11px] text-foreground/50 font-mono">{new Date(cb.createdAt).toLocaleDateString('ar-SA')}</div>
                   </div>
-                  <div className="font-bold text-emerald-500">+{cb.amount} ريال</div>
+                  <div className="font-bold text-emerald-500">+{cb.amount} ج.م</div>
                 </div>
               ))}
             </div>

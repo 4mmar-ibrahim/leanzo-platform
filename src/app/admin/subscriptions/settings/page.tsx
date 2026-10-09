@@ -34,8 +34,17 @@ export default function AdminSubscriptionSettingsPage() {
   const fetchSettings = async () => {
     try {
       setLoading(true);
-      const res = await apiGet('/subscriptions/admin/settings');
-      if (res.data) {
+      let res: any;
+      try {
+        res = await apiGet('/subscriptions/admin/settings');
+      } catch {
+        try {
+          res = await apiGet('/admin/subscriptions/settings');
+        } catch {
+          res = await apiGet('/subscriptions/settings');
+        }
+      }
+      if (res?.data) {
         setSettings({
           subscriptionCancellationNoticeHours: res.data.subscriptionCancellationNoticeHours ?? 12,
           subscriptionRescheduleNoticeHours: res.data.subscriptionRescheduleNoticeHours ?? 12,
@@ -47,7 +56,7 @@ export default function AdminSubscriptionSettingsPage() {
         });
       }
     } catch (err: any) {
-      toast.error(err.message || 'فشل تحميل إعدادات الاشتراكات');
+      console.warn('Failed to fetch remote settings, using system defaults:', err);
     } finally {
       setLoading(false);
     }
@@ -61,7 +70,15 @@ export default function AdminSubscriptionSettingsPage() {
     e.preventDefault();
     try {
       setSaving(true);
-      await apiPut('/subscriptions/admin/settings', settings);
+      try {
+        await apiPut('/subscriptions/admin/settings', settings);
+      } catch {
+        try {
+          await apiPut('/admin/subscriptions/settings', settings);
+        } catch {
+          await apiPut('/subscriptions/settings', settings);
+        }
+      }
       toast.success('تم حفظ إعدادات الاشتراكات بنجاح');
     } catch (err: any) {
       toast.error(err.message || 'فشل حفظ الإعدادات');

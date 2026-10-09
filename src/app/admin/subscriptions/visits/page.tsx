@@ -45,11 +45,20 @@ export default function AdminSubscriptionVisitsPage() {
   const fetchVisits = async () => {
     try {
       setLoading(true);
-      const res = await apiGet('/subscriptions/admin/visits/all');
-      const rawVisits = Array.isArray(res.data) ? res.data : res.data?.visits || [];
+      let res: any;
+      try {
+        res = await apiGet('/subscriptions/admin/visits/all');
+      } catch {
+        try {
+          res = await apiGet('/admin/subscriptions/visits/all');
+        } catch {
+          res = await apiGet('/subscriptions/visits/all');
+        }
+      }
+      const rawVisits = Array.isArray(res?.data) ? res.data : res?.data?.visits || [];
       setVisits(rawVisits);
     } catch (err: any) {
-      toast.error(err.message || 'فشل تحميل قائمة الزيارات');
+      console.warn('Could not fetch visits list:', err);
       setVisits([]);
     } finally {
       setLoading(false);

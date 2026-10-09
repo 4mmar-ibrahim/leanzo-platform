@@ -34,6 +34,7 @@ interface IPlan {
   description: string;
   image?: string;
   serviceId: string;
+  serviceIds?: string[];
   visitCount: number;
   price: number;
   duration: number;
@@ -43,8 +44,9 @@ interface IPlan {
   allowRescheduling: boolean;
   cancellationNoticeHours: number;
   rescheduleNoticeHours: number;
-  cashbackPercentage: number;
+  cashbackPercentage?: number;
   terms?: string;
+  features?: string[];
   service?: {
     id: string;
     title: string;
@@ -72,6 +74,7 @@ export default function AdminSubscriptionPlansPage() {
     description: '',
     image: '',
     serviceId: '',
+    serviceIds: [] as string[],
     visitCount: 4,
     price: 500,
     duration: 30,
@@ -81,7 +84,7 @@ export default function AdminSubscriptionPlansPage() {
     allowRescheduling: true,
     cancellationNoticeHours: 12,
     rescheduleNoticeHours: 12,
-    cashbackPercentage: 5,
+    cashbackPercentage: 0,
     terms: '',
   });
 
@@ -154,11 +157,13 @@ export default function AdminSubscriptionPlansPage() {
 
   const openCreateModal = () => {
     setEditingPlan(null);
+    const initialId = services[0]?.id || services[0]?._id || '';
     setFormData({
       name: '',
       description: '',
       image: '',
-      serviceId: services[0]?.id || '',
+      serviceId: initialId,
+      serviceIds: initialId ? [initialId] : [],
       visitCount: 4,
       price: 500,
       duration: 30,
@@ -168,7 +173,7 @@ export default function AdminSubscriptionPlansPage() {
       allowRescheduling: true,
       cancellationNoticeHours: 12,
       rescheduleNoticeHours: 12,
-      cashbackPercentage: 5,
+      cashbackPercentage: 0,
       terms: 'تطبق الشروط والأحكام العامة لخدمات كلينزو.',
     });
     setIsModalOpen(true);
@@ -176,11 +181,17 @@ export default function AdminSubscriptionPlansPage() {
 
   const openEditModal = (plan: IPlan) => {
     setEditingPlan(plan);
+    const initialServiceIds = Array.isArray((plan as any).serviceIds) && (plan as any).serviceIds.length > 0
+      ? (plan as any).serviceIds
+      : plan.serviceId
+      ? [plan.serviceId]
+      : [];
     setFormData({
       name: plan.name,
       description: plan.description || '',
       image: (plan as any).image || '',
-      serviceId: plan.serviceId,
+      serviceId: plan.serviceId || initialServiceIds[0] || '',
+      serviceIds: initialServiceIds,
       visitCount: plan.visitCount,
       price: plan.price,
       duration: plan.duration,
@@ -190,7 +201,7 @@ export default function AdminSubscriptionPlansPage() {
       allowRescheduling: plan.allowRescheduling,
       cancellationNoticeHours: plan.cancellationNoticeHours || 12,
       rescheduleNoticeHours: plan.rescheduleNoticeHours || 12,
-      cashbackPercentage: plan.cashbackPercentage || 0,
+      cashbackPercentage: 0,
       terms: plan.terms || '',
     });
     setIsModalOpen(true);
@@ -219,18 +230,32 @@ export default function AdminSubscriptionPlansPage() {
 
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.serviceId || formData.visitCount < 1 || formData.price < 0) {
-      toast.error('يرجى التأكد من ملء جميع الحقول الإلزامية بشكل صحيح');
+    const effectiveServiceId = formData.serviceIds?.[0] || formData.serviceId;
+    if (!formData.name || !effectiveServiceId || formData.visitCount < 1 || formData.price < 0) {
+      toast.error('يرجى التأكد من اختيار خدمة واحدة على الأقل وملء جميع الحقول الإلزامية');
       return;
     }
 
     try {
       setSubmitting(true);
+      const selectedServiceObjects = services.filter((s: any) =>
+        (formData.serviceIds || []).includes(s.id || s._id)
+      );
+      const serviceTitles = selectedServiceObjects.map((s: any) => s.title || s.name);
+
+      const payload = {
+        ...formData,
+        serviceId: effectiveServiceId,
+        serviceIds: formData.serviceIds && formData.serviceIds.length > 0 ? formData.serviceIds : [effectiveServiceId],
+        cashbackPercentage: 0,
+        features: serviceTitles.length > 0 ? serviceTitles : undefined,
+      };
+
       if (editingPlan) {
-        await apiPut(`/subscriptions/plans/${editingPlan.id}`, formData);
+        await apiPut(`/subscriptions/plans/${editingPlan.id}`, payload);
         toast.success('تم تحديث الباقة بنجاح');
       } else {
-        await apiPost('/subscriptions/plans', formData);
+        await apiPost('/subscriptions/plans', payload);
         toast.success('تم إنشاء باقة الاشتراك بنجاح');
       }
       setIsModalOpen(false);
@@ -261,7 +286,7 @@ export default function AdminSubscriptionPlansPage() {
             باقات الاشتراكات الشهرية
           </h1>
           <p className="text-xs text-foreground/60 mt-1">
-            إدارة وتخصيص باقات الغسيل الشهري، الأسعار، شروط الإلغاء ونسب الكاش باك
+            إدارة وتخصيص باقات الغسيل الشهري، الأسعار، شروط الإلغاء والخدمات المشمولة
           </p>
         </div>
 
@@ -329,14 +354,24 @@ export default function AdminSubscriptionPlansPage() {
                           {isActive ? 'نشطة للعملاء' : 'معطلة'}
                         </span>
                         <h3 className="text-base font-black text-foreground mt-1.5">{plan.name}</h3>
-                        <div className="text-xs text-primary font-semibold mt-0.5">
-                          {plan.service?.title || 'خدمة غير محددة'}
-                        </div>
+                        {plan.features && plan.features.length > 1 ? (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {plan.features.map((feat: string, idx: number) => (
+                              <span key={idx} className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-md font-semibold">
+                                {feat}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-primary font-semibold mt-0.5">
+                            {plan.service?.title || plan.features?.[0] || 'خدمة غير محددة'}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="text-left font-mono shrink-0">
                       <div className="text-xl font-black text-primary">{plan.price}</div>
-                      <div className="text-[10px] text-foreground/50">ريال / {plan.duration} يوم</div>
+                      <div className="text-[10px] text-foreground/50">ج.م / {plan.duration} يوم</div>
                     </div>
                   </div>
 
@@ -364,13 +399,6 @@ export default function AdminSubscriptionPlansPage() {
                         <ShieldCheck className="w-3.5 h-3.5 text-primary" /> مهلة إعادة الجدولة:
                       </span>
                       <span className="font-bold font-mono">{plan.rescheduleNoticeHours || 12} ساعة</span>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-foreground/60">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-500" /> نسبة الكاش باك:
-                      </span>
-                      <span className="font-bold font-mono text-emerald-500">%{plan.cashbackPercentage || 0}</span>
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -487,7 +515,25 @@ export default function AdminSubscriptionPlansPage() {
               <SubscriptionServiceSelector
                 services={services}
                 selectedServiceId={formData.serviceId}
-                onSelectService={(s) => setFormData({ ...formData, serviceId: s.id })}
+                selectedServiceIds={formData.serviceIds}
+                onSelectService={(s) => {
+                  const sId = s.id || s._id;
+                  setFormData({
+                    ...formData,
+                    serviceId: sId,
+                    serviceIds: formData.serviceIds?.includes(sId)
+                      ? formData.serviceIds
+                      : [...(formData.serviceIds || []), sId],
+                  });
+                }}
+                onSelectServices={(svcs) => {
+                  const ids = svcs.map((s: any) => s.id || s._id);
+                  setFormData({
+                    ...formData,
+                    serviceId: ids[0] || '',
+                    serviceIds: ids,
+                  });
+                }}
               />
 
               <div className="space-y-1">
@@ -516,7 +562,7 @@ export default function AdminSubscriptionPlansPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-foreground/70">السعر الشهري (ريال) *</label>
+                  <label className="font-bold text-foreground/70">السعر الشهري (جنيه) *</label>
                   <input
                     type="number"
                     min={0}
@@ -541,7 +587,7 @@ export default function AdminSubscriptionPlansPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="font-bold text-foreground/70">مهلة الإلغاء (ساعات) *</label>
                   <input
@@ -562,18 +608,6 @@ export default function AdminSubscriptionPlansPage() {
                     required
                     value={formData.rescheduleNoticeHours}
                     onChange={(e) => setFormData({ ...formData, rescheduleNoticeHours: parseInt(e.target.value) || 12 })}
-                    className="w-full p-2.5 rounded-xl bg-background border border-border font-mono"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-foreground/70">نسبة الكاش باك (%) *</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={formData.cashbackPercentage}
-                    onChange={(e) => setFormData({ ...formData, cashbackPercentage: parseFloat(e.target.value) || 0 })}
                     className="w-full p-2.5 rounded-xl bg-background border border-border font-mono"
                   />
                 </div>

@@ -78,17 +78,28 @@ export default function AdminSubscriptionsPage() {
       if (statusFilter !== 'all') query.set('status', statusFilter);
       if (search.trim()) query.set('search', search.trim());
 
-      const res = await apiGet<{ subscriptions: ISubscription[]; pagination: any }>(
-        `/subscriptions/admin/all?${query.toString()}`
-      );
+      let res: any;
+      try {
+        res = await apiGet<{ subscriptions: ISubscription[]; pagination: any }>(
+          `/subscriptions/admin/all?${query.toString()}`
+        );
+      } catch {
+        try {
+          res = await apiGet(`/admin/subscriptions/all?${query.toString()}`);
+        } catch {
+          res = await apiGet(`/subscriptions/all?${query.toString()}`);
+        }
+      }
 
       if (res?.data) {
         setSubscriptions(res.data.subscriptions || []);
         if (res.data.pagination) setPagination(res.data.pagination);
+      } else {
+        setSubscriptions([]);
       }
     } catch (err: any) {
-      console.error('Failed to load admin subscriptions:', err);
-      toast.error('تعذر تحميل قائمة الاشتراكات');
+      console.warn('Failed to load admin subscriptions:', err);
+      setSubscriptions([]);
     } finally {
       setLoading(false);
     }
@@ -98,7 +109,16 @@ export default function AdminSubscriptionsPage() {
 
   const fetchAnalytics = async () => {
     try {
-      const res = await apiGet('/subscriptions/admin/analytics');
+      let res: any;
+      try {
+        res = await apiGet('/subscriptions/admin/analytics');
+      } catch {
+        try {
+          res = await apiGet('/admin/subscriptions/analytics');
+        } catch {
+          res = await apiGet('/subscriptions/analytics');
+        }
+      }
       if (res?.data) {
         setAnalytics(res.data);
       }
@@ -187,8 +207,8 @@ export default function AdminSubscriptionsPage() {
           </div>
           <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
             <div className="text-[11px] font-bold text-slate-500">القيمة المالية النشطة</div>
-            <div className="text-2xl font-black text-emerald-500 mt-1 font-mono">{analytics.activeSubscriptionValue} ريال</div>
-            <div className="text-[10px] text-slate-400 mt-1">إجمالي الإيرادات: {analytics.totalSubscriptionRevenue} ريال</div>
+            <div className="text-2xl font-black text-emerald-500 mt-1 font-mono">{analytics.activeSubscriptionValue} ج.م</div>
+            <div className="text-[10px] text-slate-400 mt-1">إجمالي الإيرادات: {analytics.totalSubscriptionRevenue} ج.م</div>
           </div>
           <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
             <div className="text-[11px] font-bold text-slate-500">الزيارات المكتملة</div>

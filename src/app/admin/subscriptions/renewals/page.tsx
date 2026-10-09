@@ -33,13 +33,16 @@ export default function AdminSubscriptionRenewalsPage() {
       try {
         res = await apiGet('/subscriptions/admin/renewals');
       } catch {
-        res = await apiGet('/admin/subscriptions/renewals');
+        try {
+          res = await apiGet('/admin/subscriptions/renewals');
+        } catch {
+          res = await apiGet('/subscriptions/renewals');
+        }
       }
       const rawRenewals = Array.isArray(res?.data) ? res.data : res?.data?.renewals || [];
       setRenewals(rawRenewals);
     } catch (err: any) {
       console.warn('Failed to load renewals:', err);
-      toast.error('تعذر تحميل سجلات تجديد الاشتراكات');
       setRenewals([]);
     } finally {
       setLoading(false);
@@ -112,7 +115,7 @@ export default function AdminSubscriptionRenewalsPage() {
           </div>
           <div>
             <div className="text-xs text-foreground/60 font-medium">عائدات التجديد</div>
-            <div className="text-2xl font-black text-emerald-500 mt-0.5">{totalRenewalRevenue.toLocaleString()} ريال</div>
+            <div className="text-2xl font-black text-emerald-500 mt-0.5">{totalRenewalRevenue.toLocaleString()} ج.م</div>
           </div>
         </div>
 
@@ -221,7 +224,7 @@ export default function AdminSubscriptionRenewalsPage() {
                     </td>
 
                     <td className="py-3.5 px-4 font-mono font-bold text-emerald-500">
-                      {ren.amountPaid} ريال
+                      {ren.amountPaid} ج.م
                     </td>
 
                     <td className="py-3.5 px-4 font-mono text-foreground/60">

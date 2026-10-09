@@ -131,7 +131,7 @@ export function SubscriptionVisitDetailsModal({
             </div>
             <div className="flex justify-between py-1">
               <span className="text-foreground/60">قيمة الاشتراك:</span>
-              <span className="font-bold text-primary font-mono">{sub.price || 0} ريال</span>
+              <span className="font-bold text-primary font-mono">{sub.price || 0} ج.م</span>
             </div>
           </div>
 
