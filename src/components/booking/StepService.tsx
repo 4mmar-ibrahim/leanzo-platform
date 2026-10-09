@@ -242,8 +242,8 @@ export function StepService() {
                 onClick={() => setCategory(cat.slug as ServiceCategory)}
                 className={`relative px-3.5 py-2.5 sm:px-4 sm:py-3 rounded-2xl border-2 flex items-center justify-between text-center gap-3 transition-all cursor-pointer w-full ${
                   isSelected
-                    ? 'border-[#0866C6] bg-sky-50/80 dark:bg-sky-950/40 text-[#07345C] dark:text-sky-200 shadow-md ring-2 ring-[#0866C6]/20'
-                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
+                    ? 'border-[#0866C6] bg-sky-50 dark:bg-sky-950/40 shadow-md ring-2 ring-[#0866C6]/20'
+                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
                 {/* Start Icon Container */}
@@ -251,7 +251,7 @@ export function StepService() {
                   className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0 transition-all ${
                     isSelected
                       ? 'bg-[#0866C6] text-white shadow-md shadow-[#0866C6]/30'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                   }`}
                 >
                   <CatIcon className="w-5 h-5" />
@@ -259,11 +259,15 @@ export function StepService() {
 
                 {/* Centered Content */}
                 <div className="min-w-0 flex-1 text-center px-1">
-                  <p className="text-sm sm:text-base font-bold leading-snug break-words text-slate-900 dark:text-white text-center">
+                  <p className={`text-sm sm:text-base font-black leading-snug break-words text-center transition-colors ${
+                    isSelected ? 'text-[#07345C] dark:text-white' : 'text-slate-900 dark:text-slate-100'
+                  }`}>
                     {catName}
                   </p>
                   {catDesc && (
-                    <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 leading-tight mt-0.5 line-clamp-1 break-words text-center">
+                    <p className={`text-[11px] sm:text-xs leading-tight mt-0.5 line-clamp-1 break-words text-center transition-colors ${
+                      isSelected ? 'text-[#06529E] dark:text-sky-300 font-semibold' : 'text-slate-600 dark:text-slate-400 font-medium'
+                    }`}>
                       {catDesc}
                     </p>
                   )}
