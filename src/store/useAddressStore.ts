@@ -6,6 +6,69 @@ import { Address } from '@/types';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { useAuthStore } from '@/store/useAuthStore';
 
+/**
+ * Checks whether two addresses describe the exact same physical location.
+ * Compares IDs first, then location details (governorate, city, area, building, floor, apartment).
+ */
+export function isSameAddress(a?: Partial<Address> | null, b?: Partial<Address> | null): boolean {
+  if (!a || !b) return false;
+  if (a.id && b.id && a.id === b.id) return true;
+  if ((a as any)._id && (b as any)._id && (a as any)._id === (b as any)._id) return true;
+
+  const normalize = (val?: string) => (val || '').trim().toLowerCase();
+
+  const getGov = (x: any) =>
+    normalize(x.governorate || x.governorateNameSnapshot || x.governorateId);
+  const getCity = (x: any) =>
+    normalize(x.city || x.cityNameSnapshot || x.cityId);
+
+  const govA = getGov(a);
+  const govB = getGov(b);
+  const sameGov =
+    (Boolean(govA && govB) && govA === govB) ||
+    Boolean(a.governorateId && b.governorateId && a.governorateId === b.governorateId) ||
+    (!govA && !govB);
+
+  const cityA = getCity(a);
+  const cityB = getCity(b);
+  const sameCity =
+    (Boolean(cityA && cityB) && cityA === cityB) ||
+    Boolean(a.cityId && b.cityId && a.cityId === b.cityId) ||
+    (!cityA && !cityB);
+
+  const sameArea = normalize(a.area) === normalize(b.area);
+  const sameBuilding = normalize(a.building) === normalize(b.building);
+  const sameFloor = normalize(a.floor) === normalize(b.floor);
+  const sameApartment = normalize(a.apartment) === normalize(b.apartment);
+
+  return Boolean(sameGov && sameCity && sameArea && sameBuilding && sameFloor && sameApartment);
+}
+
+/**
+ * Deduplicates an array of addresses, preserving the default selection and merging duplicates.
+ */
+export function deduplicateAddresses(list: Address[]): Address[] {
+  if (!Array.isArray(list) || list.length <= 1) return list || [];
+  const result: Address[] = [];
+  for (const addr of list) {
+    if (!addr) continue;
+    const exists = result.find((existing) => isSameAddress(existing, addr));
+    if (!exists) {
+      result.push(addr);
+    } else {
+      // If the duplicate entry had isDefault true, transfer it to the retained address
+      if (addr.isDefault && !exists.isDefault) {
+        exists.isDefault = true;
+      }
+    }
+  }
+  // Ensure exactly one isDefault if list is non-empty
+  if (result.length > 0 && !result.some((a) => a.isDefault)) {
+    result[0].isDefault = true;
+  }
+  return result;
+}
+
 interface AddressState {
   addresses: Address[];
   isLoading: boolean;
@@ -31,13 +94,9 @@ export const useAddressStore = create<AddressState>()(
         const effectivePhone = phone || (isAuthenticated ? user?.phone : undefined);
 
         if (!effectivePhone && !isAuthenticated) {
-          set({ addresses: [], isLoading: false, error: null });
-          if (typeof window !== 'undefined') {
-            try {
-              localStorage.removeItem('cleanzo_address_storage');
-            } catch {}
-          }
-          return [];
+          const localClean = deduplicateAddresses(get().addresses || []);
+          set({ addresses: localClean, isLoading: false, error: null });
+          return localClean;
         }
 
         set({ isLoading: true, error: null });
@@ -50,11 +109,13 @@ export const useAddressStore = create<AddressState>()(
               governorate: item.governorateNameSnapshot || item.governorate,
               city: item.cityNameSnapshot || item.city,
             }));
-            set({ addresses: mapped, isLoading: false });
-            return mapped;
+            const deduplicated = deduplicateAddresses(mapped);
+            set({ addresses: deduplicated, isLoading: false });
+            return deduplicated;
           }
-          set({ addresses: [], isLoading: false });
-          return [];
+          const currentClean = deduplicateAddresses(get().addresses);
+          set({ addresses: currentClean, isLoading: false });
+          return currentClean;
         } catch (err: any) {
           if (err?.statusCode === 401 || err?.statusCode === 403) {
             set({ addresses: [], isLoading: false, error: null });
@@ -65,17 +126,36 @@ export const useAddressStore = create<AddressState>()(
             }
             return [];
           }
-          if (isAuthenticated) {
-            set({ isLoading: false, error: err.message });
-            return get().addresses;
-          }
-          set({ addresses: [], isLoading: false, error: err.message });
-          return [];
+          const currentClean = deduplicateAddresses(get().addresses);
+          set({ addresses: currentClean, isLoading: false, error: err.message });
+          return currentClean;
         }
       },
 
       addAddress: async (newAddr) => {
         set({ isLoading: true, error: null });
+
+        // 1. Check if an address with the same location details already exists in the store
+        const existingList = deduplicateAddresses(get().addresses || []);
+        const existingMatch = existingList.find((a) => isSameAddress(a, newAddr));
+
+        if (existingMatch) {
+          // Address already exists! Do NOT duplicate it. Update existing address if any fields were edited.
+          const merged: Address = {
+            ...existingMatch,
+            ...newAddr,
+            id: existingMatch.id,
+            isDefault: newAddr.isDefault !== undefined ? newAddr.isDefault : existingMatch.isDefault,
+          };
+          try {
+            await cleanzoApi.addresses.update(existingMatch.id, merged);
+          } catch {}
+
+          const updatedList = existingList.map((a) => (a.id === existingMatch.id ? merged : a));
+          set({ addresses: deduplicateAddresses(updatedList), isLoading: false });
+          return merged;
+        }
+
         let savedAddress: Address | null = null;
         try {
           const res = await cleanzoApi.addresses.create(newAddr);
@@ -94,7 +174,7 @@ export const useAddressStore = create<AddressState>()(
 
         if (!savedAddress) {
           const id = newAddr.id || `addr-${Date.now()}`;
-          const isFirst = get().addresses.length === 0;
+          const isFirst = existingList.length === 0;
           savedAddress = {
             ...newAddr,
             id,
@@ -102,20 +182,21 @@ export const useAddressStore = create<AddressState>()(
           };
         }
 
-        const isDefault = savedAddress.isDefault ?? (get().addresses.length === 0);
-        const existing = get().addresses.filter(
-          (a) => a.id !== savedAddress!.id && (a as any)._id !== savedAddress!.id
+        const isDefault = savedAddress.isDefault ?? (existingList.length === 0);
+        const filtered = existingList.filter(
+          (a) => a.id !== savedAddress!.id && (a as any)._id !== savedAddress!.id && !isSameAddress(a, savedAddress!)
         );
 
         let updatedList: Address[];
         if (isDefault) {
-          updatedList = existing.map((a) => ({ ...a, isDefault: false }));
+          updatedList = filtered.map((a) => ({ ...a, isDefault: false }));
           updatedList.unshift({ ...savedAddress, isDefault: true });
         } else {
-          updatedList = [...existing, savedAddress];
+          updatedList = [...filtered, savedAddress];
         }
 
-        set({ addresses: updatedList, isLoading: false });
+        const finalDeduplicated = deduplicateAddresses(updatedList);
+        set({ addresses: finalDeduplicated, isLoading: false });
         return savedAddress;
       },
 
@@ -135,7 +216,7 @@ export const useAddressStore = create<AddressState>()(
           }
           return a;
         });
-        set({ addresses: updatedList, isLoading: false });
+        set({ addresses: deduplicateAddresses(updatedList), isLoading: false });
       },
 
       deleteAddress: async (id) => {
@@ -149,7 +230,7 @@ export const useAddressStore = create<AddressState>()(
         if (filtered.length > 0 && !filtered.some((a) => a.isDefault)) {
           filtered[0].isDefault = true;
         }
-        set({ addresses: filtered, isLoading: false });
+        set({ addresses: deduplicateAddresses(filtered), isLoading: false });
       },
 
       setDefaultAddress: async (id) => {
@@ -162,11 +243,12 @@ export const useAddressStore = create<AddressState>()(
           ...a,
           isDefault: a.id === id || a._id === id,
         }));
-        set({ addresses: updated });
+        set({ addresses: deduplicateAddresses(updated) });
       },
 
       getDefaultAddress: () => {
-        return get().addresses.find((a) => a.isDefault) || get().addresses[0];
+        const list = deduplicateAddresses(get().addresses || []);
+        return list.find((a) => a.isDefault) || list[0];
       },
 
       clearAddresses: () => {
@@ -181,8 +263,13 @@ export const useAddressStore = create<AddressState>()(
     {
       name: 'cleanzo_address_storage',
       partialize: (state) => ({
-        addresses: state.addresses,
+        addresses: deduplicateAddresses(state.addresses),
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state && Array.isArray(state.addresses)) {
+          state.addresses = deduplicateAddresses(state.addresses);
+        }
+      },
     }
   )
 );

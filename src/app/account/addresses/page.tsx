@@ -14,13 +14,14 @@ import { toast } from 'sonner';
 
 export default function AccountAddressesPage() {
   const { t, locale } = useLocaleStore();
-  const { addresses, addAddress, updateAddress, deleteAddress, setDefaultAddress } = useAddressStore();
+  const { addresses, addAddress, updateAddress, deleteAddress, setDefaultAddress, fetchAddresses } = useAddressStore();
   const { governorates, fetchLocations } = useLocationStore();
   const isAr = locale === 'ar';
 
   useEffect(() => {
     fetchLocations(false);
-  }, [fetchLocations]);
+    fetchAddresses();
+  }, [fetchLocations, fetchAddresses]);
 
   const activeGovernorates = useMemo(() => {
     return (governorates || []).filter((g) => g.active !== false);

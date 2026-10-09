@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useBookingStore } from '@/store/useBookingStore';
-import { useAddressStore } from '@/store/useAddressStore';
+import { useAddressStore, isSameAddress } from '@/store/useAddressStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useOrderStore } from '@/store/useOrderStore';
 import { StepService } from '@/components/booking/StepService';
@@ -358,14 +358,21 @@ function BookingContent() {
       // Save authoritative server booking to store
       addOrder(createdBooking);
 
-      // Permanently ensure the address and customer contact info are saved for all future orders
+      // Ensure address is saved or updated without creating duplicate addresses
       if (selectedAddress && isAuthenticated) {
-        useAddressStore.getState().addAddress({
-          ...selectedAddress,
-          customerName: effectiveName,
-          customerPhone: effectivePhone,
-          isDefault: true,
-        });
+        const addressStore = useAddressStore.getState();
+        const existingList = addressStore.addresses || [];
+        const exists = existingList.some(
+          (a) => a.id === selectedAddress.id || (a as any)._id === selectedAddress.id || isSameAddress(a, selectedAddress)
+        );
+        if (!exists) {
+          addressStore.addAddress({
+            ...selectedAddress,
+            customerName: effectiveName,
+            customerPhone: effectivePhone,
+            isDefault: true,
+          });
+        }
       }
 
       // Trigger celebratory reaction

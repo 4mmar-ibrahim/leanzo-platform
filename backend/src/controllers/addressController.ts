@@ -41,7 +41,48 @@ export async function getCustomerAddresses(req: AuthenticatedRequest, res: Respo
       ],
     }).sort({ isDefault: -1, updatedAt: -1 });
 
-    sendSuccess(res, addresses);
+    // Deduplicate addresses and clean up duplicate documents in database
+    const uniqueAddresses: any[] = [];
+    const duplicateIdsToDelete: any[] = [];
+    const normalize = (val?: string) => (val || '').trim().toLowerCase();
+
+    for (const addr of addresses) {
+      const match = uniqueAddresses.find((existing) => {
+        const sameGov =
+          normalize(existing.governorateId) === normalize(addr.governorateId) ||
+          normalize(existing.governorateNameSnapshot) === normalize(addr.governorateNameSnapshot);
+        const sameCity =
+          normalize(existing.cityId) === normalize(addr.cityId) ||
+          normalize(existing.cityNameSnapshot) === normalize(addr.cityNameSnapshot);
+        const sameArea = normalize(existing.area) === normalize(addr.area);
+        const sameBuilding = normalize(existing.building) === normalize(addr.building);
+        const sameFloor = normalize(existing.floor) === normalize(addr.floor);
+        const sameApartment = normalize(existing.apartment) === normalize(addr.apartment);
+
+        return sameGov && sameCity && sameArea && sameBuilding && sameFloor && sameApartment;
+      });
+
+      if (!match) {
+        uniqueAddresses.push(addr);
+      } else {
+        if (addr.isDefault && !match.isDefault) {
+          match.isDefault = true;
+        }
+        duplicateIdsToDelete.push(addr._id);
+      }
+    }
+
+    if (duplicateIdsToDelete.length > 0) {
+      CustomerAddress.deleteMany({ _id: { $in: duplicateIdsToDelete } }).catch((err) =>
+        console.error('Failed to cleanup duplicate addresses in background:', err)
+      );
+    }
+
+    if (uniqueAddresses.length > 0 && !uniqueAddresses.some((a) => a.isDefault)) {
+      uniqueAddresses[0].isDefault = true;
+    }
+
+    sendSuccess(res, uniqueAddresses);
   } catch (err: any) {
     sendError(res, err.message, 500);
   }
@@ -82,6 +123,46 @@ export async function createCustomerAddress(req: AuthenticatedRequest, res: Resp
       return;
     }
 
+    // Check if an address with identical physical details already exists for this customer
+    const existingAddress = await CustomerAddress.findOne({
+      $or: [
+        ...(userId ? [{ customerId: userId }] : []),
+        ...(userPhone ? [{ customerPhone: userPhone }] : []),
+      ],
+      governorateId,
+      cityId,
+      area: (area || '').trim(),
+      building: (building || '').trim(),
+      floor: (floor || '').trim(),
+      apartment: (apartment || '').trim(),
+    });
+
+    if (existingAddress) {
+      // Address already exists! Update details instead of creating a duplicate
+      if (label) existingAddress.label = label;
+      if (landmark !== undefined) existingAddress.landmark = landmark;
+      if (notes !== undefined) existingAddress.notes = notes;
+
+      const shouldBeDefault = Boolean(isDefault);
+      if (shouldBeDefault) {
+        await CustomerAddress.updateMany(
+          {
+            $or: [
+              ...(userId ? [{ customerId: userId }] : []),
+              ...(userPhone ? [{ customerPhone: userPhone }] : []),
+            ],
+            _id: { $ne: existingAddress._id },
+          },
+          { $set: { isDefault: false } }
+        );
+        existingAddress.isDefault = true;
+      }
+
+      await existingAddress.save();
+      sendSuccess(res, existingAddress, 'تم تحديث العنوان المحفوظ بنجاح', 200);
+      return;
+    }
+
     // Check if this is the customer's first address
     const existingCount = await CustomerAddress.countDocuments(
       userId ? { customerId: userId } : { customerPhone: userPhone }
@@ -105,12 +186,12 @@ export async function createCustomerAddress(req: AuthenticatedRequest, res: Resp
       governorateNameSnapshot: locationCheck.governorateName!,
       cityId,
       cityNameSnapshot: locationCheck.cityName!,
-      area,
-      building: building || '',
-      floor: floor || '',
-      apartment: apartment || '',
-      landmark: landmark || '',
-      notes: notes || '',
+      area: (area || '').trim(),
+      building: (building || '').trim(),
+      floor: (floor || '').trim(),
+      apartment: (apartment || '').trim(),
+      landmark: (landmark || '').trim(),
+      notes: (notes || '').trim(),
       isDefault: shouldBeDefault,
     });
 

@@ -28,7 +28,7 @@ import { useLocaleStore } from '@/store/useLocaleStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useLocationStore } from '@/store/useLocationStore';
 import { useCustomerStore } from '@/store/useCustomerStore';
-import { useAddressStore } from '@/store/useAddressStore';
+import { useAddressStore, isSameAddress } from '@/store/useAddressStore';
 import { useBookingStore } from '@/store/useBookingStore';
 import { getUpcomingBookingDates, getTimeSlotsForDate, BookingSlot, isSameService, isSameTime, getBookingTimeInterval, isTimeIntervalOverlapping, minutesTo24H, getOrderCategory } from '@/lib/bookingEngine';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
@@ -588,12 +588,18 @@ export function QuickBookingBottomSheet({
 
     addOrder(newOrder);
 
-    // Persist address and contact details across subsequent bookings for all services
+    // Persist address and contact details across subsequent bookings for all services without duplication
+    const existingAddresses = useAddressStore.getState().addresses || [];
+    const matchedAddress = existingAddresses.find((a) => isSameAddress(a, finalAddress));
     const savedAddrPayload: Address = {
-      ...finalAddress,
+      ...(matchedAddress || finalAddress),
+      customerName: customerName.trim(),
+      customerPhone: customerPhone.trim(),
       isDefault: true,
     };
-    useAddressStore.getState().addAddress(savedAddrPayload);
+    if (!matchedAddress) {
+      useAddressStore.getState().addAddress(savedAddrPayload);
+    }
     useBookingStore.getState().setGuestInfo(customerName.trim(), customerPhone.trim());
     useBookingStore.getState().setAddress(savedAddrPayload);
 
