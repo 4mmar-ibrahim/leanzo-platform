@@ -82,11 +82,11 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
   const [notes, setNotes] = useState('');
 
   const initialPhone = isAdminContext
-    ? (targetCustomer?.phone || guestPhone || '')
-    : (isAuthenticated && user?.phone ? user.phone : (isAuthenticated ? guestPhone : ''));
+    ? (targetCustomer?.phone || '')
+    : (isAuthenticated && user?.phone ? user.phone : '');
   const initialName = isAdminContext
-    ? (targetCustomer?.name || guestName || '')
-    : (isAuthenticated && user?.name ? user.name : (isAuthenticated ? guestName : ''));
+    ? (targetCustomer?.name || '')
+    : (isAuthenticated && user?.name ? user.name : '');
 
   const [guestPhoneInput, setGuestPhoneInput] = useState(initialPhone);
   const [phoneError, setPhoneError] = useState<string | null>(null);
@@ -95,6 +95,20 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
   const [nameError, setNameError] = useState<string | null>(null);
   const [nameTouched, setNameTouched] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Clear unauthenticated visitor inputs on logout or fresh visit
+  useEffect(() => {
+    if (!isAuthenticated && !isAdminContext) {
+      setGuestPhoneInput('');
+      setGuestNameInput('');
+      if (selectedAddress && selectedAddress.id !== 'guest-temp') {
+        setAddress(null);
+      }
+    } else if (isAuthenticated && user) {
+      if (user.phone && !guestPhoneInput) setGuestPhoneInput(user.phone);
+      if (user.name && !guestNameInput) setGuestNameInput(user.name);
+    }
+  }, [isAuthenticated, user, isAdminContext, selectedAddress, setAddress]);
 
   // Synchronize customer phone/name in admin context when targetCustomer changes
   useEffect(() => {

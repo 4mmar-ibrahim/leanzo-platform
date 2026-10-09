@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useBookingStore } from '@/store/useBookingStore';
 import { autoTranslate } from '@/lib/i18n/autoTranslate';
 import { toast } from 'sonner';
 
@@ -92,7 +93,10 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
           </div>
 
           <Link href="/booking">
-            <button className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#0866C6] to-[#07345C] text-white font-bold text-xs sm:text-sm shadow-md shadow-[#0866C6]/25 hover:opacity-95 transition-opacity flex items-center gap-2">
+            <button
+              onClick={() => useBookingStore.getState().startNewBooking()}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#0866C6] to-[#07345C] text-white font-bold text-xs sm:text-sm shadow-md shadow-[#0866C6]/25 hover:opacity-95 transition-opacity flex items-center gap-2 cursor-pointer"
+            >
               <Sparkles className="w-4 h-4" />
               <span>{isAr ? 'حجز خدمة جديدة' : 'New Booking'}</span>
             </button>

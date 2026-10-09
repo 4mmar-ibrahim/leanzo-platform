@@ -83,8 +83,9 @@ function BookingContent() {
     }
     if (queryServiceId) {
       selectServiceById(queryServiceId);
+      setStep(1);
     }
-  }, [queryCat, queryServiceId, setCategory, selectServiceById]);
+  }, [queryCat, queryServiceId, setCategory, selectServiceById, setStep]);
 
   const isAr = locale === 'ar';
   const ArrowNext = direction === 'rtl' ? ArrowLeft : ArrowRight;
@@ -97,7 +98,15 @@ function BookingContent() {
 
   useEffect(() => {
     setMounted(true);
-  }, []);
+    // On fresh page load / arrival at booking page without explicit step param, always start on Step 1
+    const queryStep = searchParams.get('step');
+    if (!queryStep) {
+      setStep(1);
+    }
+    if (!isAuthenticated) {
+      useBookingStore.getState().clearCustomerInfo();
+    }
+  }, [searchParams, setStep, isAuthenticated]);
 
   const steps = [
     { num: 1, label: t.booking.step1, icon: Sparkles },
@@ -339,7 +348,7 @@ function BookingContent() {
       addOrder(createdBooking);
 
       // Permanently ensure the address and customer contact info are saved for all future orders
-      if (selectedAddress) {
+      if (selectedAddress && isAuthenticated) {
         useAddressStore.getState().addAddress({
           ...selectedAddress,
           customerName: effectiveName,
@@ -347,7 +356,6 @@ function BookingContent() {
           isDefault: true,
         });
       }
-      useBookingStore.getState().setGuestInfo(effectiveName, effectivePhone);
 
       // Trigger celebratory reaction
       useZoStudioStore.getState().emitTrigger('action', {
@@ -361,6 +369,7 @@ function BookingContent() {
       toast.success(isAr ? `تم تسجيل طلبك بنجاح برقم #${createdBooking.id}` : `Booking created successfully #${createdBooking.id}`);
 
       resetBooking();
+      setStep(1);
       router.push(`/booking/success?orderId=${createdBooking.id}`);
     } catch (err: any) {
       console.error('[Booking Submit Error]:', err);

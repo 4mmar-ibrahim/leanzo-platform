@@ -508,6 +508,7 @@ export const useAuthStore = create<AuthState>()(
         } catch {}
         try {
           useBookingStore.getState().resetBooking();
+          useBookingStore.getState().clearCustomerInfo();
         } catch {}
         try {
           useCustomerNotificationStore.getState().clearAll();

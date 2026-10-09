@@ -26,6 +26,7 @@ import { useLocaleStore } from '@/store/useLocaleStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useCMSStore } from '@/store/useCMSStore';
+import { useBookingStore } from '@/store/useBookingStore';
 import { ThemeToggle } from './ThemeToggle';
 import { LanguageToggle } from './LanguageToggle';
 import { CustomerNotificationCenter } from './CustomerNotificationCenter';
@@ -476,7 +477,8 @@ export function Header() {
             {/* Booking CTA Module (المستطيل السادس: زر الحجز الاحترافي بهوية كلينزو الحمراء) */}
             <Link
               href="/booking"
-              className="relative group overflow-hidden inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold text-xs sm:text-sm text-white bg-[#F0444C] hover:bg-[#D9333B] active:bg-[#B8242C] shadow-md shadow-[#F0444C]/25 hover:shadow-xl hover:shadow-[#F0444C]/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 shrink-0 font-sans"
+              onClick={() => useBookingStore.getState().startNewBooking()}
+              className="relative group overflow-hidden inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold text-xs sm:text-sm text-white bg-[#F0444C] hover:bg-[#D9333B] active:bg-[#B8242C] shadow-md shadow-[#F0444C]/25 hover:shadow-xl hover:shadow-[#F0444C]/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 shrink-0 font-sans cursor-pointer"
             >
               {/* Animated Light Sweep Shimmer Effect */}
               <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/25 to-transparent -skew-x-12 -translate-x-full group-hover:animate-shimmer pointer-events-none" />
@@ -714,8 +716,11 @@ export function Header() {
 
             <Link
               href="/booking"
-              onClick={() => setMobileMenuOpen(false)}
-              className="flex items-center justify-center gap-2 w-full px-5 py-3 rounded-2xl font-black text-sm text-white bg-gradient-to-r from-[#0866C6] via-[#0A7CEE] to-[#07345C] shadow-md shadow-[#0866C6]/25 hover:brightness-110 active:scale-[0.98] transition-all"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                useBookingStore.getState().startNewBooking();
+              }}
+              className="flex items-center justify-center gap-2 w-full px-5 py-3 rounded-2xl font-black text-sm text-white bg-gradient-to-r from-[#0866C6] via-[#0A7CEE] to-[#07345C] shadow-md shadow-[#0866C6]/25 hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer"
             >
               <Sparkles className="w-4 h-4 text-white" />
               <span>{isAr ? (branding?.ctaText || 'احجز خدمتك الآن') : (branding?.ctaTextEn || 'Book Now')}</span>

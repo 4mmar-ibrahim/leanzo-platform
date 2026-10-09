@@ -22,6 +22,7 @@ import { useLocaleStore } from '@/store/useLocaleStore';
 import { useOrderStore } from '@/store/useOrderStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useCMSStore } from '@/store/useCMSStore';
+import { useBookingStore } from '@/store/useBookingStore';
 import { cn } from '@/lib/utils';
 
 interface MobileNavItem {
@@ -139,6 +140,9 @@ export function MobileBottomNav() {
 
   const handleSelectOption = (route: string) => {
     setShowBookingChoiceModal(false);
+    if (route === '/booking') {
+      useBookingStore.getState().startNewBooking();
+    }
     router.push(route);
   };
 

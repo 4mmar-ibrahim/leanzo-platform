@@ -89,6 +89,7 @@ interface BookingState {
   applyPromoCode: (code: string) => Promise<{ success: boolean; message: string; discountPercent: number }>;
   removePromoCode: () => void;
   resetBooking: () => void;
+  startNewBooking: (cat?: ServiceCategory) => void;
   clearCustomerInfo: () => void;
 
   // Computed pricing & duration getters (Authoritative)
@@ -224,6 +225,9 @@ export const useBookingStore = create<BookingState>()(
           selectedService: null,
           selectedPackage: null,
           selectedAddons: [],
+          selectedDate: '',
+          selectedTime: '',
+          currentStep: 1,
           appliedCoupon: null,
           promoCode: '',
         });
@@ -239,6 +243,9 @@ export const useBookingStore = create<BookingState>()(
         set({
           category: service.category,
           ...syncLegacy(updated),
+          currentStep: 1,
+          selectedDate: '',
+          selectedTime: '',
           appliedCoupon: null,
           promoCode: '',
         });
@@ -372,6 +379,30 @@ export const useBookingStore = create<BookingState>()(
           currentStep: 1,
           promoCode: '',
           appliedCoupon: null,
+          guestName: '',
+          guestPhone: '',
+        });
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.removeItem('cleanzo_booking_store');
+          } catch {}
+        }
+      },
+
+      startNewBooking: (cat) => {
+        set({
+          category: cat || 'car',
+          selectedServices: [],
+          selectedService: null,
+          selectedPackage: null,
+          selectedAddons: [],
+          selectedDate: '',
+          selectedTime: '',
+          notes: '',
+          currentStep: 1,
+          promoCode: '',
+          appliedCoupon: null,
+          selectedAddress: null,
           guestName: '',
           guestPhone: '',
         });
@@ -539,15 +570,8 @@ export const useBookingStore = create<BookingState>()(
         selectedService: state.selectedService,
         selectedPackage: state.selectedPackage,
         selectedAddons: state.selectedAddons,
-        selectedDate: state.selectedDate,
-        selectedTime: state.selectedTime,
-        selectedAddress: state.selectedAddress,
         notes: state.notes,
-        currentStep: state.currentStep,
         promoCode: state.promoCode,
-        appliedCoupon: state.appliedCoupon,
-        guestName: state.guestName,
-        guestPhone: state.guestPhone,
       }),
     }
   )
