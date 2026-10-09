@@ -1,5 +1,6 @@
 import { BookingSettings, Order } from '@/types';
 import { formatTimeTo12Hour, formatSingleTimeTo12Hour, formatStartTimeTo12Hour } from './timeUtils';
+import { normalizeCategory } from './services/categoryUtils';
 
 export { formatTimeTo12Hour, formatSingleTimeTo12Hour, formatStartTimeTo12Hour };
 
@@ -453,11 +454,11 @@ export function getOrderServiceIds(order: any): string[] {
  */
 export function getOrderCategory(order: any): string | undefined {
   if (!order) return undefined;
-  if (order.category && order.category !== 'all') return order.category;
-  if (order.service?.category) return order.service.category;
-  if (order.serviceSnapshot?.category) return order.serviceSnapshot.category;
+  if (order.category && order.category !== 'all') return normalizeCategory(order.category);
+  if (order.service?.category) return normalizeCategory(order.service.category);
+  if (order.serviceSnapshot?.category) return normalizeCategory(order.serviceSnapshot.category);
   if (Array.isArray(order.selectedServices) && order.selectedServices[0]?.service?.category) {
-    return order.selectedServices[0].service.category;
+    return normalizeCategory(order.selectedServices[0].service.category);
   }
   return undefined;
 }
@@ -468,7 +469,8 @@ export function getOrderCategory(order: any): string | undefined {
 export function isSameCategory(order: any, targetCategory?: string): boolean {
   if (!targetCategory || targetCategory === 'all') return true;
   const orderCat = getOrderCategory(order);
-  return orderCat === targetCategory;
+  if (!orderCat) return false;
+  return normalizeCategory(orderCat) === normalizeCategory(targetCategory);
 }
 
 /**
@@ -516,6 +518,7 @@ export function isSameService(
  * Appointments are continuous sequential intervals: Next starts exactly when previous ends.
  * Services in the SAME category share one unified schedule.
  * Different categories have completely independent schedules.
+ * Boundary Awareness: Previous booking boundaries (e.g. 11:55 finish) are offered as valid start times.
  */
 export function getTimeSlotsForDate(
   dateString: string,
@@ -544,8 +547,6 @@ export function getTimeSlotsForDate(
   const travelMin = travelDuration !== undefined ? Number(travelDuration) : 0;
   const totalOccupancy = durationMin + travelMin;
 
-  const stepMinutes = totalOccupancy > 0 ? totalOccupancy : Math.max(15, Number(settings?.slotInterval) || 60);
-
   if (totalOccupancy <= 0 || startMin + durationMin > endMin) {
     return [];
   }
@@ -562,70 +563,93 @@ export function getTimeSlotsForDate(
   const isToday = dateString === todayStr;
   const currentMinutes = isToday ? today.getHours() * 60 + today.getMinutes() : -1;
 
+  // Normalized target category
+  const targetCategory = category ? normalizeCategory(category) : undefined;
+
+  // Filter relevant existing orders on this date in this category
+  const relevantOrders = (existingOrders || []).filter((o) => {
+    if (!o) return false;
+    if (o.status === 'cancelled') return false;
+    if (o.date !== dateString) return false;
+
+    if (targetCategory && targetCategory !== 'all') {
+      const oCat = getOrderCategory(o);
+      if (oCat && normalizeCategory(oCat) !== targetCategory) {
+        return false;
+      }
+    } else {
+      const targetIds = Array.isArray(serviceIds) && serviceIds.length > 0
+        ? serviceIds.filter(Boolean)
+        : serviceId ? [serviceId] : [];
+
+      if (targetIds.length > 0) {
+        const matches = targetIds.some((sId) => isSameService(o, sId, undefined));
+        if (!matches) return false;
+      } else if (serviceTitle) {
+        if (!isSameService(o, undefined, serviceTitle)) return false;
+      }
+    }
+    return true;
+  });
+
+  // Extract occupied intervals for orders on this date
+  const occupiedIntervals = relevantOrders.map((o) => getBookingTimeInterval(o));
+
+  // Collect candidate start minutes:
+  // 1. Regular 15-minute grid (for precision and flexibility across 30, 40, 45, 60m services)
+  // 2. Exact end boundaries of existing bookings in this category (e.g. 11:55, 10:00)
+  const candidateStarts = new Set<number>();
+  const gridStep = 15;
+
+  for (let t = startMin; t + durationMin <= endMin; t += gridStep) {
+    candidateStarts.add(t);
+  }
+
+  for (const int of occupiedIntervals) {
+    if (int.endMin >= startMin && int.endMin + durationMin <= endMin) {
+      candidateStarts.add(int.endMin);
+    }
+  }
+
+  const sortedStarts = Array.from(candidateStarts).sort((a, b) => a - b);
   const slots: BookingSlot[] = [];
-  let cursor = startMin;
 
-  while (cursor + durationMin <= endMin) {
-    const slotStart = cursor;
-    const slotEnd = cursor + totalOccupancy;
+  for (const slotStart of sortedStarts) {
+    const slotEnd = slotStart + totalOccupancy;
 
-    // Check break overlap: mark slot unavailable instead of silently skipping
+    // Filter past times for current day
+    if (isToday && slotStart <= currentMinutes) {
+      continue;
+    }
+
+    // Check break overlap
     const isBreak =
       breakStartMin !== null &&
       breakEndMin !== null &&
       slotStart < breakEndMin &&
-      (slotStart + durationMin) > breakStartMin;
-
-    const start24 = minutesTo24H(slotStart);
-    const end24 = minutesTo24H(Math.min(endMin, slotEnd));
-    const intervalLabel = `${start24} – ${end24}`;
-
-    // Filter past times for current day
-    if (isToday && slotStart <= currentMinutes) {
-      cursor += stepMinutes;
-      continue;
-    }
+      slotEnd > breakStartMin;
 
     let isAvailable = !isBreak;
     let reason: string | undefined = isBreak ? 'استراحة عمل' : undefined;
 
-    // Check overlap with active orders (Category-Based Collision Aware)
-    if (existingOrders && existingOrders.length > 0 && isAvailable) {
-      const isBooked = existingOrders.some((o) => {
-        if (o.status === 'cancelled') return false;
-        if (o.date !== dateString) return false;
-
-        // Category-based check: orders in different categories do not collide!
-        if (category && category !== 'all') {
-          const oCat = getOrderCategory(o);
-          if (oCat && oCat !== category) return false;
-        } else {
-          const targetIds = Array.isArray(serviceIds) && serviceIds.length > 0
-            ? serviceIds.filter(Boolean)
-            : serviceId ? [serviceId] : [];
-
-          if (targetIds.length > 0) {
-            const matches = targetIds.some((sId) => isSameService(o, sId, undefined));
-            if (!matches) return false;
-          } else if (serviceTitle) {
-            if (!isSameService(o, undefined, serviceTitle)) return false;
-          }
-        }
-
-        const oStart = timeStringToMinutes(o.time);
-        const oDur = (o as any).totalOccupiedMinutes || (o.duration ? o.duration + 15 : totalOccupancy);
-        const oEnd = oStart + oDur;
-        return slotStart < oEnd && slotEnd > oStart;
-      });
-
-      if (isBooked) {
+    // Check collision against occupied intervals in this category
+    if (isAvailable && occupiedIntervals.length > 0) {
+      const colliding = occupiedIntervals.some((int) =>
+        isTimeIntervalOverlapping({ startMin: slotStart, endMin: slotEnd }, int)
+      );
+      if (colliding) {
         isAvailable = false;
         reason = 'محجوز بالكامل';
       }
     }
 
+    const start24 = minutesTo24H(slotStart);
+    const end24 = minutesTo24H(Math.min(endMin, slotEnd));
+    const intervalLabel = `${start24} – ${end24}`;
+
     const time12En = formatTimeTo12Hour(intervalLabel, { locale: 'en' });
     const time12Ar = formatTimeTo12Hour(intervalLabel, { locale: 'ar' });
+
     slots.push({
       time: time12En,
       label: time12Ar,
@@ -640,9 +664,8 @@ export function getTimeSlotsForDate(
       scheduledStart: start24,
       scheduledEnd: end24,
     });
-
-    cursor += stepMinutes;
   }
 
   return slots;
 }
+

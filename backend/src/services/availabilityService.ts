@@ -285,6 +285,14 @@ export function getBookingServiceIds(b: any): string[] {
   return Array.from(ids);
 }
 
+export function normalizeCategory(cat?: string | null): string {
+  if (!cat) return 'car';
+  const raw = String(cat).trim().toLowerCase();
+  if (raw === 'car' || raw === 'cars' || raw.includes('car') || raw.includes('سيار')) return 'car';
+  if (raw === 'home' || raw === 'homes' || raw.includes('home') || raw.includes('منزل') || raw.includes('منازل')) return 'home';
+  return raw;
+}
+
 /**
  * Resolves the primary service category ('car' | 'home') for category-based scheduling.
  */
@@ -294,17 +302,17 @@ export async function resolveTargetCategory(
   serviceIds?: string[]
 ): Promise<string | undefined> {
   if (category && category !== 'all' && typeof category === 'string' && category.trim()) {
-    return category.trim();
+    return normalizeCategory(category.trim());
   }
   if (serviceId) {
     const s = await Service.findOne({ id: serviceId });
-    if (s?.category) return s.category;
+    if (s?.category) return normalizeCategory(s.category);
   }
   if (Array.isArray(serviceIds) && serviceIds.length > 0) {
     for (const sId of serviceIds) {
       if (sId) {
         const s = await Service.findOne({ id: sId });
-        if (s?.category) return s.category;
+        if (s?.category) return normalizeCategory(s.category);
       }
     }
   }
@@ -316,11 +324,11 @@ export async function resolveTargetCategory(
  */
 export function getRecordCategory(record: any): string | undefined {
   if (!record) return undefined;
-  if (record.category && record.category !== 'all') return record.category;
-  if (record.serviceSnapshot?.category) return record.serviceSnapshot.category;
-  if (record.service?.category) return record.service.category;
+  if (record.category && record.category !== 'all') return normalizeCategory(record.category);
+  if (record.serviceSnapshot?.category) return normalizeCategory(record.serviceSnapshot.category);
+  if (record.service?.category) return normalizeCategory(record.service.category);
   if (Array.isArray(record.metadata?.services) && record.metadata.services[0]?.category) {
-    return record.metadata.services[0].category;
+    return normalizeCategory(record.metadata.services[0].category);
   }
   return undefined;
 }

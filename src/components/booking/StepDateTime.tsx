@@ -6,7 +6,8 @@ import { useLocaleStore } from '@/store/useLocaleStore';
 import { useBookingStore } from '@/store/useBookingStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useOrderStore } from '@/store/useOrderStore';
-import { getUpcomingBookingDates, getTimeSlotsForDate, BookingSlot, isSameService, isSameTime } from '@/lib/bookingEngine';
+import { getUpcomingBookingDates, getTimeSlotsForDate, BookingSlot, isSameService, isSameTime, getBookingTimeInterval, isTimeIntervalOverlapping } from '@/lib/bookingEngine';
+import { isSameCategory } from '@/lib/services/categoryUtils';
 import { formatTimeTo12Hour } from '@/lib/timeUtils';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { cn } from '@/lib/utils';
@@ -128,7 +129,7 @@ export function StepDateTime() {
       );
     }
 
-    // Cross-reference with all active orders in store using category isolation
+    // Cross-reference with all active orders in store using category isolation and interval overlap
     return baseSlots.map((slot) => {
       const isAlreadyBooked = orders.some((o) => {
         if (o.status === 'cancelled') return false;
@@ -136,18 +137,25 @@ export function StepDateTime() {
 
         // Category-based check: bookings in another category do not block
         const oCat = o.category || o.service?.category || (o as any).serviceSnapshot?.category;
-        if (effectiveCategory && oCat && oCat !== effectiveCategory) {
+        if (effectiveCategory && oCat && !isSameCategory(oCat, effectiveCategory)) {
           return false;
         }
 
-        return isSameTime(o.time, slot.time);
+        const slotInterval = getBookingTimeInterval({
+          time: slot.time,
+          scheduledStart: slot.scheduledStart,
+          scheduledEnd: slot.scheduledEnd,
+          totalOccupiedMinutes: slot.totalOccupiedMinutes,
+        });
+        const orderInterval = getBookingTimeInterval(o);
+        return isTimeIntervalOverlapping(slotInterval, orderInterval);
       });
 
       if (isAlreadyBooked) {
         return {
           ...slot,
           isAvailable: false,
-          reason: isAr ? 'محجوز' : 'Booked',
+          reason: isAr ? 'محجوز بالكامل' : 'Booked',
         };
       }
       return slot;

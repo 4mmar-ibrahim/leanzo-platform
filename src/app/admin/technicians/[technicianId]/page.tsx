@@ -43,6 +43,7 @@ import { useAdminStore } from '@/store/useAdminStore';
 import { useActivityLogStore } from '@/store/useActivityLogStore';
 import { cn, formatTimeTo12Hour } from '@/lib/utils';
 import { toast } from 'sonner';
+import { getCategoryDisplayName, normalizeCategory } from '@/lib/services/categoryUtils';
 import {
   TechnicianExtended,
   TechnicianAnalyticsSummary,
@@ -802,12 +803,12 @@ export default function TechnicianProfileDashboardPage() {
                         <span
                           className={cn(
                             'inline-block px-1.5 py-0.2 rounded text-[10px] font-bold mt-0.5',
-                            order.category === 'car'
+                            normalizeCategory(order.category) === 'car'
                               ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
                               : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
                           )}
                         >
-                          {order.category === 'car' ? 'غسيل سيارات' : 'تنظيف منازل'}
+                          {getCategoryDisplayName(order.category, true)}
                         </span>
                       </td>
 

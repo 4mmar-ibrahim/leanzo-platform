@@ -30,7 +30,7 @@ import { useLocationStore } from '@/store/useLocationStore';
 import { useCustomerStore } from '@/store/useCustomerStore';
 import { useAddressStore } from '@/store/useAddressStore';
 import { useBookingStore } from '@/store/useBookingStore';
-import { getUpcomingBookingDates, getTimeSlotsForDate, BookingSlot, isSameService, isSameTime } from '@/lib/bookingEngine';
+import { getUpcomingBookingDates, getTimeSlotsForDate, BookingSlot, isSameService, isSameTime, getBookingTimeInterval, isTimeIntervalOverlapping, minutesTo24H, getOrderCategory } from '@/lib/bookingEngine';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { formatTimeTo12Hour } from '@/lib/timeUtils';
 import { Service, ServiceCategory, Order, Address, ServicePackage, ServiceAddon } from '@/types';
@@ -39,7 +39,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { validateCustomerName } from '@/lib/validation/nameValidation';
 import { calculateItemizedPricing } from '@/lib/pricing';
-import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
+import { resolveCategoryInfo, normalizeCategory, isSameCategory } from '@/lib/services/categoryUtils';
 
 interface QuickBookingBottomSheetProps {
   isOpen: boolean;
@@ -253,8 +253,9 @@ export function QuickBookingBottomSheet({
       return;
     }
     let isMounted = true;
+    const effectiveCategory = selectedService?.category;
     cleanzoApi.availability
-      .checkDate(selectedDate, selectedService.id, serviceDuration)
+      .checkDate(selectedDate, selectedService.id, serviceDuration, [selectedService.id], undefined, effectiveCategory)
       .then((res) => {
         if (isMounted) {
           if (res?.slots && Array.isArray(res.slots) && res.slots.length > 0) {
@@ -266,6 +267,9 @@ export function QuickBookingBottomSheet({
                 labelEn: label12,
                 isAvailable: slot.available,
                 reason: slot.reason,
+                scheduledStart: slot.start || slot.scheduledStart,
+                scheduledEnd: slot.end || slot.scheduledEnd,
+                totalOccupiedMinutes: slot.totalOccupiedMinutes || serviceDuration,
               };
             });
             setLiveSlots(formattedSlots);
@@ -282,10 +286,11 @@ export function QuickBookingBottomSheet({
     return () => {
       isMounted = false;
     };
-  }, [selectedDate, selectedService?.id, serviceDuration]);
+  }, [selectedDate, selectedService?.id, serviceDuration, selectedService?.category]);
 
   const timeSlots = useMemo(() => {
     let baseSlots: BookingSlot[] = [];
+    const effectiveCategory = selectedService?.category;
     if (liveSlots !== null) {
       baseSlots = [...liveSlots];
     } else {
@@ -296,11 +301,44 @@ export function QuickBookingBottomSheet({
         selectedService?.title,
         orders,
         serviceDuration,
-        selectedService?.travelTimeMinutes
+        selectedService?.travelTimeMinutes,
+        selectedService?.id ? [selectedService.id] : [],
+        effectiveCategory
       );
     }
-    return baseSlots;
-  }, [selectedDate, liveSlots, bookingSettings, selectedService, orders, serviceDuration]);
+
+    // Cross-reference with all active orders in store using category isolation and interval overlap
+    return baseSlots.map((slot) => {
+      const isAlreadyBooked = orders.some((o) => {
+        if (o.status === 'cancelled') return false;
+        if (o.date !== selectedDate) return false;
+
+        // Category-based check: bookings in another category do not block
+        const oCat = o.category || o.service?.category || (o as any).serviceSnapshot?.category;
+        if (effectiveCategory && oCat && !isSameCategory(oCat, effectiveCategory)) {
+          return false;
+        }
+
+        const slotInterval = getBookingTimeInterval({
+          time: slot.time,
+          scheduledStart: slot.scheduledStart,
+          scheduledEnd: slot.scheduledEnd,
+          totalOccupiedMinutes: slot.totalOccupiedMinutes || serviceDuration,
+        });
+        const orderInterval = getBookingTimeInterval(o);
+        return isTimeIntervalOverlapping(slotInterval, orderInterval);
+      });
+
+      if (isAlreadyBooked) {
+        return {
+          ...slot,
+          isAvailable: false,
+          reason: isAr ? 'محجوز بالكامل' : 'Booked',
+        };
+      }
+      return slot;
+    });
+  }, [selectedDate, liveSlots, bookingSettings, selectedService, orders, serviceDuration, isAr]);
 
   const [selectedTime, setSelectedTime] = useState<string>('');
 
@@ -447,20 +485,26 @@ export function QuickBookingBottomSheet({
       // Continue
     }
 
-    // Check if slot is already booked for the exact same service
+    // Category-Based Slot Conflict Prevention:
     const existingOrders = useOrderStore.getState().orders || [];
+    const requestedInterval = getBookingTimeInterval({
+      time: selectedTime,
+      totalOccupiedMinutes: serviceDuration + (selectedService.travelTimeMinutes || 0),
+    });
+
     const isAlreadyBooked = existingOrders.some((o) => {
       if (o.status === 'cancelled') return false;
       if (o.date !== selectedDate) return false;
-      if (!isSameService(o, selectedService.id, selectedService.title)) return false;
-      return isSameTime(o.time, selectedTime);
+      if (!isSameCategory(getOrderCategory(o), selectedService.category)) return false;
+      const oInterval = getBookingTimeInterval(o);
+      return isTimeIntervalOverlapping(requestedInterval, oInterval);
     });
 
     if (isAlreadyBooked) {
       toast.error(
         isAr
-          ? `عذراً، موعد (${selectedTime}) محجوز بالفعل لهذه الخدمة. يرجى اختيار موعد آخر.`
-          : `Selected time (${selectedTime}) is already booked for this service. Please choose another time.`
+          ? `عذراً، موعد (${selectedTime}) يتعارض مع حجز قائم في قسم (${selectedService.category === 'car' ? 'خدمات السيارات' : 'خدمات المنازل'}). يرجى اختيار موعد متاح بعد انتهاء الحجز الحالي.`
+          : `Selected time (${selectedTime}) conflicts with an existing booking in this category. Please select another time.`
       );
       return;
     }
@@ -481,14 +525,28 @@ export function QuickBookingBottomSheet({
       customerPhone: customerPhone.trim(),
     };
 
+    const intervalMeta = getBookingTimeInterval({
+      time: selectedTime,
+      duration: serviceDuration,
+      serviceDurationMinutes: serviceDuration,
+      travelTimeMinutes: selectedService.travelTimeMinutes || 0,
+      totalOccupiedMinutes: serviceDuration + (selectedService.travelTimeMinutes || 0),
+    });
+
     const newOrder: Order = {
       id: orderId,
       userId: user?.id || 'guest-user',
       serviceId: selectedService.id,
       service: selectedService,
-      category: selectedService.category,
+      category: normalizeCategory(selectedService.category) as any,
       date: selectedDate,
       time: selectedTime,
+      scheduledStart: minutesTo24H(intervalMeta.startMin),
+      scheduledEnd: minutesTo24H(intervalMeta.endMin),
+      duration: serviceDuration,
+      serviceDurationMinutes: serviceDuration,
+      travelTimeMinutes: selectedService.travelTimeMinutes || 0,
+      totalOccupiedMinutes: intervalMeta.endMin - intervalMeta.startMin,
       address: finalAddress,
       basePrice: quickPricing.baseOriginalPrice + quickPricing.addonsTotal,
       packageId: selectedPkg?.id,

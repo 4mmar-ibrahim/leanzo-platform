@@ -35,7 +35,8 @@ import { validateEgyptianPhone } from '@/lib/validation/phoneValidation';
 import { validateCustomerName } from '@/lib/validation/nameValidation';
 import { useCustomerStore } from '@/store/useCustomerStore';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
-import { isSameService, isSameTime } from '@/lib/bookingEngine';
+import { isSameService, isSameTime, getBookingTimeInterval, isTimeIntervalOverlapping, getOrderCategory } from '@/lib/bookingEngine';
+import { normalizeCategory, isSameCategory } from '@/lib/services/categoryUtils';
 
 function BookingContent() {
   const router = useRouter();
@@ -69,6 +70,7 @@ function BookingContent() {
     getFinalPrice,
     getItemizedPricing,
     resetBooking,
+    getTotalDuration,
     guestName,
     guestPhone,
   } = useBookingStore();
@@ -246,21 +248,28 @@ function BookingContent() {
 
     const primaryService = allItems[0].service;
 
-    // Per-Service Slot Conflict Prevention:
-    // Disallow booking if an active order already exists for any of these services at the chosen date and time
+    // Category-Based Slot Conflict Prevention:
+    // Disallow booking if an active order in the SAME category overlaps with the requested interval
     const existingOrders = useOrderStore.getState().orders || [];
+    const targetCategory = primaryService.category || category;
+    const requestedInterval = getBookingTimeInterval({
+      time: selectedTime,
+      totalOccupiedMinutes: getTotalDuration() || primaryService.serviceDurationMinutes || primaryService.duration || 45,
+    });
+
     const isAlreadyBooked = existingOrders.some((o) => {
       if (o.status === 'cancelled') return false;
       if (o.date !== selectedDate) return false;
-      const matchesAny = allItems.some((item) => isSameService(o, item.service.id, item.service.title));
-      return matchesAny && isSameTime(o.time, selectedTime);
+      if (!isSameCategory(getOrderCategory(o), targetCategory)) return false;
+      const oInterval = getBookingTimeInterval(o);
+      return isTimeIntervalOverlapping(requestedInterval, oInterval);
     });
 
     if (isAlreadyBooked) {
       toast.error(
         isAr
-          ? `عذراً، موعد (${selectedTime}) محجوز بالفعل لإحدى الخدمات المختارة. يرجى اختيار موعد آخر.`
-          : `Sorry, (${selectedTime}) is already booked for one of the selected services. Please choose another time.`
+          ? `عذراً، موعد (${selectedTime}) يتعارض مع حجز قائم في نفس القسم (${normalizeCategory(targetCategory) === 'car' ? 'خدمات السيارات' : 'خدمات المنازل'}). يرجى اختيار موعد آخر.`
+          : `Sorry, (${selectedTime}) conflicts with an existing booking in the same category. Please choose another time.`
       );
       return;
     }

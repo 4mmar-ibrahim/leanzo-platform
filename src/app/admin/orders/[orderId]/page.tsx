@@ -39,6 +39,7 @@ import { generateOfficialInvoiceHtml, printHtmlDocument } from '@/lib/printUtils
 import { findConflictingOrder, formatReservationSchedule } from '@/lib/bookingEngine';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { getCategoryDisplayName } from '@/lib/services/categoryUtils';
 
 export default function AdminOrderDetailPage() {
   const params = useParams();
@@ -354,7 +355,7 @@ export default function AdminOrderDetailPage() {
           </div>
           <p className="text-xs text-slate-400 mt-1">
             الخدمة: {order.service?.title || (order as any).serviceSnapshot?.title || 'خدمة كلينزو'} (
-            {order.category === 'car' ? 'سيارات' : 'منازل'})
+            {getCategoryDisplayName(order.category || (order as any).serviceSnapshot?.category, true)})
           </p>
         </div>
 

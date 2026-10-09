@@ -41,6 +41,7 @@ import { toast } from 'sonner';
 import { useAdminStore } from '@/store/useAdminStore';
 import { useServiceStore } from '@/store/useServiceStore';
 import { hasPermission } from '@/lib/permissions';
+import { getCategoryDisplayName } from '@/lib/services/categoryUtils';
 
 const ORDER_STATUS_OPTIONS: StatusOption[] = [
   { label: 'الكل', value: 'all' },
@@ -723,7 +724,7 @@ export default function AdminOrdersPage() {
                           )}
                         </div>
                         <span className="text-[10px] text-slate-400">
-                          {order.category === 'car' ? 'سيارات' : 'منازل'}
+                          {getCategoryDisplayName(order.category || (order as any).serviceSnapshot?.category, true)}
                         </span>
                       </td>
                       <td className="py-3.5 px-4">

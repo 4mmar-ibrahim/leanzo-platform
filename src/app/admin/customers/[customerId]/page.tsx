@@ -57,6 +57,7 @@ import { toast } from 'sonner';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { getCategoryDisplayName } from '@/lib/services/categoryUtils';
 import {
   validateEgyptianPhone,
   VALID_EGYPTIAN_PREFIXES,
@@ -988,7 +989,7 @@ export default function AdminCustomerDetailPage() {
                   <div className="space-y-0.5">
                     <span className="font-bold text-slate-900 dark:text-white block">{s.title}</span>
                     <span className="text-[10px] text-slate-400">
-                      {s.category === 'car' ? 'غسيل وعناية سيارات' : 'خدمات منزلية'} • آخر طلب: {s.lastUsed || '-'}
+                      {getCategoryDisplayName(s.category, true)} • آخر طلب: {s.lastUsed || '-'}
                     </span>
                   </div>
                   <div className="text-left font-mono">
@@ -1201,7 +1202,7 @@ export default function AdminCustomerDetailPage() {
                                 {order.serviceSnapshot?.title || 'خدمة كلينزو'}
                               </span>
                               <span className="text-[10px] text-slate-400">
-                                {order.category === 'car' ? 'عناية سيارات' : 'خدمات منزلية'}
+                                {getCategoryDisplayName(order.category, true)}
                               </span>
                             </div>
                           </td>
@@ -1407,7 +1408,7 @@ export default function AdminCustomerDetailPage() {
                   <div className="flex items-start justify-between gap-2">
                     <span className="font-black text-sm text-slate-900 dark:text-white">{service.title}</span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 font-bold">
-                      {service.category === 'car' ? 'سيارات' : 'منازل'}
+                      {getCategoryDisplayName(service.category, true)}
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-200/60 dark:border-slate-800">

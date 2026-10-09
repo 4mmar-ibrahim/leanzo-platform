@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { AdminTour } from '@/components/admin/AdminTour';
 import { SubscriptionDashboardOverview } from '@/components/admin/subscriptions/SubscriptionDashboardOverview';
+import { getCategoryDisplayName } from '@/lib/services/categoryUtils';
 
 export default function AdminDashboardPage() {
   const [dateFilter, setDateFilter] = useState<'today' | '7days' | '30days' | 'year'>('30days');
@@ -457,7 +458,7 @@ export default function AdminDashboardPage() {
                       </td>
                       <td className="py-3 px-3">
                         <div className="font-semibold text-slate-900 dark:text-slate-100">{order.service?.title || 'خدمة كلينزو'}</div>
-                        <span className="text-[10px] text-slate-400">{order.category === 'car' ? 'سيارات' : 'منازل'}</span>
+                        <span className="text-[10px] text-slate-400">{getCategoryDisplayName(order.category || (order as any).serviceSnapshot?.category, true)}</span>
                       </td>
                       <td className="py-3 px-3">
                         <div className="text-slate-800 dark:text-slate-200">{order.date}</div>
