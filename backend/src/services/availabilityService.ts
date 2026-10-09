@@ -286,7 +286,7 @@ export function getBookingServiceIds(b: any): string[] {
 }
 
 export function normalizeCategory(cat?: string | null): string {
-  if (!cat) return 'car';
+  if (!cat) return '';
   const raw = String(cat).trim().toLowerCase();
   if (raw === 'car' || raw === 'cars' || raw.includes('car') || raw.includes('سيار')) return 'car';
   if (raw === 'home' || raw === 'homes' || raw.includes('home') || raw.includes('منزل') || raw.includes('منازل')) return 'home';
@@ -295,15 +295,13 @@ export function normalizeCategory(cat?: string | null): string {
 
 /**
  * Resolves the primary service category ('car' | 'home') for category-based scheduling.
+ * Prioritizes service's own database definition over generic query parameter.
  */
 export async function resolveTargetCategory(
   category?: string,
   serviceId?: string,
   serviceIds?: string[]
 ): Promise<string | undefined> {
-  if (category && category !== 'all' && typeof category === 'string' && category.trim()) {
-    return normalizeCategory(category.trim());
-  }
   if (serviceId) {
     const s = await Service.findOne({ id: serviceId });
     if (s?.category) return normalizeCategory(s.category);
@@ -315,6 +313,10 @@ export async function resolveTargetCategory(
         if (s?.category) return normalizeCategory(s.category);
       }
     }
+  }
+  if (category && category !== 'all' && typeof category === 'string' && category.trim()) {
+    const norm = normalizeCategory(category.trim());
+    if (norm) return norm;
   }
   return undefined;
 }
@@ -458,9 +460,13 @@ export async function getAvailableSlots(
     // All services within targetCategory share the same schedule.
     // Services in other categories have an independent schedule and do NOT block this category.
     if (targetCategory) {
-      const bCat = getRecordCategory(b);
-      if (bCat && bCat !== targetCategory) {
-        continue; // Different category -> independent schedule!
+      let bCat = getRecordCategory(b);
+      if (!bCat && b.serviceId && typeof b.serviceId === 'string') {
+        const s = await Service.findOne({ id: b.serviceId });
+        if (s?.category) bCat = normalizeCategory(s.category);
+      }
+      if (!bCat || bCat !== targetCategory) {
+        continue; // Different or non-matching category -> independent schedule, DO NOT BLOCK!
       }
     } else if (requestedServiceIds.length > 0) {
       const bServices = getBookingServiceIds(b);
@@ -505,8 +511,12 @@ export async function getAvailableSlots(
 
   for (const v of allVisits) {
     if (targetCategory) {
-      const vCat = getRecordCategory(v);
-      if (vCat && vCat !== targetCategory) {
+      let vCat = getRecordCategory(v);
+      if (!vCat && v.serviceId && typeof v.serviceId === 'string') {
+        const s = await Service.findOne({ id: v.serviceId });
+        if (s?.category) vCat = normalizeCategory(s.category);
+      }
+      if (!vCat || vCat !== targetCategory) {
         continue;
       }
     } else if (requestedServiceIds.length > 0) {
@@ -823,8 +833,12 @@ export async function assertSlotAvailability(params: {
       // Category-Based Collision Check:
       // Only bookings belonging to the same category block this appointment.
       if (targetCategory) {
-        const bCat = getRecordCategory(b);
-        if (bCat && bCat !== targetCategory) {
+        let bCat = getRecordCategory(b);
+        if (!bCat && b.serviceId && typeof b.serviceId === 'string') {
+          const s = await Service.findOne({ id: b.serviceId });
+          if (s?.category) bCat = normalizeCategory(s.category);
+        }
+        if (!bCat || bCat !== targetCategory) {
           continue; // Different category -> independent schedule!
         }
       } else if (targetServiceIds.length > 0) {

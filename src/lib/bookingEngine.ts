@@ -454,11 +454,25 @@ export function getOrderServiceIds(order: any): string[] {
  */
 export function getOrderCategory(order: any): string | undefined {
   if (!order) return undefined;
-  if (order.category && order.category !== 'all') return normalizeCategory(order.category);
-  if (order.service?.category) return normalizeCategory(order.service.category);
-  if (order.serviceSnapshot?.category) return normalizeCategory(order.serviceSnapshot.category);
+  if (order.category && order.category !== 'all') {
+    const norm = normalizeCategory(order.category);
+    if (norm) return norm;
+  }
+  if (order.service?.category) {
+    const norm = normalizeCategory(order.service.category);
+    if (norm) return norm;
+  }
+  if (order.serviceSnapshot?.category) {
+    const norm = normalizeCategory(order.serviceSnapshot.category);
+    if (norm) return norm;
+  }
   if (Array.isArray(order.selectedServices) && order.selectedServices[0]?.service?.category) {
-    return normalizeCategory(order.selectedServices[0].service.category);
+    const norm = normalizeCategory(order.selectedServices[0].service.category);
+    if (norm) return norm;
+  }
+  if (Array.isArray(order.metadata?.services) && order.metadata.services[0]?.category) {
+    const norm = normalizeCategory(order.metadata.services[0].category);
+    if (norm) return norm;
   }
   return undefined;
 }
@@ -574,7 +588,7 @@ export function getTimeSlotsForDate(
 
     if (targetCategory && targetCategory !== 'all') {
       const oCat = getOrderCategory(o);
-      if (oCat && normalizeCategory(oCat) !== targetCategory) {
+      if (!oCat || normalizeCategory(oCat) !== targetCategory) {
         return false;
       }
     } else {

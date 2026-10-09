@@ -85,7 +85,7 @@ export function resolveCategoryInfo(
 }
 
 export function normalizeCategory(category?: string | null): 'car' | 'home' | string {
-  if (!category) return 'car';
+  if (!category) return '';
   const raw = String(category).trim().toLowerCase();
   if (raw === 'car' || raw === 'cars' || raw.includes('car') || raw.includes('سيار')) return 'car';
   if (raw === 'home' || raw === 'homes' || raw.includes('home') || raw.includes('منزل') || raw.includes('منازل')) return 'home';
@@ -94,7 +94,10 @@ export function normalizeCategory(category?: string | null): 'car' | 'home' | st
 
 export function isSameCategory(catA?: string | null, catB?: string | null): boolean {
   if (!catA || !catB) return false;
-  return normalizeCategory(catA) === normalizeCategory(catB);
+  const normA = normalizeCategory(catA);
+  const normB = normalizeCategory(catB);
+  if (!normA || !normB) return false;
+  return normA === normB;
 }
 
 export function getCategoryDisplayName(category?: string | null, isAr: boolean = true): string {

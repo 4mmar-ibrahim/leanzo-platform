@@ -151,6 +151,7 @@ export const useBookingStore = create<BookingState>()(
         }
         const updated = [...current, { service, selectedPackage: null, selectedAddons: [] }];
         set({
+          category: (service.category || get().category) as any,
           ...syncLegacy(updated),
           appliedCoupon: null,
           promoCode: '',

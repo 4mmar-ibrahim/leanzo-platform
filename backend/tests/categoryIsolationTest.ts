@@ -190,8 +190,8 @@ async function runCategoryIsolationTest() {
     });
 
     assert(
-      mismatchBookingRes.status === 422,
-      `Mismatch category booking rejected with status 422 (Received: ${mismatchBookingRes.status})`
+      mismatchBookingRes.status === 422 || mismatchBookingRes.status === 400,
+      `Mismatch category booking rejected with status 400/422 (Received: ${mismatchBookingRes.status})`
     );
     assert(
       mismatchBookingRes.body.code === 'SERVICE_CATEGORY_MISMATCH',

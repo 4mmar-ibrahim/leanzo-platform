@@ -72,7 +72,7 @@ export function StepDateTime() {
     if (!selectedDate) return;
     let isMounted = true;
     const duration = getTotalDuration() || selectedService?.serviceDurationMinutes || selectedService?.duration || 45;
-    const effectiveCategory = category || selectedService?.category;
+    const effectiveCategory = selectedService?.category || selectedServices[0]?.service?.category || category;
 
     cleanzoApi.availability
       .checkDate(selectedDate, selectedService?.id, duration, currentServiceIds, undefined, effectiveCategory)
@@ -116,7 +116,7 @@ export function StepDateTime() {
   const timeSlots = useMemo(() => {
     if (!selectedDate) return [];
 
-    const effectiveCategory = category || selectedService?.category;
+    const effectiveCategory = selectedService?.category || selectedServices[0]?.service?.category || category;
     let baseSlots: BookingSlot[] = [];
     if (liveSlots !== null) {
       baseSlots = [...liveSlots];
