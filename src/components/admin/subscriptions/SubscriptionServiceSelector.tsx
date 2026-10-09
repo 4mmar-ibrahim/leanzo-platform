@@ -141,54 +141,94 @@ export function SubscriptionServiceSelector({
     });
   }, [activeServices, selectedCategory, searchTerm]);
 
-  // Single-selection resolution: easily select or switch service
-  const currentSelectedId = useMemo(() => {
-    if (selectedServiceId) return selectedServiceId;
+  // Multi-selection resolution: handle array of selected services
+  const currentSelectedIds = useMemo(() => {
+    const list: string[] = [];
     if (Array.isArray(selectedServiceIds) && selectedServiceIds.length > 0) {
-      return selectedServiceIds[0];
+      list.push(...selectedServiceIds.filter(Boolean));
     }
-    return '';
+    if (selectedServiceId && !list.includes(selectedServiceId)) {
+      list.unshift(selectedServiceId);
+    }
+    return Array.from(new Set(list));
   }, [selectedServiceId, selectedServiceIds]);
 
-  const selectedService = useMemo(() => {
-    return activeServices.find((s: any) => (s.id || s._id) === currentSelectedId);
-  }, [activeServices, currentSelectedId]);
+  const selectedServicesList = useMemo(() => {
+    return activeServices.filter((s: any) =>
+      currentSelectedIds.includes(s.id || s._id)
+    );
+  }, [activeServices, currentSelectedIds]);
 
-  const handleSelectService = (service: any) => {
+  const handleToggleService = (service: any) => {
     if (disabled) return;
-    const serviceId = service.id || service._id;
-    const resolvedObj = { ...service, id: serviceId };
+    const sId = service.id || service._id;
+    const isCurrentlySelected = currentSelectedIds.includes(sId);
 
-    if (onSelectService) {
-      onSelectService(resolvedObj);
+    let nextIds: string[];
+    if (isCurrentlySelected) {
+      nextIds = currentSelectedIds.filter((id) => id !== sId);
+    } else {
+      nextIds = [...currentSelectedIds, sId];
     }
+
+    const nextServices = activeServices.filter((s: any) =>
+      nextIds.includes(s.id || s._id)
+    );
+
     if (onSelectServices) {
-      onSelectServices([resolvedObj]);
+      onSelectServices(nextServices);
     }
+    if (onSelectService) {
+      onSelectService(nextServices[0] || null);
+    }
+  };
+
+  const handleSelectAllInCurrentCategory = () => {
+    if (disabled || filteredServices.length === 0) return;
+    const currentFilteredIds = filteredServices.map((s: any) => s.id || s._id);
+    const combinedIds = Array.from(new Set([...currentSelectedIds, ...currentFilteredIds]));
+    const nextServices = activeServices.filter((s: any) =>
+      combinedIds.includes(s.id || s._id)
+    );
+    if (onSelectServices) onSelectServices(nextServices);
+    if (onSelectService) onSelectService(nextServices[0] || null);
+  };
+
+  const handleClearSelection = () => {
+    if (disabled) return;
+    if (onSelectServices) onSelectServices([]);
+    if (onSelectService) onSelectService(null);
+  };
+
+  const handleRemoveSingleService = (sId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (disabled) return;
+    const nextIds = currentSelectedIds.filter((id) => id !== sId);
+    const nextServices = activeServices.filter((s: any) =>
+      nextIds.includes(s.id || s._id)
+    );
+    if (onSelectServices) onSelectServices(nextServices);
+    if (onSelectService) onSelectService(nextServices[0] || null);
   };
 
   const getCategoryIcon = (slug: string, iconStr?: string) => {
     const s = (slug || '').toLowerCase();
     const ic = (iconStr || '').toLowerCase();
-    if (s === 'car' || ic === 'car') return <Car className="w-3 h-3" />;
-    if (s === 'home' || ic === 'home') return <Home className="w-3 h-3" />;
+    if (s === 'car' || s === 'cars' || ic === 'car') return <Car className="w-3 h-3" />;
+    if (s === 'home' || s === 'homes' || ic === 'home') return <Home className="w-3 h-3" />;
     if (ic === 'package') return <Package className="w-3 h-3" />;
     return <Sparkles className="w-3 h-3" />;
   };
 
   return (
     <div className="space-y-3">
+      {/* Header & Category Tabs */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
         <label className="font-bold text-foreground/80 text-xs flex items-center gap-1.5 flex-wrap">
-          <span>الخدمة المرتبطة بالباقة *</span>
-          {selectedService && (
-            <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md flex items-center gap-1">
-              <span>تم اختيار:</span>
-              <span className="truncate max-w-[200px] sm:max-w-[320px]">
-                {selectedService.title || selectedService.name}
-              </span>
-            </span>
-          )}
+          <span>الخدمات المرتبطة بالباقة *</span>
+          <span className="text-[11px] font-semibold text-foreground/50">
+            (يمكنك اختيار أكثر من خدمة لإدراجها في الباقة)
+          </span>
         </label>
 
         {/* Dynamic Category Filter Tabs */}
@@ -232,30 +272,86 @@ export function SubscriptionServiceSelector({
         </div>
       </div>
 
-      {/* Search Input (TASK 09) */}
-      <div className="relative">
-        <Search className="w-4 h-4 text-foreground/40 absolute start-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="ابحث باسم الخدمة أو تفاصيلها (مثال: غسيل، بخار، تعقيم)..."
-          className="w-full ps-9 pe-8 py-2 text-xs rounded-xl bg-background border border-border/70 focus:border-primary focus:ring-1 focus:ring-primary/20 outline-hidden transition"
-          disabled={disabled}
-        />
-        {searchTerm && (
+      {/* Selected Services Summary Badges Bar */}
+      {selectedServicesList.length > 0 && (
+        <div className="p-2.5 rounded-xl bg-primary/5 border border-primary/20 space-y-2">
+          <div className="flex items-center justify-between gap-2 text-xs font-bold text-primary">
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>تم اختيار ({selectedServicesList.length}) خدمات مشمولة في الباقة:</span>
+            </span>
+            <button
+              type="button"
+              onClick={handleClearSelection}
+              disabled={disabled}
+              className="text-[10px] text-foreground/50 hover:text-rose-500 transition underline underline-offset-2"
+            >
+              إلغاء التحديد بالكامل
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {selectedServicesList.map((svc: any) => {
+              const sId = svc.id || svc._id;
+              return (
+                <span
+                  key={sId}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-card border border-primary/30 text-foreground shadow-2xs"
+                >
+                  <span className="truncate max-w-[180px] sm:max-w-[260px]">{svc.title || svc.name}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => handleRemoveSingleService(sId, e)}
+                    disabled={disabled}
+                    className="p-0.5 text-foreground/40 hover:text-rose-500 rounded-full"
+                    title="إزالة الخدمة من الباقة"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Search Input & Quick Actions */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-foreground/40 absolute start-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="ابحث باسم الخدمة أو تفاصيلها (مثال: غسيل، بخار، تعقيم)..."
+            className="w-full ps-9 pe-8 py-2 text-xs rounded-xl bg-background border border-border/70 focus:border-primary focus:ring-1 focus:ring-primary/20 outline-hidden transition"
+            disabled={disabled}
+          />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              className="absolute end-2.5 top-1/2 -translate-y-1/2 p-0.5 text-foreground/40 hover:text-foreground rounded-full"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {filteredServices.length > 0 && (
           <button
             type="button"
-            onClick={() => setSearchTerm('')}
-            className="absolute end-2.5 top-1/2 -translate-y-1/2 p-0.5 text-foreground/40 hover:text-foreground rounded-full"
+            onClick={handleSelectAllInCurrentCategory}
+            disabled={disabled}
+            className="px-3 py-2 text-[11px] font-bold rounded-xl bg-muted/60 hover:bg-muted text-foreground/80 hover:text-foreground border border-border/60 transition whitespace-nowrap shrink-0 flex items-center justify-center gap-1.5"
           >
-            <X className="w-3.5 h-3.5" />
+            <Package className="w-3.5 h-3.5" />
+            <span>تحديد الكل بهذا القسم ({filteredServices.length})</span>
           </button>
         )}
       </div>
 
-      {/* Services Grid (TASK 08 & 11) - Shows ONLY Name & Description, NO Price */}
-      <div className="max-h-56 overflow-y-auto rounded-xl border border-border/60 bg-muted/20 p-2 divide-y divide-border/20">
+      {/* Services Grid - Multi-Selectable Cards */}
+      <div className="max-h-60 overflow-y-auto rounded-xl border border-border/60 bg-muted/20 p-2">
         {filteredServices.length === 0 ? (
           <div className="py-6 text-center text-foreground/50 text-xs flex flex-col items-center gap-1.5">
             <AlertCircle className="w-5 h-5 text-amber-500/70" />
@@ -265,7 +361,7 @@ export function SubscriptionServiceSelector({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {filteredServices.map((service: any) => {
               const serviceId = service.id || service._id;
-              const isSelected = currentSelectedId === serviceId;
+              const isSelected = currentSelectedIds.includes(serviceId);
               const title = service.title || service.name || 'خدمة كلينزو';
               const description =
                 service.description ||
@@ -276,7 +372,7 @@ export function SubscriptionServiceSelector({
               return (
                 <div
                   key={serviceId}
-                  onClick={() => handleSelectService(service)}
+                  onClick={() => handleToggleService(service)}
                   className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between text-right relative ${
                     isSelected
                       ? 'bg-primary/10 border-primary ring-2 ring-primary/20 shadow-xs'
@@ -289,7 +385,12 @@ export function SubscriptionServiceSelector({
                         {title}
                       </div>
                       {isSelected ? (
-                        <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] font-bold text-primary bg-primary/15 px-1.5 py-0.5 rounded-md">
+                            مشمولة
+                          </span>
+                          <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                        </div>
                       ) : (
                         <span className="w-4 h-4 rounded-full border border-border/80 shrink-0" />
                       )}

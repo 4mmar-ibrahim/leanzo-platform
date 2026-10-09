@@ -20,6 +20,7 @@ import {
   Check,
   AlertCircle,
   Upload,
+  X,
 } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete, apiPatch } from '@/lib/api';
 import { toast } from 'sonner';
@@ -75,6 +76,8 @@ export default function AdminSubscriptionPlansPage() {
     image: '',
     serviceId: '',
     serviceIds: [] as string[],
+    features: [] as string[],
+    newFeatureText: '',
     visitCount: 4,
     price: 500,
     duration: 30,
@@ -158,12 +161,15 @@ export default function AdminSubscriptionPlansPage() {
   const openCreateModal = () => {
     setEditingPlan(null);
     const initialId = services[0]?.id || services[0]?._id || '';
+    const initialTitle = services[0]?.title || services[0]?.name || '';
     setFormData({
       name: '',
       description: '',
       image: '',
       serviceId: initialId,
       serviceIds: initialId ? [initialId] : [],
+      features: initialTitle ? [initialTitle] : [],
+      newFeatureText: '',
       visitCount: 4,
       price: 500,
       duration: 30,
@@ -186,12 +192,19 @@ export default function AdminSubscriptionPlansPage() {
       : plan.serviceId
       ? [plan.serviceId]
       : [];
+    const initialFeatures = Array.isArray(plan.features) && plan.features.length > 0
+      ? plan.features
+      : plan.service?.title
+      ? [plan.service.title]
+      : [];
     setFormData({
       name: plan.name,
       description: plan.description || '',
       image: (plan as any).image || '',
       serviceId: plan.serviceId || initialServiceIds[0] || '',
       serviceIds: initialServiceIds,
+      features: initialFeatures,
+      newFeatureText: '',
       visitCount: plan.visitCount,
       price: plan.price,
       duration: plan.duration,
@@ -243,12 +256,16 @@ export default function AdminSubscriptionPlansPage() {
       );
       const serviceTitle = selectedServiceObject?.title || selectedServiceObject?.name;
 
+      const effectiveFeatures = formData.features.length > 0
+        ? formData.features
+        : serviceTitle ? [serviceTitle] : [];
+
       const payload = {
         ...formData,
         serviceId: effectiveServiceId,
-        serviceIds: [effectiveServiceId],
+        serviceIds: formData.serviceIds.length > 0 ? formData.serviceIds : [effectiveServiceId],
         cashbackPercentage: 0,
-        features: serviceTitle ? [serviceTitle] : undefined,
+        features: effectiveFeatures,
       };
 
       if (editingPlan) {
@@ -515,15 +532,122 @@ export default function AdminSubscriptionPlansPage() {
               <SubscriptionServiceSelector
                 services={services}
                 selectedServiceId={formData.serviceId}
+                selectedServiceIds={formData.serviceIds}
                 onSelectService={(s) => {
-                  const sId = s.id || s._id;
+                  const sId = s?.id || s?._id || '';
                   setFormData((prev) => ({
                     ...prev,
                     serviceId: sId,
-                    serviceIds: [sId],
+                    serviceIds: prev.serviceIds.includes(sId)
+                      ? prev.serviceIds
+                      : [...prev.serviceIds, sId].filter(Boolean),
                   }));
                 }}
+                onSelectServices={(selectedSvcs) => {
+                  const ids = selectedSvcs.map((s) => s.id || s._id).filter(Boolean);
+                  const titles = selectedSvcs.map((s) => s.title || s.name).filter(Boolean);
+                  setFormData((prev) => {
+                    const existingCustom = prev.features.filter(
+                      (f) => !services.some((s) => (s.title || s.name) === f)
+                    );
+                    return {
+                      ...prev,
+                      serviceId: ids[0] || '',
+                      serviceIds: ids,
+                      features: Array.from(new Set([...titles, ...existingCustom])),
+                    };
+                  });
+                }}
               />
+
+              {/* Included Services & Features List Manager */}
+              <div className="p-3.5 rounded-2xl bg-muted/30 border border-border/60 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="font-bold text-foreground/80 text-xs flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-primary" />
+                    <span>الخدمات والمميزات المشمولة في الباقة ({formData.features.length})</span>
+                  </label>
+                  <span className="text-[10px] text-foreground/50">
+                    تظهر للعميل في تفاصيل وبطاقة الباقة
+                  </span>
+                </div>
+
+                {formData.features.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {formData.features.map((feat, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-card border border-border text-foreground shadow-2xs"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        <span>{feat}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormData((prev) => ({
+                              ...prev,
+                              features: prev.features.filter((_, i) => i !== idx),
+                            }));
+                          }}
+                          className="p-0.5 text-foreground/40 hover:text-rose-500 rounded-full"
+                          title="حذف الميزة"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-foreground/50 py-1">
+                    لم يتم إضافة خدمات أو مميزات مخصصة بعد. اختر خدمات من الأعلى أو أضف ميزة أدناه.
+                  </div>
+                )}
+
+                {/* Add Custom Feature Input */}
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={formData.newFeatureText || ''}
+                    onChange={(e) => setFormData({ ...formData, newFeatureText: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (formData.newFeatureText && formData.newFeatureText.trim()) {
+                          const val = formData.newFeatureText.trim();
+                          if (!formData.features.includes(val)) {
+                            setFormData({
+                              ...formData,
+                              features: [...formData.features, val],
+                              newFeatureText: '',
+                            });
+                          }
+                        }
+                      }
+                    }}
+                    placeholder="أضف ميزة أو خدمة أخرى (مثال: تعطير احترافي للسيارة، ضمان نظافة)..."
+                    className="flex-1 px-3 py-1.5 text-xs rounded-xl bg-background border border-border outline-hidden focus:border-primary"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (formData.newFeatureText && formData.newFeatureText.trim()) {
+                        const val = formData.newFeatureText.trim();
+                        if (!formData.features.includes(val)) {
+                          setFormData({
+                            ...formData,
+                            features: [...formData.features, val],
+                            newFeatureText: '',
+                          });
+                        }
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs font-bold bg-primary text-white hover:bg-primary/90 rounded-xl transition shadow-2xs shrink-0 flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>إضافة</span>
+                  </button>
+                </div>
+              </div>
 
               <div className="space-y-1">
                 <label className="font-bold text-foreground/70">اسم الباقة *</label>

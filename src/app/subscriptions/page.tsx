@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -21,9 +21,11 @@ import {
   Phone,
   Layers,
   Info,
+  Package,
 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useServiceStore } from '@/store/useServiceStore';
 import { toast } from 'sonner';
 import { apiGet, apiPost } from '@/lib/api';
 import { CleanzoImage } from '@/components/common/CleanzoImage';
@@ -76,9 +78,13 @@ export default function SubscriptionsPage() {
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<IPlan[]>([]);
   const [services, setServices] = useState<IService[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<'all' | 'car' | 'home'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedServiceId, setSelectedServiceId] = useState<string>('');
   const [selectedPlan, setSelectedPlan] = useState<IPlan | null>(null);
+
+  // Store categories
+  const categories = useServiceStore((s) => s.categories);
+  const fetchCategories = useServiceStore((s) => s.fetchCategories);
 
   // Flow Step: 1 = Service & Plan, 2 = Dates & Schedule, 3 = Address & Vehicle, 4 = Review & Confirm
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
@@ -119,7 +125,7 @@ export default function SubscriptionsPage() {
     }
   }, [user, customerName, customerPhone]);
 
-  // Load plans & services from backend
+  // Load plans, services & categories from backend
   useEffect(() => {
     async function loadData() {
       setLoading(true);
@@ -127,6 +133,7 @@ export default function SubscriptionsPage() {
         const [plansRes, servicesRes] = await Promise.all([
           apiGet<IPlan[]>('/subscriptions/plans'),
           apiGet<IService[]>('/services'),
+          fetchCategories().catch(() => []),
         ]);
 
         if (plansRes?.data) {
@@ -147,11 +154,139 @@ export default function SubscriptionsPage() {
       }
     }
     loadData();
-  }, []);
+  }, [fetchCategories]);
 
-  // Filter plans by category and service
+  // Dynamic Categories combined from store and any active service/plan category slugs
+  const dynamicCategories = useMemo(() => {
+    const list: Array<{ key: string; label: string; icon: any }> = [
+      { key: 'all', label: isAr ? 'جميع الباقات' : 'All Plans', icon: Layers },
+    ];
+
+    const addedKeys = new Set<string>(['all']);
+
+    // 1. Add categories configured in store / admin
+    (categories || []).forEach((c) => {
+      if (c.active === false) return;
+      const key = (c.slug || c.id || '').toLowerCase().trim();
+      if (!key || addedKeys.has(key)) return;
+      addedKeys.add(key);
+
+      const isCar = key === 'car' || key === 'cars' || c.icon === 'Car' || key.includes('سيار');
+      const isHome = key === 'home' || key === 'homes' || c.icon === 'Home' || key.includes('منزل');
+      const IconComp = isCar ? Car : isHome ? Home : c.icon === 'Package' ? Package : Sparkles;
+
+      list.push({
+        key,
+        label: isAr ? c.name : (c.nameEn || c.name),
+        icon: IconComp,
+      });
+    });
+
+    // 2. Discover any additional category keys from services and plans
+    const discoverCategory = (rawCat?: string) => {
+      if (!rawCat) return;
+      const key = rawCat.toLowerCase().trim();
+      if (!key || addedKeys.has(key)) return;
+
+      // Handle car & home aliases
+      if (key === 'car' || key === 'cars') {
+        if (addedKeys.has('car') || addedKeys.has('cars')) return;
+      }
+      if (key === 'home' || key === 'homes') {
+        if (addedKeys.has('home') || addedKeys.has('homes')) return;
+      }
+
+      addedKeys.add(key);
+      const isCar = key === 'car' || key === 'cars' || key.includes('سيار');
+      const isHome = key === 'home' || key === 'homes' || key.includes('منزل');
+
+      let label = rawCat;
+      if (isCar) label = isAr ? 'اشتراكات السيارات' : 'Car Plans';
+      else if (isHome) label = isAr ? 'اشتراكات المنازل' : 'Home Plans';
+
+      list.push({
+        key,
+        label,
+        icon: isCar ? Car : isHome ? Home : Sparkles,
+      });
+    };
+
+    services.forEach((s) => discoverCategory(s.category));
+    plans.forEach((p) => {
+      discoverCategory(p.service?.category);
+      discoverCategory((p as any).category);
+    });
+
+    return list;
+  }, [categories, services, plans, isAr]);
+
+  // Robust category matcher for plans
+  const isPlanInCategory = (p: IPlan, targetCategory: string): boolean => {
+    if (targetCategory === 'all') return true;
+    const target = targetCategory.toLowerCase().trim();
+
+    const svcCat = (p.service?.category || '').toLowerCase().trim();
+    const svcCatId = ((p.service as any)?.categoryId || '').toLowerCase().trim();
+    const planCat = ((p as any).category || '').toLowerCase().trim();
+
+    // Direct matches
+    if (svcCat === target || svcCatId === target || planCat === target) return true;
+
+    // Synonym matching for cars & homes
+    const isCarTarget = target === 'car' || target === 'cars' || target.includes('سيار');
+    if (isCarTarget) {
+      if (svcCat === 'car' || svcCat === 'cars' || svcCat.includes('سيار')) return true;
+      if (planCat === 'car' || planCat === 'cars' || planCat.includes('سيار')) return true;
+    }
+
+    const isHomeTarget = target === 'home' || target === 'homes' || target.includes('منزل') || target.includes('بيوت');
+    if (isHomeTarget) {
+      if (svcCat === 'home' || svcCat === 'homes' || svcCat.includes('منزل')) return true;
+      if (planCat === 'home' || planCat === 'homes' || planCat.includes('منزل')) return true;
+    }
+
+    // Match against category item in store
+    const storeCat = categories.find((c) => (c.slug || c.id || '').toLowerCase() === target);
+    if (storeCat) {
+      const sSlug = (storeCat.slug || '').toLowerCase();
+      const sId = (storeCat.id || '').toLowerCase();
+      const sName = (storeCat.name || '').toLowerCase();
+      if (svcCat === sSlug || svcCat === sId || svcCat === sName) return true;
+      if (planCat === sSlug || planCat === sId || planCat === sName) return true;
+    }
+
+    return false;
+  };
+
+  // Robust category matcher for services dropdown
+  const isServiceInCategory = (s: IService, targetCategory: string): boolean => {
+    if (targetCategory === 'all') return true;
+    const target = targetCategory.toLowerCase().trim();
+    const svcCat = (s.category || '').toLowerCase().trim();
+    const svcCatId = ((s as any).categoryId || '').toLowerCase().trim();
+
+    if (svcCat === target || svcCatId === target) return true;
+
+    const isCarTarget = target === 'car' || target === 'cars' || target.includes('سيار');
+    if (isCarTarget && (svcCat === 'car' || svcCat === 'cars' || svcCat.includes('سيار'))) return true;
+
+    const isHomeTarget = target === 'home' || target === 'homes' || target.includes('منزل') || target.includes('بيوت');
+    if (isHomeTarget && (svcCat === 'home' || svcCat === 'homes' || svcCat.includes('منزل'))) return true;
+
+    const storeCat = categories.find((c) => (c.slug || c.id || '').toLowerCase() === target);
+    if (storeCat) {
+      const sSlug = (storeCat.slug || '').toLowerCase();
+      const sId = (storeCat.id || '').toLowerCase();
+      const sName = (storeCat.name || '').toLowerCase();
+      if (svcCat === sSlug || svcCat === sId || svcCat === sName) return true;
+    }
+
+    return false;
+  };
+
+  // Filter plans by dynamic category and selected service
   const filteredPlans = plans.filter((p) => {
-    if (selectedCategory !== 'all' && p.service?.category && p.service.category !== selectedCategory) {
+    if (!isPlanInCategory(p, selectedCategory)) {
       return false;
     }
     if (selectedServiceId && p.serviceId !== selectedServiceId) {
@@ -373,29 +508,36 @@ export default function SubscriptionsPage() {
           <div className="space-y-8 animate-fadeIn">
             {/* Category Filter Tabs */}
             <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-200/70 dark:bg-slate-800/80 border border-slate-300/60 dark:border-slate-700 text-xs sm:text-sm font-bold">
-                {[
-                  { key: 'all', label: isAr ? 'جميع الباقات' : 'All Plans', icon: Layers },
-                  { key: 'car', label: isAr ? 'اشتراكات السيارات' : 'Car Plans', icon: Car },
-                  { key: 'home', label: isAr ? 'اشتراكات المنازل' : 'Home Plans', icon: Home },
-                ].map((tab) => {
+              <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-200/70 dark:bg-slate-800/80 border border-slate-300/60 dark:border-slate-700 text-xs sm:text-sm font-bold overflow-x-auto max-w-full scrollbar-none">
+                {dynamicCategories.map((tab) => {
                   const Icon = tab.icon;
                   const active = selectedCategory === tab.key;
+                  const planCount = tab.key === 'all'
+                    ? plans.length
+                    : plans.filter((p) => isPlanInCategory(p, tab.key)).length;
+
                   return (
                     <button
                       key={tab.key}
                       onClick={() => {
-                        setSelectedCategory(tab.key as any);
+                        setSelectedCategory(tab.key);
                         setSelectedServiceId('');
                       }}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+                      className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
                         active
                           ? 'bg-white dark:bg-slate-900 text-[#0866C6] dark:text-sky-400 shadow-sm'
                           : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                       }`}
                     >
-                      <Icon className="w-4 h-4" />
+                      <Icon className="w-4 h-4 shrink-0" />
                       <span>{tab.label}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                        active
+                          ? 'bg-[#0866C6]/10 text-[#0866C6] dark:text-sky-300'
+                          : 'bg-slate-300/60 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                      }`}>
+                        {planCount}
+                      </span>
                     </button>
                   );
                 })}
@@ -412,7 +554,7 @@ export default function SubscriptionsPage() {
                   >
                     <option value="">{isAr ? 'كل الخدمات' : 'All Services'}</option>
                     {services
-                      .filter((s) => selectedCategory === 'all' || s.category === selectedCategory)
+                      .filter((s) => isServiceInCategory(s, selectedCategory))
                       .map((s) => (
                         <option key={s.id} value={s.id}>
                           {isAr ? s.title : s.titleEn || s.title}
@@ -447,6 +589,20 @@ export default function SubscriptionsPage() {
                   const visitPrice = Math.round(plan.price / (plan.visitCount || 1));
                   const isSelected = selectedPlan?.id === plan.id;
 
+                  // Resolve Category Display Name for this plan
+                  const rawCat = plan.service?.category || (plan as any).category || '';
+                  const matchedCat = categories.find((c) =>
+                    (c.slug || '').toLowerCase() === rawCat.toLowerCase() ||
+                    (c.id || '').toLowerCase() === rawCat.toLowerCase()
+                  );
+                  const categoryBadge = matchedCat
+                    ? (isAr ? matchedCat.name : matchedCat.nameEn || matchedCat.name)
+                    : rawCat === 'car' || rawCat === 'cars'
+                    ? (isAr ? 'اشتراكات السيارات' : 'Car Plans')
+                    : rawCat === 'home' || rawCat === 'homes'
+                    ? (isAr ? 'اشتراكات المنازل' : 'Home Plans')
+                    : (isAr ? plan.service?.title : plan.service?.titleEn) || (isAr ? 'خدمة كلينزو' : 'Cleanzo Service');
+
                   return (
                     <div
                       key={plan.id}
@@ -460,14 +616,23 @@ export default function SubscriptionsPage() {
                       <div className="space-y-4">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1">
-                            <span className="inline-block px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-sky-50 dark:bg-sky-950/60 text-[#0866C6] dark:text-sky-400 mb-2 border border-sky-200/60 dark:border-sky-800/60">
-                              {(isAr ? plan.service?.title : (plan.service?.titleEn || autoTranslate(plan.service?.title, 'en'))) || (isAr ? 'خدمة كلينزو' : 'Cleanzo Service')}
-                            </span>
+                            <div className="flex items-center gap-2 mb-2 flex-wrap">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-sky-50 dark:bg-sky-950/60 text-[#0866C6] dark:text-sky-400 border border-sky-200/60 dark:border-sky-800/60">
+                                <Sparkles className="w-3 h-3" />
+                                <span>{categoryBadge}</span>
+                              </span>
+                              {plan.features && plan.features.length > 1 && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50">
+                                  <Package className="w-3 h-3" />
+                                  <span>{isAr ? `${plan.features.length} خدمات مشمولة` : `${plan.features.length} Services`}</span>
+                                </span>
+                              )}
+                            </div>
                             <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
                               {isAr ? plan.name : (plan.nameEn || autoTranslate(plan.name, 'en'))}
                             </h3>
                           </div>
-                          {/* Circular Visual Style (TASK 01) */}
+                          {/* Circular Visual Style */}
                           <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 border-slate-100 dark:border-slate-800 shadow-md bg-slate-100 dark:bg-slate-800 shrink-0">
                             {plan.image || plan.service?.image ? (
                               <CleanzoImage
@@ -507,17 +672,40 @@ export default function SubscriptionsPage() {
                           </p>
                         )}
 
-                        {/* Features List */}
-                        {plan.features && plan.features.length > 0 && (
-                          <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                            {plan.features.map((feat, idx) => (
-                              <div key={idx} className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-300">
-                                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                                <span>{isAr ? feat : autoTranslate(feat, 'en')}</span>
-                              </div>
-                            ))}
+                        {/* Included Services Section */}
+                        <div className="space-y-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+                          <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-200">
+                            <span className="flex items-center gap-1.5">
+                              <Package className="w-4 h-4 text-[#0866C6] dark:text-sky-400" />
+                              <span>
+                                {plan.features && plan.features.length > 1
+                                  ? (isAr ? `الخدمات المشمولة في الباقة (${plan.features.length} خدمات):` : `Included Services (${plan.features.length}):`)
+                                  : (isAr ? 'الخدمة المشمولة في الباقة:' : 'Included Service:')}
+                              </span>
+                            </span>
                           </div>
-                        )}
+
+                          {plan.features && plan.features.length > 0 ? (
+                            <div className="grid grid-cols-1 gap-1.5">
+                              {plan.features.map((feat, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200"
+                                >
+                                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                                  <span className="leading-snug">{isAr ? feat : autoTranslate(feat, 'en')}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                              <span>
+                                {(isAr ? plan.service?.title : (plan.service?.titleEn || autoTranslate(plan.service?.title, 'en'))) || (isAr ? 'خدمة كلينزو' : 'Cleanzo Service')}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       {/* Select CTA Button */}
@@ -904,12 +1092,34 @@ export default function SubscriptionsPage() {
               {/* Summary Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {/* Plan Info */}
-                <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-800 space-y-2">
+                <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-800 space-y-2.5">
                   <span className="text-xs text-slate-500 font-medium">{isAr ? 'تفاصيل الباقة' : 'Plan Details'}</span>
                   <h4 className="text-base font-black text-slate-900 dark:text-white">{selectedPlan.name}</h4>
                   <p className="text-xs text-slate-600 dark:text-slate-400">
                     {selectedPlan.service?.title} • {selectedPlan.visitCount} {isAr ? 'زيارات شهرية' : 'Visits/month'}
                   </p>
+
+                  {/* Included Services Tags */}
+                  {selectedPlan.features && selectedPlan.features.length > 0 && (
+                    <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 space-y-1.5">
+                      <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                        <Package className="w-3.5 h-3.5 text-[#0866C6]" />
+                        <span>{isAr ? `الخدمات المشمولة (${selectedPlan.features.length}):` : `Included Services (${selectedPlan.features.length}):`}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {selectedPlan.features.map((feat, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold bg-white dark:bg-slate-700/60 text-slate-800 dark:text-slate-200 px-2 py-0.5 rounded-md border border-slate-200/60 dark:border-slate-600"
+                          >
+                            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                            <span>{feat}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="pt-2 text-xl font-black text-[#0866C6] dark:text-sky-400">
                     {selectedPlan.price} {isAr ? 'ج.م' : 'EGP'}
                   </div>
