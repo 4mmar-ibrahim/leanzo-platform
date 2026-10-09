@@ -613,7 +613,7 @@ export function StepAddress() {
         <form onSubmit={handleSaveAddress} noValidate className="space-y-3 sm:space-y-4 bg-white dark:bg-slate-900 p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-2xs">
           <div className="space-y-2 sm:space-y-2.5">
             {/* Row 1: اسم العميل و المحافظة و المدينة */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               <Input
                 label={isAr ? 'اسم العميل' : 'Customer Name'}
                 placeholder={isAr ? 'مثال: أحمد عبد الله' : 'e.g. Ahmed Abdallah'}
@@ -668,7 +668,7 @@ export function StepAddress() {
             </div>
 
             {/* Row 2: تسمية العنوان و اسم الشارع */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
               <Input
                 label={isAr ? 'تسمية العنوان (مثل: المنزل)' : 'Address Label'}
                 value={label}
@@ -974,7 +974,7 @@ export function StepAddress() {
       >
         <form onSubmit={handleSaveAddress} className="space-y-3">
           {/* Row 1: اسم العميل و المحافظة و المدينة */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
             <Input
               label={isAr ? 'اسم العميل' : 'Customer Name'}
               placeholder={isAr ? 'مثال: أحمد عبد الله' : 'e.g. Ahmed Abdallah'}
@@ -1028,7 +1028,7 @@ export function StepAddress() {
           </div>
 
           {/* Row 2: تسمية العنوان و اسم الشارع */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3">
             <Input
               label={isAr ? 'تسمية العنوان (مثل: المنزل)' : 'Address Label'}
               value={label}
