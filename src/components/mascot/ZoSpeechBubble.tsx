@@ -179,9 +179,9 @@ export function ZoSpeechBubble({
   }[bubbleStyle];
 
   const fontClasses = {
-    sm: 'text-xs leading-snug',
-    md: 'text-sm leading-snug',
-    lg: 'text-base leading-snug',
+    sm: 'text-xs sm:text-[13px] leading-normal',
+    md: 'text-sm leading-normal',
+    lg: 'text-base leading-normal',
   }[fontSize];
 
   // High contrast default text color if not explicitly customized
@@ -203,10 +203,9 @@ export function ZoSpeechBubble({
   }[position] || 'bottom-[-5px] right-5';
 
   const customContainerStyle: React.CSSProperties = {
-    maxWidth: `${maxWidth}px`,
-    width: 'fit-content',
-    wordBreak: 'break-word',
-    overflowWrap: 'break-word',
+    maxWidth: `${maxWidth || 270}px`,
+    width: 'max-content',
+    minWidth: '120px',
     ...(backgroundColor ? { backgroundColor } : {}),
     ...(borderColor ? { borderColor } : {}),
   };
@@ -215,7 +214,7 @@ export function ZoSpeechBubble({
     <div
       dir={isAr ? 'rtl' : 'ltr'}
       className={cn(
-        'relative z-30 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl transition-all duration-200 ease-out w-fit max-w-full',
+        'relative z-30 px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-2xl transition-all duration-200 ease-out w-max max-w-[min(280px,calc(100vw-36px))]',
         isOpen !== undefined
           ? (isOpen ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-95 translate-y-2 pointer-events-none')
           : (isVisible ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-95 translate-y-2 pointer-events-none'),
@@ -227,7 +226,7 @@ export function ZoSpeechBubble({
       {/* Optional Custom Title (only when explicitly provided and non-generic) */}
       {displayTitle ? (
         <>
-          <div className="flex items-center justify-between gap-2 mb-1">
+          <div className="flex items-center justify-between gap-2.5 mb-1">
             <span
               className="font-bold text-[11px] leading-tight text-[#25B8E6] dark:text-[#3894ec] truncate"
               style={titleColor ? { color: titleColor } : undefined}
@@ -242,10 +241,10 @@ export function ZoSpeechBubble({
                   setInternalVisible(false);
                   if (onClose) onClose();
                 }}
-                className="shrink-0 p-0.5 -me-1 -mt-0.5 rounded-full hover:bg-black/20 dark:hover:bg-white/20 text-white/60 hover:text-white transition-colors cursor-pointer"
+                className="shrink-0 p-1 -me-1 -mt-0.5 rounded-full hover:bg-black/20 dark:hover:bg-white/20 text-white/70 hover:text-white transition-colors cursor-pointer"
                 title={isAr ? 'إغلاق' : 'Close'}
               >
-                <X className="w-3 h-3" />
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
@@ -258,9 +257,13 @@ export function ZoSpeechBubble({
         </>
       ) : (
         /* Single-line or compact layout when no title: Body + Close button side-by-side */
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2.5">
           <p
-            className={cn('font-medium whitespace-normal select-none', !textColor && defaultTextColorClass, fontClasses)}
+            className={cn(
+              'font-medium whitespace-normal select-none',
+              !textColor && defaultTextColorClass,
+              fontClasses
+            )}
             style={textColor ? { color: textColor } : undefined}
           >
             {displayBody}
@@ -274,7 +277,7 @@ export function ZoSpeechBubble({
                 setInternalVisible(false);
                 if (onClose) onClose();
               }}
-              className="shrink-0 p-0.5 -me-0.5 rounded-full hover:bg-black/20 dark:hover:bg-white/20 text-white/60 hover:text-white transition-colors cursor-pointer"
+              className="shrink-0 p-1 -me-1 rounded-full hover:bg-black/20 dark:hover:bg-white/20 text-white/70 hover:text-white transition-colors cursor-pointer"
               title={isAr ? 'إغلاق' : 'Close'}
             >
               <X className="w-3.5 h-3.5" />
