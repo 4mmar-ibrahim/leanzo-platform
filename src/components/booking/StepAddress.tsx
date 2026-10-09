@@ -48,11 +48,19 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
     updateAddress,
     deleteAddress,
     setDefaultAddress,
+    clearAddresses,
   } = useAddressStore();
   const { selectedAddress, setAddress, guestName, guestPhone, setGuestInfo, nextStep } = useBookingStore();
   const user = useAuthStore((s) => s.user);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isAr = locale === 'ar';
+
+  const hasSavedAddressesAccount = Boolean(
+    (isAuthenticated && !!user) || (isAdminContext && !!targetCustomer)
+  );
+  const showSavedAddressesList = Boolean(
+    hasSavedAddressesAccount && addresses.length > 0
+  );
 
   const { governorates, fetchLocations, isLoading: isLocationsLoading } = useLocationStore();
 
@@ -72,8 +80,12 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
   const [landmark, setLandmark] = useState('');
   const [notes, setNotes] = useState('');
 
-  const initialPhone = isAdminContext ? (targetCustomer?.phone || guestPhone || '') : (user?.phone || guestPhone || '');
-  const initialName = isAdminContext ? (targetCustomer?.name || guestName || '') : (user?.name || guestName || '');
+  const initialPhone = isAdminContext
+    ? (targetCustomer?.phone || guestPhone || '')
+    : (isAuthenticated && user?.phone ? user.phone : (isAuthenticated ? guestPhone : ''));
+  const initialName = isAdminContext
+    ? (targetCustomer?.name || guestName || '')
+    : (isAuthenticated && user?.name ? user.name : (isAuthenticated ? guestName : ''));
 
   const [guestPhoneInput, setGuestPhoneInput] = useState(initialPhone);
   const [phoneError, setPhoneError] = useState<string | null>(null);
@@ -173,20 +185,31 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
     }
   };
 
-  // Synchronize guest phone/name if user logs in (customer portal only)
+  // Synchronize guest phone/name if user logs in or out (customer portal only)
   useEffect(() => {
     if (!isAdminContext) {
-      if (user?.phone) setGuestPhoneInput(user.phone);
-      if (user?.name) {
-        setGuestNameInput(user.name);
+      if (isAuthenticated && user) {
+        if (user.phone) setGuestPhoneInput(user.phone);
+        if (user.name) {
+          setGuestNameInput(user.name);
+          setNameError(null);
+        }
+      } else if (!isAuthenticated) {
+        setGuestPhoneInput('');
+        setGuestNameInput('');
         setNameError(null);
+        setPhoneError(null);
+        clearAddresses();
+        if (selectedAddress?.customerPhone || selectedAddress?.id !== 'draft-address') {
+          setAddress(null);
+        }
       }
     }
-  }, [user, isAdminContext]);
+  }, [user, isAuthenticated, isAdminContext, clearAddresses, setAddress, selectedAddress]);
 
-  // Prefill form from existing selectedAddress if available
+  // Prefill form from existing selectedAddress if available (only for authenticated session or current guest session)
   useEffect(() => {
-    if (selectedAddress) {
+    if (selectedAddress && (hasSavedAddressesAccount || selectedAddress.id === 'draft-address')) {
       if (selectedAddress.label) setLabel(selectedAddress.label);
       if (selectedAddress.governorateId) setGovernorateId(selectedAddress.governorateId);
       if (selectedAddress.cityId) setCityId(selectedAddress.cityId);
@@ -198,18 +221,23 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
       if (selectedAddress.notes || selectedAddress.details) {
         setNotes(selectedAddress.notes || selectedAddress.details || '');
       }
-      if (selectedAddress.customerPhone) {
+      if (selectedAddress.customerPhone && hasSavedAddressesAccount) {
         setGuestPhoneInput(selectedAddress.customerPhone);
       }
     }
-  }, [selectedAddress]);
+  }, [selectedAddress, hasSavedAddressesAccount]);
 
   // Fetch active locations and customer addresses on mount
   useEffect(() => {
     fetchLocations(false);
-    const phoneToFetch = isAdminContext ? (targetCustomer?.phone || guestPhone) : user?.phone;
-    fetchAddresses(phoneToFetch);
-  }, [fetchLocations, fetchAddresses, user?.phone, isAdminContext, targetCustomer?.phone, guestPhone]);
+    if (isAdminContext && targetCustomer?.phone) {
+      fetchAddresses(targetCustomer.phone);
+    } else if (isAuthenticated && user?.phone) {
+      fetchAddresses(user.phone);
+    } else {
+      clearAddresses();
+    }
+  }, [fetchLocations, fetchAddresses, clearAddresses, isAuthenticated, user?.phone, isAdminContext, targetCustomer?.phone]);
 
   // Filter only active governorates from backend
   const activeGovernorates = useMemo(() => {
@@ -277,8 +305,10 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
     setCityId(validCity ? (validCity.id || (validCity as any)._id) : '');
   };
 
-  // Auto-select default/saved address if returning customer and none is selected
+  // Auto-select default/saved address ONLY if returning customer with authenticated account
   useEffect(() => {
+    if (!hasSavedAddressesAccount) return;
+
     if (addresses.length > 0) {
       if (!selectedAddress) {
         const defaultAddr = addresses.find((a) => a.isDefault) || addresses[0];
@@ -298,7 +328,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
         }
       }
     }
-  }, [addresses, selectedAddress, setAddress, guestPhoneInput, guestNameInput]);
+  }, [hasSavedAddressesAccount, addresses, selectedAddress, setAddress, guestPhoneInput, guestNameInput]);
 
   // Keep booking store guest info synchronized with selected address or authenticated user
   useEffect(() => {
@@ -534,89 +564,89 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
   };
 
   // -------------------------------------------------------------
-  // RENDER 1: FIRST-TIME / GUEST CUSTOMER (No Saved Addresses in DB)
+  // RENDER 1: GUEST OR NEW ADDRESS CREATION (No Saved Addresses Available)
   // If selectedAddress already chosen in draft, display confirmed card with edit option
   // Otherwise, show the embedded form.
   // -------------------------------------------------------------
-  if (addresses.length === 0 && selectedAddress && !isEditingExisting) {
-    return (
-      <div className="space-y-6 text-start">
-        <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
-            <div>
-              <h4 className="text-sm font-bold text-emerald-900 dark:text-emerald-100">
-                {isAr ? 'تم تحديد عنوان تقديم الخدمة' : 'Service Address Confirmed'}
-              </h4>
-              <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
-                {isAr
-                  ? 'تم حفظ العنوان في مسودة طلبك وسيبقى محفوظاً طوال رحلة الحجز.'
-                  : 'Address is saved in your booking draft and will be kept throughout.'}
-              </p>
+  if (!showSavedAddressesList) {
+    if (selectedAddress && !isEditingExisting && (hasSavedAddressesAccount || (guestPhoneInput && guestNameInput))) {
+      return (
+        <div className="space-y-6 text-start">
+          <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+              <div>
+                <h4 className="text-sm font-bold text-emerald-900 dark:text-emerald-100">
+                  {isAr ? 'تم تحديد عنوان تقديم الخدمة' : 'Service Address Confirmed'}
+                </h4>
+                <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
+                  {isAr
+                    ? 'تم حفظ العنوان في مسودة طلبك وسيبقى محفوظاً طوال رحلة الحجز.'
+                    : 'Address is saved in your booking draft and will be kept throughout.'}
+                </p>
+              </div>
             </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsEditingExisting(true)}
+              className="text-xs border-emerald-500 text-emerald-700 dark:text-emerald-300 shrink-0"
+            >
+              <Edit2 className="w-3.5 h-3.5 ml-1" />
+              <span>{isAr ? 'تعديل العنوان' : 'Edit Address'}</span>
+            </Button>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setIsEditingExisting(true)}
-            className="text-xs border-emerald-500 text-emerald-700 dark:text-emerald-300 shrink-0"
-          >
-            <Edit2 className="w-3.5 h-3.5 ml-1" />
-            <span>{isAr ? 'تعديل العنوان' : 'Edit Address'}</span>
-          </Button>
+
+          {/* Confirmed Address Card */}
+          <div className="p-3.5 sm:p-5 rounded-2xl border-2 border-sky-500 bg-sky-50/50 dark:bg-sky-950/30 shadow-xs ring-1 ring-sky-500/40 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+                <Home className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-500" />
+                {selectedAddress.label || 'المنزل'}
+              </span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500 text-white">
+                {isAr ? 'العنوان المعتمد للطلب' : 'Selected for Booking'}
+              </span>
+            </div>
+
+            <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1 flex-wrap">
+              <span className="text-sky-600 dark:text-sky-400 font-bold">
+                {selectedAddress.governorateNameSnapshot || selectedAddress.governorate}
+              </span>
+              <span className="text-slate-400">›</span>
+              <span className="text-slate-700 dark:text-slate-300">
+                {selectedAddress.cityNameSnapshot || selectedAddress.city}
+              </span>
+              <span className="text-slate-400">›</span>
+              <span className="text-slate-600 dark:text-slate-400 font-normal">
+                {selectedAddress.area}
+              </span>
+            </div>
+
+            {(selectedAddress.building || selectedAddress.floor || selectedAddress.apartment) && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Building className="w-3 h-3 text-slate-400" />
+                {[
+                  selectedAddress.building ? (isAr ? `مبنى ${selectedAddress.building}` : `Bldg ${selectedAddress.building}`) : null,
+                  selectedAddress.floor ? (isAr ? `طابق ${selectedAddress.floor}` : `Floor ${selectedAddress.floor}`) : null,
+                  selectedAddress.apartment ? (isAr ? `شقة ${selectedAddress.apartment}` : `Apt ${selectedAddress.apartment}`) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' • ')}
+              </p>
+            )}
+
+            {(selectedAddress.landmark || selectedAddress.notes || selectedAddress.details) && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 italic bg-white dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                "{selectedAddress.landmark || selectedAddress.notes || selectedAddress.details}"
+              </p>
+            )}
+          </div>
         </div>
+      );
+    }
 
-        {/* Confirmed Address Card */}
-        <div className="p-3.5 sm:p-5 rounded-2xl border-2 border-sky-500 bg-sky-50/50 dark:bg-sky-950/30 shadow-xs ring-1 ring-sky-500/40 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-black text-slate-900 dark:text-white">
-              <Home className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-500" />
-              {selectedAddress.label || 'المنزل'}
-            </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500 text-white">
-              {isAr ? 'العنوان المعتمد للطلب' : 'Selected for Booking'}
-            </span>
-          </div>
-
-          <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1 flex-wrap">
-            <span className="text-sky-600 dark:text-sky-400 font-bold">
-              {selectedAddress.governorateNameSnapshot || selectedAddress.governorate}
-            </span>
-            <span className="text-slate-400">›</span>
-            <span className="text-slate-700 dark:text-slate-300">
-              {selectedAddress.cityNameSnapshot || selectedAddress.city}
-            </span>
-            <span className="text-slate-400">›</span>
-            <span className="text-slate-600 dark:text-slate-400 font-normal">
-              {selectedAddress.area}
-            </span>
-          </div>
-
-          {(selectedAddress.building || selectedAddress.floor || selectedAddress.apartment) && (
-            <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-              <Building className="w-3 h-3 text-slate-400" />
-              {[
-                selectedAddress.building ? (isAr ? `مبنى ${selectedAddress.building}` : `Bldg ${selectedAddress.building}`) : null,
-                selectedAddress.floor ? (isAr ? `طابق ${selectedAddress.floor}` : `Floor ${selectedAddress.floor}`) : null,
-                selectedAddress.apartment ? (isAr ? `شقة ${selectedAddress.apartment}` : `Apt ${selectedAddress.apartment}`) : null,
-              ]
-                .filter(Boolean)
-                .join(' • ')}
-            </p>
-          )}
-
-          {(selectedAddress.landmark || selectedAddress.notes || selectedAddress.details) && (
-            <p className="text-xs text-slate-500 dark:text-slate-400 italic bg-white dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
-              "{selectedAddress.landmark || selectedAddress.notes || selectedAddress.details}"
-            </p>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  if (addresses.length === 0) {
     return (
       <div className="space-y-4 sm:space-y-6 text-start">
         <div className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-sky-50/80 dark:bg-sky-950/40 border border-sky-200/80 dark:border-sky-800/60 flex items-center gap-2.5 sm:gap-3">

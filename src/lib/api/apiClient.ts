@@ -137,6 +137,8 @@ export function clearCustomerAuthSession(): void {
         }
       } catch {}
     }
+    localStorage.removeItem('cleanzo_address_storage');
+    localStorage.removeItem('cleanzo_booking_store');
     window.dispatchEvent(new CustomEvent('cleanzo:customer-session-expired'));
   } catch {}
 }

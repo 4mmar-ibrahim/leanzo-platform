@@ -75,7 +75,7 @@ interface BookingState {
 
   setDate: (date: string) => void;
   setTime: (time: string) => void;
-  setAddress: (address: Address) => void;
+  setAddress: (address: Address | null) => void;
   setNotes: (notes: string) => void;
   setStep: (step: number) => void;
   setGuestInfo: (name: string, phone: string) => void;
@@ -89,6 +89,7 @@ interface BookingState {
   applyPromoCode: (code: string) => Promise<{ success: boolean; message: string; discountPercent: number }>;
   removePromoCode: () => void;
   resetBooking: () => void;
+  clearCustomerInfo: () => void;
 
   // Computed pricing & duration getters (Authoritative)
   getBasePrice: () => number;
@@ -358,9 +359,6 @@ export const useBookingStore = create<BookingState>()(
       },
 
       resetBooking: () => {
-        const prevAddress = get().selectedAddress;
-        const prevName = get().guestName;
-        const prevPhone = get().guestPhone;
         set({
           category: 'car',
           selectedServices: [],
@@ -369,14 +367,41 @@ export const useBookingStore = create<BookingState>()(
           selectedAddons: [],
           selectedDate: '',
           selectedTime: '',
-          selectedAddress: prevAddress || null,
+          selectedAddress: null,
           notes: '',
           currentStep: 1,
           promoCode: '',
           appliedCoupon: null,
-          guestName: prevName || '',
-          guestPhone: prevPhone || '',
+          guestName: '',
+          guestPhone: '',
         });
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.removeItem('cleanzo_booking_store');
+          } catch {}
+        }
+      },
+
+      clearCustomerInfo: () => {
+        set({
+          selectedAddress: null,
+          guestName: '',
+          guestPhone: '',
+        });
+        if (typeof window !== 'undefined') {
+          try {
+            const raw = localStorage.getItem('cleanzo_booking_store');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed?.state) {
+                parsed.state.selectedAddress = null;
+                parsed.state.guestName = '';
+                parsed.state.guestPhone = '';
+                localStorage.setItem('cleanzo_booking_store', JSON.stringify(parsed));
+              }
+            }
+          } catch {}
+        }
       },
 
       getItemizedServicesList: () => {

@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Address } from '@/types';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
+import { useAuthStore } from '@/store/useAuthStore';
 
 interface AddressState {
   addresses: Address[];
@@ -26,10 +27,23 @@ export const useAddressStore = create<AddressState>()(
       error: null,
 
       fetchAddresses: async (phone?: string) => {
+        const { isAuthenticated, user } = useAuthStore.getState();
+        const effectivePhone = phone || (isAuthenticated ? user?.phone : undefined);
+
+        if (!effectivePhone && !isAuthenticated) {
+          set({ addresses: [], isLoading: false, error: null });
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.removeItem('cleanzo_address_storage');
+            } catch {}
+          }
+          return [];
+        }
+
         set({ isLoading: true, error: null });
         try {
-          const res = await cleanzoApi.addresses.getAll(phone);
-          if (Array.isArray(res) && res.length > 0) {
+          const res = await cleanzoApi.addresses.getAll(effectivePhone);
+          if (Array.isArray(res)) {
             const mapped: Address[] = res.map((item: any) => ({
               ...item,
               id: item.id || item._id,
@@ -39,13 +53,24 @@ export const useAddressStore = create<AddressState>()(
             set({ addresses: mapped, isLoading: false });
             return mapped;
           }
-          // If server returned empty, preserve existing local cache in localStorage
-          set({ isLoading: false });
-          return get().addresses;
+          set({ addresses: [], isLoading: false });
+          return [];
         } catch (err: any) {
-          // Keep current local cache on network error or unauthorized
-          set({ isLoading: false, error: err.message });
-          return get().addresses;
+          if (err?.statusCode === 401 || err?.statusCode === 403) {
+            set({ addresses: [], isLoading: false, error: null });
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.removeItem('cleanzo_address_storage');
+              } catch {}
+            }
+            return [];
+          }
+          if (isAuthenticated) {
+            set({ isLoading: false, error: err.message });
+            return get().addresses;
+          }
+          set({ addresses: [], isLoading: false, error: err.message });
+          return [];
         }
       },
 
@@ -146,6 +171,11 @@ export const useAddressStore = create<AddressState>()(
 
       clearAddresses: () => {
         set({ addresses: [], error: null, isLoading: false });
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.removeItem('cleanzo_address_storage');
+          } catch {}
+        }
       },
     }),
     {

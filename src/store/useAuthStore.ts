@@ -4,6 +4,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { User } from '@/types';
 import { useCustomerStore } from '@/store/useCustomerStore';
+import { useAddressStore } from '@/store/useAddressStore';
+import { useBookingStore } from '@/store/useBookingStore';
+import { useCustomerNotificationStore } from '@/store/useCustomerNotificationStore';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import {
   validateEgyptianPhone,
@@ -500,6 +503,24 @@ export const useAuthStore = create<AuthState>()(
           token: null,
           authStatus: 'UNAUTHENTICATED',
         });
+        try {
+          useAddressStore.getState().clearAddresses();
+        } catch {}
+        try {
+          useBookingStore.getState().resetBooking();
+        } catch {}
+        try {
+          useCustomerNotificationStore.getState().clearAll();
+        } catch {}
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.removeItem('cleanzo_address_storage');
+            localStorage.removeItem('cleanzo_booking_store');
+            localStorage.removeItem('cleanzo-customer-notifications');
+            localStorage.removeItem('cleanzo-auth-storage');
+            sessionStorage.clear();
+          } catch {}
+        }
       },
 
       updateProfile: async ({ name, email, phone }) => {
@@ -599,6 +620,22 @@ if (typeof window !== 'undefined') {
       isAuthenticated: false,
       authStatus: 'UNAUTHENTICATED',
     });
+    try {
+      useAddressStore.getState().clearAddresses();
+    } catch {}
+    try {
+      useBookingStore.getState().resetBooking();
+    } catch {}
+    try {
+      useCustomerNotificationStore.getState().clearAll();
+    } catch {}
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('cleanzo_address_storage');
+        localStorage.removeItem('cleanzo_booking_store');
+        localStorage.removeItem('cleanzo-customer-notifications');
+      } catch {}
+    }
   });
 }
 
