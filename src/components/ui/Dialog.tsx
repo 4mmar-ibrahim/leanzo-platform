@@ -51,7 +51,7 @@ export function Dialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity duration-300"
@@ -64,7 +64,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         className={cn(
-          'relative w-full rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-2xl border border-slate-200/80 dark:border-slate-800 transition-all transform duration-200 z-10 max-h-[90vh] overflow-y-auto',
+          'relative w-full rounded-2xl bg-white dark:bg-slate-900 p-4 sm:p-6 shadow-2xl border border-slate-200/80 dark:border-slate-800 transition-all transform duration-200 z-10 max-h-[92vh] overflow-y-auto',
           maxWidths[maxWidth]
         )}
       >

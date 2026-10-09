@@ -665,8 +665,8 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
 
         <form onSubmit={handleSaveAddress} noValidate className="space-y-3 sm:space-y-4 bg-white dark:bg-slate-900 p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-2xs">
           <div className="space-y-2 sm:space-y-2.5">
-            {/* Row 1: اسم العميل و المحافظة و المدينة */}
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            {/* Row 1: اسم العميل و رقم الهاتف */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
               <Input
                 label={isAr ? 'اسم العميل' : 'Customer Name'}
                 placeholder={isAr ? 'مثال: أحمد عبد الله' : 'e.g. Ahmed Abdallah'}
@@ -677,6 +677,23 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
                 required
               />
 
+              <Input
+                label={isAr ? 'رقم الهاتف' : 'Phone'}
+                type="tel"
+                inputMode="numeric"
+                maxLength={11}
+                dir="ltr"
+                placeholder={isAr ? 'مثال: 01012345678' : '01012345678'}
+                value={guestPhoneInput}
+                onChange={handleGuestPhoneChange}
+                onBlur={handleGuestPhoneBlur}
+                error={phoneError || undefined}
+                required
+              />
+            </div>
+
+            {/* Row 2: المحافظة و المدينة (مساحة واسعة تمنع قص الأسماء) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
               <Select
                 label={isAr ? 'المحافظة' : 'Governorate'}
                 value={governorateId}
@@ -699,7 +716,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
               </Select>
 
               <Select
-                label={isAr ? 'المدينة' : 'City'}
+                label={isAr ? 'المدينة / المنطقة' : 'City / District'}
                 value={cityId}
                 onChange={(e) => setCityId(e.target.value)}
                 disabled={activeCities.length === 0}
@@ -720,41 +737,32 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
               </Select>
             </div>
 
-            {/* Row 2: تسمية العنوان و اسم الشارع */}
-            <div className="grid grid-cols-2 gap-2 sm:gap-3">
-              <Input
-                label={isAr ? 'تسمية العنوان' : 'Address Label'}
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                placeholder={isAr ? 'المنزل' : 'Home'}
-                required
-              />
-              <Input
-                label={isAr ? 'الشارع / الحي' : 'Street / District'}
-                placeholder={isAr ? 'شارع النصر، متفرع من عباس العقاد' : 'Street name, district'}
-                value={area}
-                onChange={(e) => setArea(e.target.value)}
-                required
-              />
+            {/* Row 3: تسمية العنوان و اسم الشارع */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+              <div className="sm:col-span-1">
+                <Input
+                  label={isAr ? 'تسمية العنوان' : 'Address Label'}
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  placeholder={isAr ? 'المنزل' : 'Home'}
+                  required
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <Input
+                  label={isAr ? 'الشارع / الحي' : 'Street / District'}
+                  placeholder={isAr ? 'شارع النصر، متفرع من عباس العقاد' : 'Street name, district'}
+                  value={area}
+                  onChange={(e) => setArea(e.target.value)}
+                  required
+                />
+              </div>
             </div>
 
-            {/* Row 3: رقم الهاتف و رقم العمارة و الطابق و الشقة */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+            {/* Row 4: رقم المبنى و الطابق و الشقة */}
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               <Input
-                label={isAr ? 'رقم الهاتف' : 'Phone'}
-                type="tel"
-                inputMode="numeric"
-                maxLength={11}
-                dir="ltr"
-                placeholder={isAr ? 'مثال: 01012345678' : '01012345678'}
-                value={guestPhoneInput}
-                onChange={handleGuestPhoneChange}
-                onBlur={handleGuestPhoneBlur}
-                error={phoneError || undefined}
-                required
-              />
-              <Input
-                label={isAr ? 'رقم العمارة' : 'Building'}
+                label={isAr ? 'رقم المبنى' : 'Building'}
                 placeholder="14"
                 value={building}
                 onChange={(e) => setBuilding(e.target.value)}
@@ -773,7 +781,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
               />
             </div>
 
-            {/* Row 4: علامة مميزة */}
+            {/* Row 5: علامة مميزة */}
             <div>
               <Input
                 label={isAr ? 'علامة مميزة (اختياري)' : 'Landmark (Optional)'}
@@ -1024,8 +1032,8 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
         }
       >
         <form onSubmit={handleSaveAddress} className="space-y-3">
-          {/* Row 1: اسم العميل و المحافظة و المدينة */}
-          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          {/* Row 1: اسم العميل و رقم الهاتف */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
             <Input
               label={isAr ? 'اسم العميل' : 'Customer Name'}
               placeholder={isAr ? 'مثال: أحمد عبد الله' : 'e.g. Ahmed Abdallah'}
@@ -1036,6 +1044,23 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
               required
             />
 
+            <Input
+              label={isAr ? 'رقم الهاتف' : 'Phone'}
+              type="tel"
+              inputMode="numeric"
+              maxLength={11}
+              dir="ltr"
+              placeholder={isAr ? 'مثال: 01012345678' : '01012345678'}
+              value={guestPhoneInput}
+              onChange={handleGuestPhoneChange}
+              onBlur={handleGuestPhoneBlur}
+              error={phoneError || undefined}
+              required
+            />
+          </div>
+
+          {/* Row 2: المحافظة و المدينة (مساحة واسعة تمنع قص الأسماء) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
             <Select
               label={isAr ? 'المحافظة' : 'Governorate'}
               value={governorateId}
@@ -1057,7 +1082,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
             </Select>
 
             <Select
-              label={isAr ? 'المدينة' : 'City'}
+              label={isAr ? 'المدينة / المنطقة' : 'City / District'}
               value={cityId}
               onChange={(e) => setCityId(e.target.value)}
               disabled={activeCities.length === 0}
@@ -1078,41 +1103,32 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
             </Select>
           </div>
 
-          {/* Row 2: تسمية العنوان و اسم الشارع */}
-          <div className="grid grid-cols-2 gap-2 sm:gap-3">
-            <Input
-              label={isAr ? 'تسمية العنوان' : 'Address Label'}
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder={isAr ? 'المنزل' : 'Home'}
-              required
-            />
-            <Input
-              label={isAr ? 'الشارع / الحي' : 'Street / District'}
-              value={area}
-              onChange={(e) => setArea(e.target.value)}
-              placeholder={isAr ? 'اسم الشارع والحي' : 'Street name and district'}
-              required
-            />
+          {/* Row 3: تسمية العنوان و اسم الشارع */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+            <div className="sm:col-span-1">
+              <Input
+                label={isAr ? 'تسمية العنوان' : 'Address Label'}
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder={isAr ? 'المنزل' : 'Home'}
+                required
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <Input
+                label={isAr ? 'الشارع / الحي' : 'Street / District'}
+                value={area}
+                onChange={(e) => setArea(e.target.value)}
+                placeholder={isAr ? 'اسم الشارع والحي' : 'Street name and district'}
+                required
+              />
+            </div>
           </div>
 
-          {/* Row 3: رقم الهاتف و المبنى و الطابق و الشقة */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+          {/* Row 4: رقم المبنى و الطابق و الشقة */}
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
             <Input
-              label={isAr ? 'رقم الهاتف' : 'Phone'}
-              type="tel"
-              inputMode="numeric"
-              maxLength={11}
-              dir="ltr"
-              placeholder={isAr ? 'مثال: 01012345678' : '01012345678'}
-              value={guestPhoneInput}
-              onChange={handleGuestPhoneChange}
-              onBlur={handleGuestPhoneBlur}
-              error={phoneError || undefined}
-              required
-            />
-            <Input
-              label={isAr ? 'المبنى' : 'Building'}
+              label={isAr ? 'رقم المبنى' : 'Building'}
               placeholder="14"
               value={building}
               onChange={(e) => setBuilding(e.target.value)}
@@ -1124,17 +1140,17 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
               onChange={(e) => setFloor(e.target.value)}
             />
             <Input
-              label={isAr ? 'الشقة' : 'Apartment'}
+              label={isAr ? 'رقم الشقة' : 'Apartment'}
               placeholder="7"
               value={apartment}
               onChange={(e) => setApartment(e.target.value)}
             />
           </div>
 
-          {/* Row 4: علامة مميزة */}
+          {/* Row 5: علامة مميزة */}
           <div>
             <Input
-              label={isAr ? 'علامة مميزة' : 'Landmark'}
+              label={isAr ? 'علامة مميزة (اختياري)' : 'Landmark (Optional)'}
               placeholder={isAr ? 'بجوار صيدلية...' : 'Near landmark...'}
               value={landmark}
               onChange={(e) => setLandmark(e.target.value)}
