@@ -11,6 +11,7 @@ import { SectionHeader } from '@/components/common/SectionHeader';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Button } from '@/components/ui/Button';
 import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
+import { autoTranslate } from '@/lib/i18n/autoTranslate';
 
 function ServicesContent() {
   const { t, locale } = useLocaleStore();
@@ -80,7 +81,7 @@ function ServicesContent() {
         .forEach((cat) => {
           list.push({
             slug: cat.slug,
-            name: isAr ? cat.name : (cat.nameEn || cat.name),
+            name: isAr ? cat.name : (cat.nameEn || autoTranslate(cat.name, 'en')),
             icon: cat.slug === 'car' ? Car : cat.slug === 'home' ? Home : Sparkles,
           });
         });

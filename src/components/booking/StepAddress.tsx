@@ -33,6 +33,7 @@ import {
   VALID_EGYPTIAN_PREFIXES,
 } from '@/lib/validation/phoneValidation';
 import { validateCustomerName } from '@/lib/validation/nameValidation';
+import { autoTranslate } from '@/lib/i18n/autoTranslate';
 
 export interface StepAddressProps {
   isAdminContext?: boolean;
@@ -603,7 +604,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
             <div className="flex items-center justify-between">
               <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-black text-slate-900 dark:text-white">
                 <Home className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-500" />
-                {selectedAddress.label || 'المنزل'}
+                {selectedAddress.label ? (isAr ? selectedAddress.label : autoTranslate(selectedAddress.label, 'en')) : (isAr ? 'المنزل' : 'Home')}
               </span>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500 text-white">
                 {isAr ? 'العنوان المعتمد للطلب' : 'Selected for Booking'}
@@ -612,15 +613,15 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
 
             <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1 flex-wrap">
               <span className="text-sky-600 dark:text-sky-400 font-bold">
-                {selectedAddress.governorateNameSnapshot || selectedAddress.governorate}
+                {isAr ? (selectedAddress.governorateNameSnapshot || selectedAddress.governorate) : autoTranslate(selectedAddress.governorateNameSnapshot || selectedAddress.governorate, 'en')}
               </span>
               <span className="text-slate-400">›</span>
               <span className="text-slate-700 dark:text-slate-300">
-                {selectedAddress.cityNameSnapshot || selectedAddress.city}
+                {isAr ? (selectedAddress.cityNameSnapshot || selectedAddress.city) : autoTranslate(selectedAddress.cityNameSnapshot || selectedAddress.city, 'en')}
               </span>
               <span className="text-slate-400">›</span>
               <span className="text-slate-600 dark:text-slate-400 font-normal">
-                {selectedAddress.area}
+                {isAr ? selectedAddress.area : autoTranslate(selectedAddress.area, 'en')}
               </span>
             </div>
 
@@ -708,7 +709,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
                     const gId = gov.id || (gov as any)._id;
                     return (
                       <option key={gId} value={gId}>
-                        {isAr ? gov.name : (gov.nameEn || gov.name)}
+                        {isAr ? gov.name : (gov.nameEn || autoTranslate(gov.name, 'en'))}
                       </option>
                     );
                   })
@@ -729,7 +730,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
                     const cId = city.id || (city as any)._id;
                     return (
                       <option key={cId} value={cId}>
-                        {isAr ? city.name : (city.nameEn || city.name)}
+                        {isAr ? city.name : (city.nameEn || autoTranslate(city.name, 'en'))}
                       </option>
                     );
                   })
@@ -913,7 +914,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
                     ) : (
                       <Home className="w-3.5 h-3.5 text-sky-500" />
                     )}
-                    {addr.label}
+                    {isAr ? addr.label : autoTranslate(addr.label, 'en')}
                   </span>
 
                   {addr.isDefault && (
@@ -938,15 +939,15 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
               {/* Geographic Breadcrumb Snapshot */}
               <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1 flex-wrap">
                 <span className="text-sky-600 dark:text-sky-400 font-bold">
-                  {addr.governorateNameSnapshot || addr.governorate}
+                  {isAr ? (addr.governorateNameSnapshot || addr.governorate) : autoTranslate(addr.governorateNameSnapshot || addr.governorate, 'en')}
                 </span>
                 <span className="text-slate-400">›</span>
                 <span className="text-slate-700 dark:text-slate-300">
-                  {addr.cityNameSnapshot || addr.city}
+                  {isAr ? (addr.cityNameSnapshot || addr.city) : autoTranslate(addr.cityNameSnapshot || addr.city, 'en')}
                 </span>
                 <span className="text-slate-400">›</span>
                 <span className="text-slate-600 dark:text-slate-400 font-normal">
-                  {addr.area}
+                  {isAr ? addr.area : autoTranslate(addr.area, 'en')}
                 </span>
               </div>
 

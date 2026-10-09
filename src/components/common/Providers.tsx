@@ -84,6 +84,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, user?.phone, customers, logout, locale, pathname, router]);
 
+  // Synchronize HTML element lang and direction dynamically with active locale
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      const loc = locale === 'en' ? 'en' : 'ar';
+      const dir = loc === 'ar' ? 'rtl' : 'ltr';
+      document.documentElement.lang = loc;
+      document.documentElement.dir = dir;
+    }
+  }, [locale, direction]);
+
   useEffect(() => {
     // Purge any stale client-side business caches while strictly preserving auth, theme & preferences
     try {

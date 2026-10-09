@@ -24,6 +24,7 @@ import { formatDuration, cn } from '@/lib/utils';
 import { Service, ServicePackage, ServiceAddon, ServiceCategory } from '@/types';
 import { getServiceDisplayPrice } from '@/lib/pricing';
 import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
+import { autoTranslate } from '@/lib/i18n/autoTranslate';
 import { Dialog } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 
@@ -85,8 +86,8 @@ export function StepService() {
       merged.push({
         id: `cat-${orphan}`,
         slug: orphan,
-        name: orphan === 'car' ? (isAr ? 'خدمات السيارات' : 'Car Services') : orphan === 'home' ? (isAr ? 'خدمات المنازل' : 'Home Services') : orphan,
-        nameEn: orphan === 'car' ? 'Car Services' : orphan === 'home' ? 'Home Services' : orphan,
+        name: orphan === 'car' ? (isAr ? 'خدمات السيارات' : 'Car Services') : orphan === 'home' ? (isAr ? 'خدمات المنازل' : 'Home Services') : (isAr ? orphan : autoTranslate(orphan, 'en')),
+        nameEn: orphan === 'car' ? 'Car Services' : orphan === 'home' ? 'Home Services' : autoTranslate(orphan, 'en'),
         description: '',
         descriptionEn: '',
         icon: 'Sparkles',
@@ -141,7 +142,7 @@ export function StepService() {
 
   const activeCategoryTitle = useMemo(() => {
     if (!activeCategoryObj) return isAr ? 'الخدمات' : 'Services';
-    return isAr ? activeCategoryObj.name : activeCategoryObj.nameEn || activeCategoryObj.name;
+    return isAr ? activeCategoryObj.name : (activeCategoryObj.nameEn || autoTranslate(activeCategoryObj.name, 'en'));
   }, [activeCategoryObj, isAr]);
 
   const getCategoryIconComponent = (cat: typeof activeCategories[0]) => {
@@ -230,8 +231,8 @@ export function StepService() {
             const selectedCount = mounted
               ? (selectedServices || []).filter((item) => item?.service?.category === cat.slug || item?.service?.category === cat.id).length
               : 0;
-            const catName = String(isAr ? (cat.name || '') : (cat.nameEn || cat.name || ''));
-            const catDesc = String(isAr ? (cat.description || '') : (cat.descriptionEn || cat.description || ''));
+            const catName = String(isAr ? (cat.name || '') : (cat.nameEn || autoTranslate(cat.name, 'en') || ''));
+            const catDesc = String(isAr ? (cat.description || '') : (cat.descriptionEn || autoTranslate(cat.description, 'en') || ''));
 
             return (
               <button
@@ -330,11 +331,11 @@ export function StepService() {
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-sky-200 dark:border-sky-700 shadow-2xs text-[11px]"
                 >
                   <span className="font-bold text-slate-900 dark:text-white">
-                    {isAr ? srv.title : srv.titleEn}
+                    {isAr ? srv.title : (srv.titleEn || autoTranslate(srv.title, 'en'))}
                   </span>
                   {pkg && (
                     <span className="text-[10px] font-semibold text-[#0866C6] dark:text-sky-300">
-                      ({isAr ? pkg.name : pkg.nameEn || pkg.name})
+                      ({isAr ? pkg.name : (pkg.nameEn || autoTranslate(pkg.name, 'en'))})
                     </span>
                   )}
                   {addonsCount > 0 && (
@@ -487,18 +488,18 @@ export function StepService() {
 
                       {/* Service Title */}
                       <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white line-clamp-2 leading-snug pt-0.5 break-words text-center w-full">
-                        {isAr ? srv.title : srv.titleEn}
+                        {isAr ? srv.title : (srv.titleEn || autoTranslate(srv.title, 'en'))}
                       </h4>
 
                       {/* Duration */}
                       <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 pt-1 w-full">
-                        <Clock className="w-3 h-3 text-sky-500 shrink-0" />
+                        <Clock className="w-3.5 h-3.5 text-sky-500 shrink-0" />
                         <span className="truncate">{formatDuration(srv.serviceDurationMinutes || srv.duration, isAr)}</span>
                       </div>
 
                       {/* Short Description */}
                       <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 pt-1 leading-tight text-center w-full">
-                        {isAr ? srv.shortDescription : srv.shortDescriptionEn}
+                        {isAr ? srv.shortDescription : (srv.shortDescriptionEn || autoTranslate(srv.shortDescription, 'en'))}
                       </p>
                     </div>
 
@@ -589,7 +590,7 @@ export function StepService() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="font-bold text-slate-900 dark:text-white truncate">
-                      {isAr ? item.title : item.titleEn}
+                      {isAr ? item.title : (item.titleEn || autoTranslate(item.title, 'en'))}
                     </span>
                     <span className="text-[9px] px-1.5 py-0.2 rounded-md bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                       {resolveCategoryInfo(item.category, categories, isAr).name}
@@ -597,7 +598,7 @@ export function StepService() {
                   </div>
                   {item.selectedPackage && (
                     <p className="text-[10px] text-sky-600 dark:text-sky-400 mt-0.5">
-                      {isAr ? `باقة: ${item.selectedPackage.name}` : `Package: ${item.selectedPackage.name}`}
+                      {isAr ? `باقة: ${item.selectedPackage.name}` : `Package: ${item.selectedPackage.nameEn || autoTranslate(item.selectedPackage.name, 'en')}`}
                     </p>
                   )}
                   {item.selectedAddons.length > 0 && (
@@ -637,7 +638,7 @@ export function StepService() {
           onClose={() => setModalService(null)}
           maxWidth="2xl"
           title={isAr ? 'باقات وإضافات الخدمة' : 'Service Packages & Add-ons'}
-          description={isAr ? modalService.title : modalService.titleEn}
+          description={isAr ? modalService.title : (modalService.titleEn || autoTranslate(modalService.title, 'en'))}
         >
           {(() => {
             const activeModalItem = selectedServices.find((i) => i.service.id === modalService.id);
@@ -748,7 +749,7 @@ export function StepService() {
                                 </div>
                                 <div>
                                   <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white block break-words leading-tight">
-                                    {isAr ? pkg.name : pkg.nameEn || pkg.name}
+                                    {isAr ? pkg.name : (pkg.nameEn || autoTranslate(pkg.name, 'en'))}
                                   </span>
                                   {pkg.durationMinutes && (
                                     <span className="text-[10px] text-slate-400">
@@ -807,7 +808,7 @@ export function StepService() {
                                   {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
                                 </div>
                                 <span className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 break-words leading-tight">
-                                  {isAr ? addon.name : addon.nameEn || addon.name}
+                                  {isAr ? addon.name : (addon.nameEn || autoTranslate(addon.name, 'en'))}
                                 </span>
                               </div>
                               <span className="text-xs font-bold text-slate-900 dark:text-white font-mono shrink-0">

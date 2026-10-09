@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { autoTranslate } from '@/lib/i18n/autoTranslate';
 import { toast } from 'sonner';
 
 export default function AccountLayout({ children }: { children: React.ReactNode }) {
@@ -80,7 +81,9 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
             />
             <div className="space-y-1 text-start">
               <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-                {t.account.welcome}، {user?.name.split(' ')[0] || (isAr ? 'عميلنا العزيز' : 'Customer')} 👋
+                {isAr
+                  ? `${t.account.welcome}، ${user?.name?.split(' ')[0] || 'عميلنا العزيز'}`
+                  : `${t.account.welcome}, ${autoTranslate(user?.name?.split(' ')[0], 'en') || 'Customer'}`} 👋
               </h1>
               <p className="text-xs text-slate-500">
                 {user?.phone || '01012345678'} • {isAr ? 'عميل مميز لدى كلينزو' : 'Cleanzo Premium Member'}

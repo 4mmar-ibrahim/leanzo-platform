@@ -27,6 +27,7 @@ import { formatDuration } from '@/lib/utils';
 import { formatTimeTo12Hour } from '@/lib/timeUtils';
 import { toast } from 'sonner';
 import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
+import { autoTranslate } from '@/lib/i18n/autoTranslate';
 
 export function StepReview() {
   const { t, locale } = useLocaleStore();
@@ -141,7 +142,7 @@ export function StepReview() {
                         #{idx + 1}
                       </span>
                       <h4 className="font-bold text-slate-900 dark:text-white truncate">
-                        {isAr ? item.title : item.titleEn}
+                        {isAr ? item.title : (item.titleEn || autoTranslate(item.title, 'en'))}
                       </h4>
                       <span className="text-[9px] px-1.5 py-0.2 rounded-md bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300">
                         {resolveCategoryInfo(item.category, categories, isAr).name}
@@ -150,7 +151,7 @@ export function StepReview() {
 
                     {item.selectedPackage ? (
                       <p className="text-[10px] sm:text-[11px] font-bold text-[#0866C6] dark:text-sky-400 mt-0.5">
-                        {isAr ? `الباقة: ${item.selectedPackage.name}` : `Package: ${item.selectedPackage.nameEn || item.selectedPackage.name}`}
+                        {isAr ? `الباقة: ${item.selectedPackage.name}` : `Package: ${item.selectedPackage.nameEn || autoTranslate(item.selectedPackage.name, 'en')}`}
                       </p>
                     ) : (
                       <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
@@ -177,7 +178,7 @@ export function StepReview() {
                         key={addon.id}
                         className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
                       >
-                        +{isAr ? addon.name : addon.nameEn || addon.name} ({addon.price} {isAr ? 'ج.م' : 'E'})
+                        +{isAr ? addon.name : (addon.nameEn || autoTranslate(addon.name, 'en'))} ({addon.price} {isAr ? 'ج.م' : 'E'})
                       </span>
                     ))}
                   </div>
@@ -208,9 +209,11 @@ export function StepReview() {
 
           {selectedAddress ? (
             <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
-              <p className="font-bold text-slate-900 dark:text-white">{selectedAddress.label}</p>
+              <p className="font-bold text-slate-900 dark:text-white">
+                {selectedAddress.label ? (isAr ? selectedAddress.label : autoTranslate(selectedAddress.label, 'en')) : (isAr ? 'المنزل' : 'Home')}
+              </p>
               <p className="text-[11px] text-slate-500">
-                {selectedAddress.governorate} — {selectedAddress.city} — {selectedAddress.area}
+                {isAr ? selectedAddress.governorate : autoTranslate(selectedAddress.governorate, 'en')} — {isAr ? selectedAddress.city : autoTranslate(selectedAddress.city, 'en')} — {isAr ? selectedAddress.area : autoTranslate(selectedAddress.area, 'en')}
               </p>
               {(selectedAddress.building || selectedAddress.apartment) && (
                 <p className="text-[10px] text-slate-400">

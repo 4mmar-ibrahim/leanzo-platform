@@ -14,6 +14,7 @@ import { formatDuration, cn } from '@/lib/utils';
 import { CleanzoImage } from '@/components/common/CleanzoImage';
 import { getServiceDisplayPrice } from '@/lib/pricing';
 import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
+import { autoTranslate } from '@/lib/i18n/autoTranslate';
 
 interface ServiceCardProps {
   service: Service;
@@ -116,7 +117,7 @@ export function ServiceCard({ service, featured = false }: ServiceCardProps) {
         <div className="p-2 pt-3 flex-1 flex flex-col justify-between space-y-3 items-center text-center">
           <div className="space-y-2 w-full text-center">
             <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors line-clamp-1 text-center">
-              {isAr ? service.title : service.titleEn}
+              {isAr ? service.title : (service.titleEn || autoTranslate(service.title, 'en'))}
             </h3>
 
             {/* Rating & Duration */}
@@ -133,12 +134,17 @@ export function ServiceCard({ service, featured = false }: ServiceCardProps) {
             </div>
 
             <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2 leading-relaxed text-center">
-              {isAr ? service.shortDescription : service.shortDescriptionEn}
+              {isAr ? service.shortDescription : (service.shortDescriptionEn || autoTranslate(service.shortDescription, 'en'))}
             </p>
 
             {/* Quick Feature Highlights (first 2) */}
             <ul className="pt-2 space-y-1 text-[11px] text-slate-600 dark:text-slate-400 flex flex-col items-center">
-              {(isAr ? service.features : service.featuresEn).slice(0, 2).map((feat, idx) => (
+              {(isAr
+                ? (service.features || [])
+                : ((service.featuresEn && service.featuresEn.length > 0)
+                    ? service.featuresEn
+                    : (service.features || []).map((f) => autoTranslate(f, 'en')))
+              ).slice(0, 2).map((feat, idx) => (
                 <li key={idx} className="flex items-center justify-center gap-1.5 truncate">
                   <CheckCircle2 className="w-3.5 h-3.5 text-[#0866C6] shrink-0" />
                   <span className="truncate">{feat}</span>

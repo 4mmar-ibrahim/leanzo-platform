@@ -31,6 +31,7 @@ import { LanguageToggle } from './LanguageToggle';
 import { CustomerNotificationCenter } from './CustomerNotificationCenter';
 import { GlobalSearchModal } from '@/components/common/GlobalSearchModal';
 import { cn, normalizeMediaUrl } from '@/lib/utils';
+import { autoTranslate } from '@/lib/i18n/autoTranslate';
 import { toast } from 'sonner';
 
 export function Header() {
@@ -574,7 +575,7 @@ export function Header() {
             <LanguageToggle />
             {isAuthenticated && user && (
               <span className="text-xs font-bold text-[#0866C6] dark:text-[#38BDF8]">
-                {user.name}
+                {isAr ? user.name : autoTranslate(user.name, 'en')}
               </span>
             )}
           </div>

@@ -1,4 +1,5 @@
 import { ServiceCategoryItem } from '@/types';
+import { autoTranslate } from '@/lib/i18n/autoTranslate';
 
 export interface CategoryInfo {
   name: string;
@@ -43,7 +44,7 @@ export function resolveCategoryInfo(
     const isHome = mSlug === 'home' || mSlug.includes('home') || mName.includes('منزل') || mName.includes('منازل');
 
     return {
-      name: isAr ? matched.name : (matched.nameEn || matched.name),
+      name: isAr ? matched.name : (matched.nameEn || autoTranslate(matched.name, 'en')),
       isCar,
       isHome,
       slug: matched.slug || matched.id || rawCat,
@@ -67,12 +68,12 @@ export function resolveCategoryInfo(
 
   let name = '';
   if (isCar) {
-    name = isAr ? 'سيارات' : 'Car';
+    name = isAr ? 'سيارات' : 'Cars';
   } else if (isHome) {
-    name = isAr ? 'منازل' : 'Home';
+    name = isAr ? 'منازل' : 'Homes';
   } else {
     // Custom category name or slug provided directly
-    name = rawCat || (isAr ? 'عام' : 'General');
+    name = isAr ? (rawCat || 'عام') : autoTranslate(rawCat || 'General', 'en');
   }
 
   return {

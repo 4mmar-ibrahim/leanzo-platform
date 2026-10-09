@@ -27,6 +27,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { toast } from 'sonner';
 import { apiGet, apiPost } from '@/lib/api';
 import { CleanzoImage } from '@/components/common/CleanzoImage';
+import { autoTranslate } from '@/lib/i18n/autoTranslate';
 
 interface IService {
   id: string;
@@ -460,10 +461,10 @@ export default function SubscriptionsPage() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1">
                             <span className="inline-block px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-sky-50 dark:bg-sky-950/60 text-[#0866C6] dark:text-sky-400 mb-2 border border-sky-200/60 dark:border-sky-800/60">
-                              {plan.service?.title || (isAr ? 'خدمة كلينزو' : 'Cleanzo Service')}
+                              {(isAr ? plan.service?.title : (plan.service?.titleEn || autoTranslate(plan.service?.title, 'en'))) || (isAr ? 'خدمة كلينزو' : 'Cleanzo Service')}
                             </span>
                             <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
-                              {isAr ? plan.name : plan.nameEn || plan.name}
+                              {isAr ? plan.name : (plan.nameEn || autoTranslate(plan.name, 'en'))}
                             </h3>
                           </div>
                           {/* Circular Visual Style (TASK 01) */}
@@ -502,7 +503,7 @@ export default function SubscriptionsPage() {
                         {/* Description */}
                         {plan.description && (
                           <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-normal">
-                            {isAr ? plan.description : plan.descriptionEn || plan.description}
+                            {isAr ? plan.description : (plan.descriptionEn || autoTranslate(plan.description, 'en'))}
                           </p>
                         )}
 
@@ -512,7 +513,7 @@ export default function SubscriptionsPage() {
                             {plan.features.map((feat, idx) => (
                               <div key={idx} className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-300">
                                 <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                                <span>{feat}</span>
+                                <span>{isAr ? feat : autoTranslate(feat, 'en')}</span>
                               </div>
                             ))}
                           </div>
