@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { SlidersHorizontal, Car, Home, Sparkles, Loader2 } from 'lucide-react';
+import { SlidersHorizontal, Car, Home, Sparkles, Loader2, ChevronDown, Check } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useServiceStore } from '@/store/useServiceStore';
 import { ServiceCategory } from '@/types';
@@ -22,6 +22,19 @@ function ServicesContent() {
   const fetchServices = useServiceStore((s) => s.fetchServices);
   const fetchCategories = useServiceStore((s) => s.fetchCategories);
   const isLoading = useServiceStore((s) => s.isLoading);
+
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     fetchServices();
@@ -47,6 +60,43 @@ function ServicesContent() {
       setSelectedCategory('all');
     }
   }, [searchParams]);
+
+  const categoryOptions = useMemo(() => {
+    const list: Array<{
+      slug: string;
+      name: string;
+      icon: typeof Sparkles;
+    }> = [
+      {
+        slug: 'all',
+        name: t.services.all,
+        icon: Sparkles,
+      },
+    ];
+
+    if (categories && categories.length > 0) {
+      categories
+        .filter((c) => c.active !== false)
+        .forEach((cat) => {
+          list.push({
+            slug: cat.slug,
+            name: isAr ? cat.name : (cat.nameEn || cat.name),
+            icon: cat.slug === 'car' ? Car : cat.slug === 'home' ? Home : Sparkles,
+          });
+        });
+    } else {
+      list.push(
+        { slug: 'car', name: t.services.carOnly, icon: Car },
+        { slug: 'home', name: t.services.homeOnly, icon: Home }
+      );
+    }
+
+    return list;
+  }, [categories, isAr, t.services]);
+
+  const activeOption = useMemo(() => {
+    return categoryOptions.find((opt) => opt.slug === selectedCategory) || categoryOptions[0];
+  }, [categoryOptions, selectedCategory]);
 
   const filteredServices = useMemo(() => {
     return activeServices
@@ -80,9 +130,11 @@ function ServicesContent() {
         />
 
         {/* Cleanzo Smart Guide & Category Switcher */}
-        <div className="relative p-3.5 sm:p-5 lg:p-6 rounded-2xl sm:rounded-3xl bg-gradient-to-r from-blue-50/80 via-white to-red-50/50 dark:from-[#041728] dark:via-[#082845] dark:to-[#07345C] border border-[#0866C6]/20 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3 sm:gap-6 overflow-hidden">
-          {/* Subtle brand glow */}
-          <div className="absolute top-0 end-1/4 w-72 h-72 bg-[#0866C6]/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative p-3.5 sm:p-5 lg:p-6 rounded-2xl sm:rounded-3xl bg-gradient-to-r from-blue-50/80 via-white to-red-50/50 dark:from-[#041728] dark:via-[#082845] dark:to-[#07345C] border border-[#0866C6]/20 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3 sm:gap-6 z-20">
+          {/* Subtle brand glow (contained in inner rounded box to allow dropdown to overflow freely) */}
+          <div className="absolute inset-0 rounded-2xl sm:rounded-3xl overflow-hidden pointer-events-none">
+            <div className="absolute top-0 end-1/4 w-72 h-72 bg-[#0866C6]/10 rounded-full blur-3xl" />
+          </div>
 
           {/* Cleanzo Smart Advisor Header */}
           <div className="flex items-center gap-3 sm:gap-4 z-10 w-full md:w-auto">
@@ -111,73 +163,86 @@ function ServicesContent() {
             </div>
           </div>
 
-          {/* Category Tabs Switcher (Sleek Horizontal Segmented Control) */}
-          <div className="flex items-center justify-center sm:justify-start p-1.5 rounded-xl sm:rounded-2xl bg-white/95 dark:bg-[#082845] border border-slate-200/80 dark:border-[#133B61] shadow-xs z-10 w-full sm:w-auto gap-1.5 overflow-x-auto no-scrollbar scroll-smooth">
+          {/* Mobile Dropdown Category Switcher (Replaces clipped buttons on mobile) */}
+          <div className="w-full sm:hidden relative z-30" ref={dropdownRef}>
             <button
-              onClick={() => setSelectedCategory('all')}
-              className={`flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all text-center whitespace-nowrap shrink-0 cursor-pointer ${
-                selectedCategory === 'all'
-                  ? 'bg-[#0866C6] text-white shadow-sm shadow-[#0866C6]/30'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/50'
-              }`}
+              type="button"
+              onClick={() => setIsDropdownOpen((prev) => !prev)}
+              className="w-full flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-white dark:bg-[#082845] border-2 border-[#0866C6]/30 dark:border-[#133B61] text-[#07345C] dark:text-white shadow-xs hover:border-[#0866C6] transition-all cursor-pointer font-bold text-xs"
             >
-              <Sparkles className="w-3.5 h-3.5 shrink-0" />
-              <span className="whitespace-nowrap">{t.services.all}</span>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-[#0866C6]/15 text-[#0866C6] flex items-center justify-center shrink-0">
+                  <activeOption.icon className="w-4 h-4" />
+                </div>
+                <div className="text-start truncate">
+                  <span className="truncate text-xs font-black text-[#07345C] dark:text-white block">
+                    {activeOption.name}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0 text-[#0866C6]">
+                <span className="text-[11px] font-semibold text-foreground/50">{isAr ? 'تغيير القسم' : 'Change'}</span>
+                <ChevronDown
+                  className={`w-4 h-4 transition-transform duration-200 ${
+                    isDropdownOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </div>
             </button>
 
-            {categories.length > 0 ? (
-              categories
-                .filter((c) => c.active !== false)
-                .map((cat) => {
-                  const isSelected = selectedCategory === cat.slug;
+            {/* Dropdown Menu Popup */}
+            {isDropdownOpen && (
+              <div className="absolute top-full mt-2 inset-x-0 bg-white dark:bg-[#082845] rounded-2xl shadow-2xl border border-slate-200 dark:border-[#133B61] p-1.5 space-y-1 z-50 animate-in fade-in zoom-in-95 duration-150">
+                {categoryOptions.map((opt) => {
+                  const isSelected = selectedCategory === opt.slug;
+                  const IconComp = opt.icon;
                   return (
                     <button
-                      key={cat.id || cat.slug}
-                      onClick={() => setSelectedCategory(cat.slug as ServiceCategory)}
-                      className={`flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all text-center whitespace-nowrap shrink-0 cursor-pointer ${
+                      key={opt.slug}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategory(opt.slug as ServiceCategory | 'all');
+                        setIsDropdownOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-start cursor-pointer ${
                         isSelected
-                          ? 'bg-[#0866C6] text-white shadow-sm shadow-[#0866C6]/30'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                          ? 'bg-[#0866C6] text-white shadow-xs'
+                          : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                       }`}
                     >
-                      {cat.slug === 'car' ? (
-                        <Car className="w-3.5 h-3.5 shrink-0" />
-                      ) : cat.slug === 'home' ? (
-                        <Home className="w-3.5 h-3.5 shrink-0" />
-                      ) : (
-                        <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                      )}
-                      <span className="whitespace-nowrap">{isAr ? cat.name : (cat.nameEn || cat.name)}</span>
+                      <div className="flex items-center gap-2.5 truncate">
+                        <IconComp className={`w-4 h-4 shrink-0 ${isSelected ? 'text-white' : 'text-[#0866C6]'}`} />
+                        <span className="truncate">{opt.name}</span>
+                      </div>
+                      {isSelected && <Check className="w-4 h-4 shrink-0" />}
                     </button>
                   );
-                })
-            ) : (
-              <>
-                <button
-                  onClick={() => setSelectedCategory('car')}
-                  className={`flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all text-center whitespace-nowrap shrink-0 cursor-pointer ${
-                    selectedCategory === 'car'
-                      ? 'bg-[#0866C6] text-white shadow-sm shadow-[#0866C6]/30'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                  }`}
-                >
-                  <Car className="w-3.5 h-3.5 shrink-0" />
-                  <span className="whitespace-nowrap">{t.services.carOnly}</span>
-                </button>
-
-                <button
-                  onClick={() => setSelectedCategory('home')}
-                  className={`flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all text-center whitespace-nowrap shrink-0 cursor-pointer ${
-                    selectedCategory === 'home'
-                      ? 'bg-[#0866C6] text-white shadow-sm shadow-[#0866C6]/30'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                  }`}
-                >
-                  <Home className="w-3.5 h-3.5 shrink-0" />
-                  <span className="whitespace-nowrap">{t.services.homeOnly}</span>
-                </button>
-              </>
+                })}
+              </div>
             )}
+          </div>
+
+          {/* Desktop Category Tabs Switcher (Segmented Control on Screens >= 640px) */}
+          <div className="hidden sm:flex items-center p-1.5 rounded-2xl bg-white/95 dark:bg-[#082845] border border-slate-200/80 dark:border-[#133B61] shadow-xs z-10 w-auto gap-1.5">
+            {categoryOptions.map((opt) => {
+              const isSelected = selectedCategory === opt.slug;
+              const IconComp = opt.icon;
+              return (
+                <button
+                  key={opt.slug}
+                  type="button"
+                  onClick={() => setSelectedCategory(opt.slug as ServiceCategory | 'all')}
+                  className={`flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all text-center whitespace-nowrap shrink-0 cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#0866C6] text-white shadow-sm shadow-[#0866C6]/30'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                  }`}
+                >
+                  <IconComp className="w-3.5 h-3.5 shrink-0" />
+                  <span className="whitespace-nowrap">{opt.name}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
