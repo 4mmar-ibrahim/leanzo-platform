@@ -174,46 +174,46 @@ export default function CustomerReviewsPage() {
           }
         />
 
-        {/* Key Metrics Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="p-6 rounded-2xl bg-white dark:bg-[#072540] border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
-              <Star className="w-6 h-6 fill-amber-500 text-amber-500" />
+        {/* Key Metrics Summary Cards - Always in 1 row side-by-side */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
+          <div className="p-2.5 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl bg-white dark:bg-[#072540] border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1.5 sm:gap-4 text-center sm:rtl:text-right sm:ltr:text-left">
+            <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
+              <Star className="w-4 h-4 sm:w-6 sm:h-6 fill-amber-500 text-amber-500" />
             </div>
-            <div>
-              <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-black text-[#07345C] dark:text-white">{averageRating}</span>
-                <span className="text-xs text-slate-400 font-bold">/ 5.0</span>
+            <div className="min-w-0">
+              <div className="flex items-baseline justify-center sm:justify-start gap-0.5 sm:gap-1">
+                <span className="text-sm sm:text-2xl font-black text-[#07345C] dark:text-white">{averageRating}</span>
+                <span className="text-[10px] sm:text-xs text-slate-400 font-bold">/ 5.0</span>
               </div>
-              <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+              <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium leading-tight">
                 {isAr ? 'متوسط تقييم الخدمة' : 'Average Service Rating'}
               </p>
             </div>
           </div>
 
-          <div className="p-6 rounded-2xl bg-white dark:bg-[#072540] border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-              <ThumbsUp className="w-6 h-6" />
+          <div className="p-2.5 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl bg-white dark:bg-[#072540] border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1.5 sm:gap-4 text-center sm:rtl:text-right sm:ltr:text-left">
+            <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <ThumbsUp className="w-4 h-4 sm:w-6 sm:h-6" />
             </div>
-            <div>
-              <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-black text-[#07345C] dark:text-white">{fiveStarPct}%</span>
+            <div className="min-w-0">
+              <div className="flex items-baseline justify-center sm:justify-start gap-0.5 sm:gap-1">
+                <span className="text-sm sm:text-2xl font-black text-[#07345C] dark:text-white">{fiveStarPct}%</span>
               </div>
-              <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+              <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium leading-tight">
                 {isAr ? 'تقييم 5 نجوم ممتاز' : '5-Star Satisfaction Rate'}
               </p>
             </div>
           </div>
 
-          <div className="p-6 rounded-2xl bg-white dark:bg-[#072540] border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-sky-500/10 text-[#0866C6] flex items-center justify-center shrink-0">
-              <CheckCircle2 className="w-6 h-6" />
+          <div className="p-2.5 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl bg-white dark:bg-[#072540] border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1.5 sm:gap-4 text-center sm:rtl:text-right sm:ltr:text-left">
+            <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-sky-500/10 text-[#0866C6] flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-4 h-4 sm:w-6 sm:h-6" />
             </div>
-            <div>
-              <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-black text-[#07345C] dark:text-white">{visibleReviews.length}+</span>
+            <div className="min-w-0">
+              <div className="flex items-baseline justify-center sm:justify-start gap-0.5 sm:gap-1">
+                <span className="text-sm sm:text-2xl font-black text-[#07345C] dark:text-white">+{visibleReviews.length}</span>
               </div>
-              <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+              <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium leading-tight">
                 {isAr ? 'رأي وتجربة موثقة' : 'Verified Reviews'}
               </p>
             </div>
