@@ -113,11 +113,11 @@ function AdminNewBookingContent() {
     // Step 4: Address
     if (currentStep === 4) {
       if (!selectedAddress) return false;
-      const effectiveName = (selectedCustomer?.name || guestName || (selectedAddress as any)?.customerName || '').trim();
-      const isNameValid = validateCustomerName(effectiveName, isAr).isValid;
-      const effectivePhone = (selectedCustomer?.phone || guestPhone || selectedAddress?.customerPhone || '').trim();
-      const isPhoneValid = validateEgyptianPhone(effectivePhone).isValid;
-      return isNameValid && isPhoneValid;
+      // If customer is already selected by admin, do not block on strict regex (phone may be legacy/test)
+      if (selectedCustomer) return true;
+      const effectiveName = (guestName || (selectedAddress as any)?.customerName || '').trim();
+      const effectivePhone = (guestPhone || selectedAddress?.customerPhone || '').trim();
+      return !!effectiveName && (effectivePhone.length >= 8 || validateEgyptianPhone(effectivePhone).isValid);
     }
 
     return true;
@@ -141,15 +141,13 @@ function AdminNewBookingContent() {
       } else if (currentStep === 4) {
         if (!selectedAddress) {
           toast.error(isAr ? 'يرجى تحديد أو إضافة عنوان الخدمة للعميل' : 'Please enter service address for the customer');
-        } else {
-          const effectiveName = (selectedCustomer?.name || guestName || (selectedAddress as any)?.customerName || '').trim();
-          const nameVal = validateCustomerName(effectiveName, isAr);
-          const effectivePhone = (selectedCustomer?.phone || guestPhone || selectedAddress?.customerPhone || '').trim();
-          const phoneVal = validateEgyptianPhone(effectivePhone);
-          if (!nameVal.isValid) {
-            toast.error(nameVal.message || (isAr ? 'يرجى إدخال اسم العميل بشكل صحيح' : 'Please enter customer name'));
-          } else if (!phoneVal.isValid) {
-            toast.error(phoneVal.message || (isAr ? 'يرجى إدخال رقم هاتف صحيح للتواصل' : 'Please enter valid phone'));
+        } else if (!selectedCustomer) {
+          const effectiveName = (guestName || (selectedAddress as any)?.customerName || '').trim();
+          const effectivePhone = (guestPhone || selectedAddress?.customerPhone || '').trim();
+          if (!effectiveName) {
+            toast.error(isAr ? 'يرجى إدخال اسم العميل بشكل صحيح' : 'Please enter customer name');
+          } else if (!effectivePhone || effectivePhone.length < 8) {
+            toast.error(isAr ? 'يرجى إدخال رقم هاتف صحيح للتواصل' : 'Please enter valid phone');
           }
         }
       }
@@ -346,20 +344,28 @@ function AdminNewBookingContent() {
             const Icon = st.icon;
             const isCompleted = currentStep > st.num;
             const isCurrent = currentStep === st.num;
+            const isAccessible =
+              st.num <= currentStep ||
+              (st.num === 2 && !!selectedCustomer) ||
+              (st.num === 3 && !!selectedCustomer && hasServices) ||
+              (st.num === 4 && !!selectedCustomer && hasServices && !!selectedDate && !!selectedTime) ||
+              (st.num === 5 && !!selectedCustomer && hasServices && !!selectedDate && !!selectedTime && !!selectedAddress);
 
             return (
               <button
                 key={st.num}
                 type="button"
-                disabled={!isCompleted && !isCurrent}
+                disabled={!isAccessible}
                 onClick={() => {
-                  if (isCompleted) setStep(st.num);
+                  if (isAccessible) setStep(st.num);
                 }}
                 className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 p-1.5 sm:p-3 rounded-xl transition-all text-center ${
                   isCurrent
-                    ? 'bg-[#0866C6] text-white shadow-sm'
+                    ? 'bg-[#0866C6] text-white shadow-sm ring-2 ring-[#0866C6]/30'
                     : isCompleted
                     ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 cursor-pointer'
+                    : isAccessible
+                    ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-100 cursor-pointer'
                     : 'text-slate-400 bg-slate-50 dark:bg-slate-800/40 cursor-not-allowed opacity-60'
                 }`}
               >

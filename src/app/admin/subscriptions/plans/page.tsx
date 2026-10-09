@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { MediaUploadZone } from '@/components/media/MediaUploadZone';
 import { SubscriptionServiceSelector } from '@/components/admin/subscriptions/SubscriptionServiceSelector';
 import { CleanzoImage } from '@/components/common/CleanzoImage';
+import { useServiceStore } from '@/store/useServiceStore';
 
 interface IPlan {
   id: string;
@@ -87,15 +88,59 @@ export default function AdminSubscriptionPlansPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [plansRes, servicesRes] = await Promise.all([
+      const [plansResult, servicesResult] = await Promise.allSettled([
         apiGet('/subscriptions/plans/admin'),
         apiGet('/services'),
       ]);
-      const rawPlans = Array.isArray(plansRes.data)
-        ? plansRes.data
-        : plansRes.data?.plans || [];
-      setPlans(rawPlans);
-      setServices(Array.isArray(servicesRes.data) ? servicesRes.data : servicesRes.data?.services || []);
+
+      // Plans
+      if (plansResult.status === 'fulfilled') {
+        const plansRes = plansResult.value;
+        const rawPlans = Array.isArray(plansRes.data)
+          ? plansRes.data
+          : plansRes.data?.plans || [];
+        setPlans(rawPlans);
+      } else {
+        console.warn('Failed to fetch subscription plans:', plansResult.reason);
+      }
+
+      // Services
+      let fetchedServices: any[] = [];
+      if (servicesResult.status === 'fulfilled') {
+        const servicesRes = servicesResult.value;
+        fetchedServices = Array.isArray(servicesRes.data)
+          ? servicesRes.data
+          : servicesRes.data?.services || servicesRes.data?.data || [];
+      }
+
+      if (fetchedServices.length === 0) {
+        try {
+          const fallback = await apiGet('/services/admin/all');
+          fetchedServices = Array.isArray(fallback.data)
+            ? fallback.data
+            : fallback.data?.services || fallback.data?.data || [];
+        } catch {
+          // Admin endpoint failed, fallback to store
+        }
+      }
+
+      if (fetchedServices.length === 0) {
+        try {
+          const storeServices = useServiceStore.getState().services;
+          if (storeServices && storeServices.length > 0) {
+            fetchedServices = storeServices;
+          } else {
+            const adminSvcs = await useServiceStore.getState().fetchAdminServices();
+            if (adminSvcs && adminSvcs.length > 0) {
+              fetchedServices = adminSvcs;
+            }
+          }
+        } catch {
+          // Store fetch failed
+        }
+      }
+
+      setServices(fetchedServices);
     } catch (err: any) {
       toast.error(err.message || 'فشل تحميل بيانات باقات الاشتراك');
     } finally {

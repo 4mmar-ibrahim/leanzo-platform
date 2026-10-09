@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 
 export function StepDateTime() {
   const { t, locale } = useLocaleStore();
-  const { selectedDate, setDate, selectedTime, setTime, selectedService, selectedServices, getTotalDuration } = useBookingStore();
+  const { selectedDate, setDate, selectedTime, setTime, selectedService, selectedServices, getTotalDuration, nextStep } = useBookingStore();
   const bookingSettings = useSettingsStore((s) => s.settings.booking);
   const fetchPublicSettings = useSettingsStore((s) => s.fetchPublicSettings);
   const orders = useOrderStore((s) => s.orders);
@@ -390,6 +390,36 @@ export function StepDateTime() {
             : 'Our mobile service unit arrives within the scheduled window. You will receive real-time updates when the technician is en route.'}
         </p>
       </div>
+
+      {/* Selected Confirmation Banner & Proceed Action */}
+      {selectedDate && selectedTime && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-sky-500/10 border border-emerald-500/30 dark:border-emerald-500/20 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Check className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-black text-emerald-950 dark:text-emerald-100 flex items-center gap-1.5">
+                <span>{isAr ? 'تم تحديد موعد الزيارة' : 'Appointment Confirmed'}</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">
+                  {isAr ? 'جاهز للمتابعة' : 'Ready'}
+                </span>
+              </p>
+              <p className="text-[11px] text-emerald-800 dark:text-emerald-300 font-bold mt-0.5" dir="ltr">
+                {selectedDateLabel} • {selectedTimeLabel}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => nextStep()}
+            className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+          >
+            <span>{isAr ? 'تأكيد الميعاد والمتابعة للعنوان' : 'Confirm & Proceed to Address'}</span>
+            <span className="text-sm font-bold">{isAr ? '←' : '→'}</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

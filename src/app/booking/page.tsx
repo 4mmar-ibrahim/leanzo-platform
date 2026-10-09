@@ -118,9 +118,10 @@ function BookingContent() {
     if (currentStep === 2) return !!selectedDate && !!selectedTime;
     if (currentStep === 3) {
       if (!selectedAddress) return false;
-      const effectiveName = (!isAuthenticated ? (guestName || selectedAddress?.customerName || '') : (user?.name || guestName || selectedAddress?.customerName || '')).trim();
+      if (isAuthenticated && user) return true;
+      const effectiveName = (guestName || selectedAddress?.customerName || '').trim();
       const isNameValid = validateCustomerName(effectiveName, isAr).isValid;
-      const effectivePhone = (!isAuthenticated ? (guestPhone || selectedAddress?.customerPhone || '') : (user?.phone || guestPhone || selectedAddress?.customerPhone || '')).trim();
+      const effectivePhone = (guestPhone || selectedAddress?.customerPhone || '').trim();
       const isPhoneValid = validateEgyptianPhone(effectivePhone).isValid;
       return isNameValid && isPhoneValid;
     }

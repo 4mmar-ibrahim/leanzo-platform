@@ -49,7 +49,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
     deleteAddress,
     setDefaultAddress,
   } = useAddressStore();
-  const { selectedAddress, setAddress, guestName, guestPhone, setGuestInfo } = useBookingStore();
+  const { selectedAddress, setAddress, guestName, guestPhone, setGuestInfo, nextStep } = useBookingStore();
   const user = useAuthStore((s) => s.user);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isAr = locale === 'ar';
@@ -786,7 +786,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
     <div className="space-y-6 text-start">
       {/* Auto-selected Reassurance Banner for Returning Customer */}
       <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-sky-500/10 border border-emerald-500/30 dark:border-emerald-500/20 shadow-xs space-y-3">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-start gap-3">
             <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
               <CheckCircle2 className="w-4 h-4" />
@@ -800,11 +800,21 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
               </h4>
               <p className="text-xs text-emerald-800/80 dark:text-emerald-300/90 mt-1">
                 {isAr
-                  ? 'بياناتك وعنوانك محفوظة ومحددة لطلبك تلقائياً؛ لست بحاجة لإعادة إدخالها أو مراجعتها في كل مرة. يمكنك المتابعة فوراً بالضغط على "التالي"!'
-                  : 'Your address and details are automatically selected; you do not need to re-enter them every time. You can proceed directly to the next step!'}
+                  ? 'بياناتك وعنوانك محفوظة ومحددة لطلبك تلقائياً؛ يمكنك المتابعة مباشرة للخطوة التالية بالضغط أدناه أو على زر التالي!'
+                  : 'Your address and details are automatically selected; you can proceed directly to the next step below!'}
               </p>
             </div>
           </div>
+          {selectedAddress && (
+            <button
+              type="button"
+              onClick={() => nextStep()}
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+            >
+              <span>{isAr ? 'المتابعة لمراجعة وتأكيد الطلب' : 'Proceed to Confirmation'}</span>
+              <span className="text-sm font-bold">{isAr ? '←' : '→'}</span>
+            </button>
+          )}
         </div>
 
         {/* Quick contact and selected address summary pill */}

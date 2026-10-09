@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Search, CheckCircle2, Car, Home, Layers, X, AlertCircle, Sparkles, Package } from 'lucide-react';
 import { useServiceStore } from '@/store/useServiceStore';
 import { Service } from '@/types';
@@ -23,17 +23,45 @@ export function SubscriptionServiceSelector({
 
   const categories = useServiceStore((s) => s.categories);
   const fetchCategories = useServiceStore((s) => s.fetchCategories);
+  const storeServices = useServiceStore((s) => s.services);
+  const fetchAdminServices = useServiceStore((s) => s.fetchAdminServices);
+  const fetchStoreServices = useServiceStore((s) => s.fetchServices);
 
   useEffect(() => {
     fetchCategories();
   }, [fetchCategories]);
 
+  // If services prop is empty, fetch from store (admin first, then public) as fallback
+  useEffect(() => {
+    if ((!services || services.length === 0) && (!storeServices || storeServices.length === 0)) {
+      fetchAdminServices().catch(() => {
+        fetchStoreServices().catch(() => {});
+      });
+    }
+  }, [services, storeServices, fetchAdminServices, fetchStoreServices]);
+
+  // Helper to extract category key regardless of whether category is string, object, or slug
+  const getServiceCategoryKey = useCallback((s: any): string => {
+    if (!s) return '';
+    if (typeof s.category === 'string') return s.category.toLowerCase();
+    if (typeof s.category === 'object' && s.category !== null) {
+      return (s.category.slug || s.category.id || s.category._id || '').toLowerCase();
+    }
+    return (s.categoryId || '').toLowerCase();
+  }, []);
+
+  // Use services prop if available, otherwise fall back to store services
+  const effectiveServices = useMemo(() => {
+    if (services && services.length > 0) return services;
+    return storeServices || [];
+  }, [services, storeServices]);
+
   // Filter to active, non-archived services only (TASK 08 & 12)
   const activeServices = useMemo(() => {
-    return (Array.isArray(services) ? services : []).filter(
-      (s: any) => s.available !== false && !s.isArchived && s.active !== false
+    return (Array.isArray(effectiveServices) ? effectiveServices : []).filter(
+      (s: any) => s && s.available !== false && !s.isArchived && s.active !== false
     );
-  }, [services]);
+  }, [effectiveServices]);
 
   // Dynamic categories combined from store and any active service category slugs
   const dynamicCategories = useMemo(() => {
@@ -41,8 +69,8 @@ export function SubscriptionServiceSelector({
       ? categories.filter((c) => c.active !== false)
       : [];
 
-    const existingSlugs = new Set(list.map((c) => c.slug));
-    const orphanSlugs = Array.from(new Set(activeServices.map((s: any) => s.category))).filter(
+    const existingSlugs = new Set(list.map((c) => (c.slug || '').toLowerCase()));
+    const orphanSlugs = Array.from(new Set(activeServices.map((s: any) => getServiceCategoryKey(s)))).filter(
       (slug): slug is string => Boolean(slug) && !existingSlugs.has(slug)
     );
 
@@ -55,7 +83,7 @@ export function SubscriptionServiceSelector({
         nameEn: orphan === 'car' ? 'Car Services' : orphan === 'home' ? 'Home Services' : orphan,
         description: '',
         descriptionEn: '',
-        icon: 'Sparkles',
+        icon: orphan === 'car' ? 'Car' : orphan === 'home' ? 'Home' : 'Sparkles',
         image: '',
         active: true,
         order: 999,
@@ -71,14 +99,21 @@ export function SubscriptionServiceSelector({
     }
 
     return merged.sort((a, b) => (a.order || 0) - (b.order || 0));
-  }, [categories, activeServices]);
+  }, [categories, activeServices, getServiceCategoryKey]);
 
   // Filtered by Search & Category
   const filteredServices = useMemo(() => {
     return activeServices.filter((s: any) => {
       // Dynamic Category Filter
-      if (selectedCategory !== 'all' && s.category !== selectedCategory) {
-        return false;
+      if (selectedCategory !== 'all') {
+        const catKey = getServiceCategoryKey(s);
+        const matchesCat =
+          catKey === selectedCategory.toLowerCase() ||
+          catKey === selectedCategory ||
+          s.categoryId === selectedCategory;
+        if (!matchesCat) {
+          return false;
+        }
       }
 
       // Search Filter (TASK 09): Name & Description (Arabic and English)
@@ -103,7 +138,7 @@ export function SubscriptionServiceSelector({
   }, [activeServices, selectedCategory, searchTerm]);
 
   const selectedService = useMemo(() => {
-    return activeServices.find((s) => s.id === selectedServiceId);
+    return activeServices.find((s: any) => s.id === selectedServiceId || s._id === selectedServiceId);
   }, [activeServices, selectedServiceId]);
 
   const getCategoryIcon = (slug: string, iconStr?: string) => {
@@ -122,7 +157,7 @@ export function SubscriptionServiceSelector({
           <span>الخدمة المرتبطة بالباقة *</span>
           {selectedService && (
             <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
-              تم اختيار: {selectedService.title}
+              تم اختيار: {selectedService.title || (selectedService as any).name}
             </span>
           )}
         </label>
@@ -143,7 +178,10 @@ export function SubscriptionServiceSelector({
           </button>
 
           {dynamicCategories.map((cat) => {
-            const count = activeServices.filter((s: any) => s.category === cat.slug).length;
+            const count = activeServices.filter((s: any) => {
+              const catKey = getServiceCategoryKey(s);
+              return catKey === (cat.slug || '').toLowerCase() || catKey === (cat.id || '').toLowerCase();
+            }).length;
             const isSelected = selectedCategory === cat.slug;
             return (
               <button
@@ -197,7 +235,9 @@ export function SubscriptionServiceSelector({
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {filteredServices.map((service: any) => {
-              const isSelected = selectedServiceId === service.id;
+              const serviceId = service.id || service._id;
+              const isSelected = selectedServiceId === serviceId;
+              const title = service.title || service.name || 'خدمة كلينزو';
               const description =
                 service.description ||
                 service.shortDescription ||
@@ -206,8 +246,8 @@ export function SubscriptionServiceSelector({
 
               return (
                 <div
-                  key={service.id}
-                  onClick={() => !disabled && onSelectService(service)}
+                  key={serviceId}
+                  onClick={() => !disabled && onSelectService({ ...service, id: serviceId })}
                   className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between text-right relative ${
                     isSelected
                       ? 'bg-primary/10 border-primary ring-2 ring-primary/20 shadow-xs'
@@ -217,7 +257,7 @@ export function SubscriptionServiceSelector({
                   <div className="space-y-1">
                     <div className="flex items-start justify-between gap-2">
                       <div className="font-bold text-foreground text-xs leading-snug">
-                        {service.title}
+                        {title}
                       </div>
                       {isSelected ? (
                         <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
