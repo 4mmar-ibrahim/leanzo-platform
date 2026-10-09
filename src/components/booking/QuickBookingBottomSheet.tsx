@@ -260,16 +260,18 @@ export function QuickBookingBottomSheet({
         if (isMounted) {
           if (res?.slots && Array.isArray(res.slots) && res.slots.length > 0) {
             const formattedSlots: BookingSlot[] = res.slots.map((slot: any) => {
-              const label12 = formatTimeTo12Hour(slot.label || slot.time);
+              const labelAr = formatTimeTo12Hour(slot.label || slot.time, { locale: 'ar' });
+              const labelEn = formatTimeTo12Hour(slot.label || slot.time, { locale: 'en' });
               return {
-                time: label12,
-                label: label12,
-                labelEn: label12,
+                time: labelEn,
+                label: labelAr,
+                labelEn: labelEn,
                 isAvailable: slot.available,
                 reason: slot.reason,
-                scheduledStart: slot.start || slot.scheduledStart,
+                scheduledStart: slot.start || slot.scheduledStart || slot.time24,
                 scheduledEnd: slot.end || slot.scheduledEnd,
                 totalOccupiedMinutes: slot.totalOccupiedMinutes || serviceDuration,
+                serviceDurationMinutes: slot.serviceDurationMinutes || serviceDuration,
               };
             });
             setLiveSlots(formattedSlots);
@@ -314,7 +316,7 @@ export function QuickBookingBottomSheet({
         if (o.date !== selectedDate) return false;
 
         // Category-based check: bookings in another category do not block
-        const oCat = o.category || o.service?.category || (o as any).serviceSnapshot?.category;
+        const oCat = getOrderCategory(o);
         if (effectiveCategory && oCat && !isSameCategory(oCat, effectiveCategory)) {
           return false;
         }

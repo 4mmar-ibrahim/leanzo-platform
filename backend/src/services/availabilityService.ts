@@ -599,31 +599,31 @@ export async function getAvailableSlots(
     freeBlocks.push({ start: blockCursor, end: workEndMin });
   }
 
-  // 6. Dynamic Slot Generation with Boundary Awareness
-  // Generates slots covering the standard interval grid AND the exact finish boundaries of existing bookings:
-  // - Back-to-back bookings allowed (9:00-9:45 followed by 9:45-10:15)
-  // - No phantom slots, strict check against occupied intervals
+  // 6. Dynamic Sequential Continuous Slot Generation
+  // - Each free block within this category is partitioned sequentially by timing.totalOccupiedMinutes.
+  // - Starts exactly at block.start, and next slot starts at block.start + timing.totalOccupiedMinutes.
+  // - Bookings or breaks (occupied intervals) are included and marked unavailable.
+  // - For occupied intervals, we also add candidate starts at intermediate points if they lie inside the occupied block,
+  //   so that overlapping queries in this category explicitly reflect unavailability.
   const requiredDuration = timing.totalOccupiedMinutes;
-  const gridStep = 15; // 15-minute standard step covers 15, 30, 45, 60m multiples
-
   const candidateStarts = new Set<number>();
 
-  // A. Regular working hours grid
-  for (let t = workStartMin; t + timing.serviceDurationMinutes <= workEndMin; t += gridStep) {
-    candidateStarts.add(t);
-  }
-
-  // B. Exact boundaries of prior bookings (e.g. if a 45 min booking ends at 9:45, 9:45 is available!)
-  for (const occ of mergedOccupied) {
-    if (occ.end >= workStartMin && occ.end + timing.serviceDurationMinutes <= workEndMin) {
-      candidateStarts.add(occ.end);
+  // A. Generate sequential slots within each free block
+  for (const block of freeBlocks) {
+    let slotCursor = block.start;
+    while (slotCursor + requiredDuration <= block.end) {
+      candidateStarts.add(slotCursor);
+      slotCursor += requiredDuration;
     }
   }
 
-  // C. Boundaries of free blocks
-  for (const block of freeBlocks) {
-    if (block.start >= workStartMin && block.start + timing.serviceDurationMinutes <= workEndMin) {
-      candidateStarts.add(block.start);
+  // B. Include active booking and break intervals so they are retained and marked unavailable
+  for (const occ of mergedOccupied) {
+    if (occ.type === 'booking' || occ.type === 'break') {
+      candidateStarts.add(occ.start);
+      for (let t = occ.start + 15; t < occ.end; t += 15) {
+        candidateStarts.add(t);
+      }
     }
   }
 

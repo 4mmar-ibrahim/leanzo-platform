@@ -592,22 +592,86 @@ export function getTimeSlotsForDate(
     return true;
   });
 
-  // Extract occupied intervals for orders on this date
-  const occupiedIntervals = relevantOrders.map((o) => getBookingTimeInterval(o));
+  // Build occupied intervals for this category (including breaks)
+  const rawOccupied: { start: number; end: number; reason: string; isBreak?: boolean }[] = [];
 
-  // Collect candidate start minutes:
-  // 1. Regular 15-minute grid (for precision and flexibility across 30, 40, 45, 60m services)
-  // 2. Exact end boundaries of existing bookings in this category (e.g. 11:55, 10:00)
-  const candidateStarts = new Set<number>();
-  const gridStep = 15;
-
-  for (let t = startMin; t + durationMin <= endMin; t += gridStep) {
-    candidateStarts.add(t);
+  if (breakStartMin !== null && breakEndMin !== null && breakEndMin > breakStartMin) {
+    rawOccupied.push({
+      start: breakStartMin,
+      end: breakEndMin,
+      reason: 'استراحة عمل',
+      isBreak: true,
+    });
   }
 
-  for (const int of occupiedIntervals) {
-    if (int.endMin >= startMin && int.endMin + durationMin <= endMin) {
-      candidateStarts.add(int.endMin);
+  for (const o of relevantOrders) {
+    const int = getBookingTimeInterval(o);
+    rawOccupied.push({
+      start: int.startMin,
+      end: int.endMin,
+      reason: 'محجوز بالكامل',
+    });
+  }
+
+  const sortedOccupied = rawOccupied
+    .map((int) => ({
+      start: Math.max(startMin, int.start),
+      end: Math.min(endMin, int.end),
+      reason: int.reason,
+      isBreak: int.isBreak,
+    }))
+    .filter((int) => int.end > int.start)
+    .sort((a, b) => a.start - b.start);
+
+  const mergedOccupied: { start: number; end: number; reason: string; isBreak?: boolean }[] = [];
+  for (const int of sortedOccupied) {
+    if (mergedOccupied.length === 0) {
+      mergedOccupied.push({ ...int });
+    } else {
+      const prev = mergedOccupied[mergedOccupied.length - 1];
+      if (int.start <= prev.end) {
+        prev.end = Math.max(prev.end, int.end);
+        if (int.isBreak || prev.isBreak) {
+          prev.isBreak = true;
+          prev.reason = 'استراحة عمل';
+        }
+      } else {
+        mergedOccupied.push({ ...int });
+      }
+    }
+  }
+
+  // Compute Disjoint Free Blocks within working window
+  const freeBlocks: { start: number; end: number }[] = [];
+  let blockCursor = startMin;
+
+  for (const occ of mergedOccupied) {
+    if (occ.start > blockCursor) {
+      freeBlocks.push({ start: blockCursor, end: occ.start });
+    }
+    blockCursor = Math.max(blockCursor, occ.end);
+  }
+
+  if (blockCursor < endMin) {
+    freeBlocks.push({ start: blockCursor, end: endMin });
+  }
+
+  // Generate sequential slots within each free block
+  const candidateStarts = new Set<number>();
+
+  for (const block of freeBlocks) {
+    let slotCursor = block.start;
+    while (slotCursor + totalOccupancy <= block.end) {
+      candidateStarts.add(slotCursor);
+      slotCursor += totalOccupancy;
+    }
+  }
+
+  // Include starts of occupied booking intervals so they are visible as unavailable slots
+  for (const occ of mergedOccupied) {
+    candidateStarts.add(occ.start);
+    for (let t = occ.start + 15; t < occ.end; t += 15) {
+      candidateStarts.add(t);
     }
   }
 
@@ -622,26 +686,10 @@ export function getTimeSlotsForDate(
       continue;
     }
 
-    // Check break overlap
-    const isBreak =
-      breakStartMin !== null &&
-      breakEndMin !== null &&
-      slotStart < breakEndMin &&
-      slotEnd > breakStartMin;
-
-    let isAvailable = !isBreak;
-    let reason: string | undefined = isBreak ? 'استراحة عمل' : undefined;
-
     // Check collision against occupied intervals in this category
-    if (isAvailable && occupiedIntervals.length > 0) {
-      const colliding = occupiedIntervals.some((int) =>
-        isTimeIntervalOverlapping({ startMin: slotStart, endMin: slotEnd }, int)
-      );
-      if (colliding) {
-        isAvailable = false;
-        reason = 'محجوز بالكامل';
-      }
-    }
+    const collidingOcc = mergedOccupied.find((occ) => slotStart < occ.end && slotEnd > occ.start);
+    const isAvailable = !collidingOcc;
+    const reason = collidingOcc ? collidingOcc.reason : undefined;
 
     const start24 = minutesTo24H(slotStart);
     const end24 = minutesTo24H(Math.min(endMin, slotEnd));

@@ -105,8 +105,7 @@ export function formatTimeTo12Hour(
     if (parts.length >= 2 && parts[0] && parts[1]) {
       const start12 = formatSingleTimeTo12Hour(parts[0], locale);
       const end12 = formatSingleTimeTo12Hour(parts[1], locale);
-      const endWithoutPeriod = end12.replace(/\s*(AM|PM|ص|م)\s*/gi, '').trim();
-      return `${start12} – ${endWithoutPeriod}`;
+      return `${start12} – ${end12}`;
     }
   }
 
