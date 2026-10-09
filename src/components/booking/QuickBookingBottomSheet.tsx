@@ -14,6 +14,8 @@ import {
   CheckCircle2,
   Sparkles,
   ChevronRight,
+  ChevronDown,
+  Check,
   ArrowRight,
   ArrowLeft,
   ShieldCheck,
@@ -28,7 +30,9 @@ import { useLocationStore } from '@/store/useLocationStore';
 import { useCustomerStore } from '@/store/useCustomerStore';
 import { useAddressStore } from '@/store/useAddressStore';
 import { useBookingStore } from '@/store/useBookingStore';
-import { getUpcomingBookingDates, getTimeSlotsForDate, isSameService, isSameTime } from '@/lib/bookingEngine';
+import { getUpcomingBookingDates, getTimeSlotsForDate, BookingSlot, isSameService, isSameTime } from '@/lib/bookingEngine';
+import { cleanzoApi } from '@/lib/api/cleanzoApi';
+import { formatTimeTo12Hour } from '@/lib/timeUtils';
 import { Service, ServiceCategory, Order, Address, ServicePackage, ServiceAddon } from '@/types';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
@@ -197,6 +201,20 @@ export function QuickBookingBottomSheet({
   }, [bookingSettings]);
 
   const [selectedDate, setSelectedDate] = useState<string>('');
+  const [isDateOpen, setIsDateOpen] = useState(false);
+  const dateDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dateDropdownRef.current && !dateDropdownRef.current.contains(event.target as Node)) {
+        setIsDateOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   useEffect(() => {
     if (dateOptions.length > 0) {
@@ -208,23 +226,87 @@ export function QuickBookingBottomSheet({
     }
   }, [dateOptions, selectedDate]);
 
+  const selectedDateOpt = useMemo(
+    () => dateOptions.find((d) => d.dateString === selectedDate),
+    [dateOptions, selectedDate]
+  );
+
+  const selectedDateLabel = useMemo(() => {
+    if (!selectedDateOpt) {
+      return isAr ? 'اختر تاريخ الحجز' : 'Select preferred date';
+    }
+    const day = isAr ? selectedDateOpt.dayNameAr : selectedDateOpt.dayNameEn;
+    const dateFormatted = isAr ? selectedDateOpt.formattedDateAr : selectedDateOpt.formattedDateEn;
+    const badge = selectedDateOpt.isToday ? (isAr ? ' (اليوم)' : ' (Today)') : '';
+    return `${day}، ${dateFormatted}${badge}`;
+  }, [selectedDateOpt, isAr]);
+
+  const [liveSlots, setLiveSlots] = useState<BookingSlot[] | null>(null);
+
+  const serviceDuration = useMemo(() => {
+    return Number(selectedService?.serviceDurationMinutes || selectedService?.duration) || 45;
+  }, [selectedService]);
+
+  useEffect(() => {
+    if (!selectedDate || !selectedService?.id) {
+      setLiveSlots(null);
+      return;
+    }
+    let isMounted = true;
+    cleanzoApi.availability
+      .checkDate(selectedDate, selectedService.id, serviceDuration)
+      .then((res) => {
+        if (isMounted) {
+          if (res?.slots && Array.isArray(res.slots) && res.slots.length > 0) {
+            const formattedSlots: BookingSlot[] = res.slots.map((slot: any) => {
+              const label12 = formatTimeTo12Hour(slot.label || slot.time);
+              return {
+                time: label12,
+                label: label12,
+                labelEn: label12,
+                isAvailable: slot.available,
+                reason: slot.reason,
+              };
+            });
+            setLiveSlots(formattedSlots);
+          } else {
+            setLiveSlots(null);
+          }
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setLiveSlots(null);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedDate, selectedService?.id, serviceDuration]);
+
   const timeSlots = useMemo(() => {
-    return getTimeSlotsForDate(
-      selectedDate,
-      bookingSettings,
-      selectedService?.id,
-      selectedService?.title,
-      orders,
-      selectedService?.serviceDurationMinutes || selectedService?.duration,
-      selectedService?.travelTimeMinutes
-    );
-  }, [selectedDate, bookingSettings, selectedService, orders]);
+    let baseSlots: BookingSlot[] = [];
+    if (liveSlots !== null) {
+      baseSlots = [...liveSlots];
+    } else {
+      baseSlots = getTimeSlotsForDate(
+        selectedDate,
+        bookingSettings,
+        selectedService?.id,
+        selectedService?.title,
+        orders,
+        serviceDuration,
+        selectedService?.travelTimeMinutes
+      );
+    }
+    return baseSlots;
+  }, [selectedDate, liveSlots, bookingSettings, selectedService, orders, serviceDuration]);
 
   const [selectedTime, setSelectedTime] = useState<string>('');
 
   useEffect(() => {
     if (timeSlots.length > 0) {
-      const isCurrentValid = timeSlots.some((s) => s.time === selectedTime && s.isAvailable);
+      const isCurrentValid = timeSlots.some((s) => (s.time === selectedTime || isSameTime(s.time, selectedTime)) && s.isAvailable);
       if (!isCurrentValid) {
         const firstAvailable = timeSlots.find((s) => s.isAvailable);
         if (firstAvailable) {
@@ -746,47 +828,93 @@ export function QuickBookingBottomSheet({
                 </span>
               </div>
 
-              {/* Date Selection Horizontal Chips */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4 text-sky-500" />
-                  <span>اختر تاريخ الحجز</span>
+              {/* Date Selection Dropdown */}
+              <div className="relative space-y-1.5" ref={dateDropdownRef}>
+                <label className="text-xs font-bold text-slate-900 dark:text-white flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-sky-500" />
+                    <span>{isAr ? 'اختر تاريخ الحجز' : 'Select Date'}</span>
+                  </span>
+                  <span className="text-[11px] font-normal text-slate-400">
+                    {isAr ? 'اختر اليوم الأنسب' : 'Choose date'}
+                  </span>
                 </label>
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto p-1">
-                  {dateOptions.map((opt) => {
-                    const isSelected = selectedDate === opt.dateString;
-                    const isAvailable = opt.isAvailable;
-                    return (
-                      <button
-                        key={opt.dateString}
-                        type="button"
-                        disabled={!isAvailable}
-                        onClick={() => isAvailable && setSelectedDate(opt.dateString)}
-                        className={cn(
-                          'p-2.5 rounded-2xl border text-center transition-all flex flex-col items-center justify-center',
-                          !isAvailable
-                            ? 'bg-slate-100/60 dark:bg-slate-900/40 border-slate-200/50 dark:border-slate-800/40 opacity-50 cursor-not-allowed text-slate-400'
-                            : isSelected
-                            ? 'bg-sky-500 text-white border-sky-500 shadow-md shadow-sky-500/25 scale-[1.03]'
-                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-sky-300'
-                        )}
-                      >
-                        <span className="text-[11px] font-extrabold">{isAr ? opt.dayNameAr : opt.dayNameEn}</span>
-                        <span className="text-[10px] opacity-80 mt-0.5">{isAr ? opt.formattedDateAr : opt.formattedDateEn}</span>
-                        {!isAvailable && opt.reason && (
-                          <span className="text-[9px] text-rose-500 truncate max-w-[70px] mt-0.5">{opt.reason}</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsDateOpen((prev) => !prev)}
+                  className={cn(
+                    "w-full h-11 px-3.5 rounded-xl border flex items-center justify-between transition-all bg-white dark:bg-[#071E34] text-slate-900 dark:text-white font-medium text-xs sm:text-sm cursor-pointer",
+                    isDateOpen
+                      ? "border-[#0866C6] ring-2 ring-[#0866C6]/20 dark:ring-[#0866C6]/30 shadow-sm"
+                      : "border-[#DDE7EC] dark:border-[#133B61] hover:border-[#0866C6]/40 dark:hover:border-[#0866C6]/40"
+                  )}
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <Calendar className="w-4 h-4 text-[#0866C6] shrink-0" />
+                    <span className="truncate font-semibold">{selectedDateLabel}</span>
+                  </div>
+                  <ChevronDown
+                    className={cn(
+                      "w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0",
+                      isDateOpen && "rotate-180 text-[#0866C6]"
+                    )}
+                  />
+                </button>
+
+                {isDateOpen && (
+                  <div className="absolute z-40 mt-1.5 w-full bg-white dark:bg-[#071E34] border border-[#DDE7EC] dark:border-[#133B61] rounded-xl shadow-xl max-h-56 overflow-y-auto p-1.5 space-y-1">
+                    {dateOptions.map((opt) => {
+                      const isSelected = selectedDate === opt.dateString;
+                      const isAvailable = opt.isAvailable;
+
+                      return (
+                        <button
+                          key={opt.dateString}
+                          type="button"
+                          disabled={!isAvailable}
+                          onClick={() => {
+                            if (isAvailable) {
+                              setSelectedDate(opt.dateString);
+                              setIsDateOpen(false);
+                            }
+                          }}
+                          className={cn(
+                            "w-full px-3 py-2 rounded-lg flex items-center justify-between text-xs sm:text-sm transition-colors text-start cursor-pointer",
+                            !isAvailable
+                              ? "opacity-40 cursor-not-allowed text-slate-400 dark:text-slate-500"
+                              : isSelected
+                              ? "bg-[#0866C6]/10 text-[#0866C6] dark:text-[#83AED0] font-bold"
+                              : "hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-200"
+                          )}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="font-semibold">{isAr ? opt.dayNameAr : opt.dayNameEn}</span>
+                            <span className="text-slate-400">·</span>
+                            <span>{isAr ? opt.formattedDateAr : opt.formattedDateEn}</span>
+                            {opt.isToday && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-100 dark:bg-sky-900/50 text-[#0866C6] dark:text-sky-300">
+                                {isAr ? 'اليوم' : 'Today'}
+                              </span>
+                            )}
+                          </div>
+                          {isSelected ? (
+                            <Check className="w-4 h-4 text-[#0866C6] shrink-0" />
+                          ) : !isAvailable && opt.reason ? (
+                            <span className="text-[10px] text-[#F0444C] font-semibold">{opt.reason}</span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Time Slots */}
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                   <Clock className="w-4 h-4 text-[#0866C6]" />
-                  <span>اختر الموعد المناسب</span>
+                  <span>{isAr ? 'اختر الموعد المناسب' : 'Select Time'}</span>
                 </label>
                 {timeSlots.length === 0 ? (
                   <div className="p-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-center space-y-1">
@@ -797,8 +925,10 @@ export function QuickBookingBottomSheet({
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1">
                     {timeSlots.map((slot) => {
-                      const isSelected = selectedTime === slot.time;
+                      const isSelected = selectedTime === slot.time || isSameTime(selectedTime, slot.time);
                       const isAvailable = slot.isAvailable;
+                      const displayLabel = formatTimeTo12Hour(isAr ? slot.label : slot.labelEn);
+
                       return (
                         <button
                           key={slot.time}
@@ -806,7 +936,7 @@ export function QuickBookingBottomSheet({
                           disabled={!isAvailable}
                           onClick={() => isAvailable && setSelectedTime(slot.time)}
                           className={cn(
-                            'py-2 px-2 rounded-xl text-xs font-bold border transition-all text-center flex flex-col items-center justify-center gap-0.5',
+                            'py-2.5 px-2 rounded-xl text-xs font-bold border transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer',
                             !isAvailable
                               ? 'bg-slate-100/60 dark:bg-slate-900/40 border-slate-200/40 opacity-50 cursor-not-allowed text-slate-400'
                               : isSelected
@@ -814,7 +944,7 @@ export function QuickBookingBottomSheet({
                               : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-[#0866C6]'
                           )}
                         >
-                          <span className="font-mono">{isAr ? slot.label : slot.labelEn}</span>
+                          <span className="font-mono font-bold" dir="ltr">{displayLabel}</span>
                           {!isAvailable && slot.reason && (
                             <span className="text-[9px] text-rose-500 font-normal mt-0.5">{slot.reason}</span>
                           )}

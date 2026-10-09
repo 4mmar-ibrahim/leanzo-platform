@@ -516,10 +516,10 @@ export function getTimeSlotsForDate(
   const endMin = timeStringToMinutes(endStr);
 
   const durationMin = serviceDuration !== undefined && serviceDuration > 0 ? serviceDuration : 45;
-  const travelMin = travelDuration !== undefined ? travelDuration : (settings?.bufferTime !== undefined ? Number(settings.bufferTime) : 15);
+  const travelMin = travelDuration !== undefined ? Number(travelDuration) : 0;
   const totalOccupancy = durationMin + travelMin;
 
-  const stepMinutes = Math.max(15, Number(settings?.slotInterval) || 60);
+  const stepMinutes = totalOccupancy > 0 ? totalOccupancy : Math.max(15, Number(settings?.slotInterval) || 60);
 
   if (totalOccupancy <= 0 || startMin + durationMin > endMin) {
     return [];
@@ -593,11 +593,12 @@ export function getTimeSlotsForDate(
       }
     }
 
-    const time12 = formatTimeTo12Hour(start24);
+    const time12En = formatTimeTo12Hour(intervalLabel, { locale: 'en' });
+    const time12Ar = formatTimeTo12Hour(intervalLabel, { locale: 'ar' });
     slots.push({
-      time: time12,
-      label: time12,
-      labelEn: time12,
+      time: time12En,
+      label: time12Ar,
+      labelEn: time12En,
       isAvailable,
       reason,
       interval: intervalLabel,

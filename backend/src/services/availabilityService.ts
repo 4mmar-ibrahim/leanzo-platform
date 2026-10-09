@@ -190,7 +190,7 @@ export async function getEffectiveBookingSettings() {
 export async function resolveServiceTiming(
   serviceId?: string,
   customDuration?: number,
-  fallbackTravel = 15
+  fallbackTravel = 0
 ): Promise<{ serviceDurationMinutes: number; travelTimeMinutes: number; totalOccupiedMinutes: number }> {
   if (serviceId) {
     const service = await Service.findOne({ id: serviceId });
@@ -200,8 +200,11 @@ export async function resolveServiceTiming(
           ? customDuration
           : service.serviceDurationMinutes || service.duration || 45;
       const travelTimeMinutes =
-        service.travelTimeMinutes !== undefined ? service.travelTimeMinutes : fallbackTravel;
-      const totalOccupiedMinutes = serviceDurationMinutes + travelTimeMinutes;
+        service.travelTimeMinutes !== undefined ? Number(service.travelTimeMinutes) : fallbackTravel;
+      const totalOccupiedMinutes =
+        customDuration !== undefined && customDuration > 0
+          ? customDuration
+          : (service.totalOccupiedMinutes || (serviceDurationMinutes + travelTimeMinutes));
 
       return {
         serviceDurationMinutes,
@@ -540,7 +543,9 @@ export async function getAvailableSlots(
   // - Occupied blocks produce unavailable slots (so they are visible and not silently missing).
   const slots: TimeSlotOption[] = [];
   const requiredDuration = timing.totalOccupiedMinutes;
-  const slotStep = Math.max(15, Number(settings.slotInterval) || 60);
+  const slotStep = timing.totalOccupiedMinutes > 0
+    ? timing.totalOccupiedMinutes
+    : Math.max(15, Number(settings.slotInterval) || 60);
 
   // 7.1 Available slots from free blocks
   for (const block of freeBlocks) {
@@ -557,12 +562,13 @@ export async function getAvailableSlots(
 
       const { time24: start24, time12En: start12En } = minutesToDisplayTime(slotStart);
       const { time24: end24, time12En: end12En } = minutesToDisplayTime(slotEnd);
+      const intervalLabel = `${start24} – ${end24}`;
 
       slots.push({
-        time: start12En,
+        time: intervalLabel,
         time24: start24,
-        label: start12En,
-        labelEn: start12En,
+        label: intervalLabel,
+        labelEn: intervalLabel,
         start: start24,
         end: end24,
         available: true,
@@ -593,12 +599,13 @@ export async function getAvailableSlots(
 
         const { time24: start24, time12En: start12En } = minutesToDisplayTime(slotStart);
         const { time24: end24, time12En: end12En } = minutesToDisplayTime(slotEnd);
+        const intervalLabel = `${start24} – ${end24}`;
 
         slots.push({
-          time: start12En,
+          time: intervalLabel,
           time24: start24,
-          label: start12En,
-          labelEn: start12En,
+          label: intervalLabel,
+          labelEn: intervalLabel,
           start: start24,
           end: end24,
           available: false,
@@ -619,12 +626,13 @@ export async function getAvailableSlots(
         if (!isToday || slotStart >= earliestAllowedMinutes) {
           const { time24: start24, time12En: start12En } = minutesToDisplayTime(slotStart);
           const { time24: end24, time12En: end12En } = minutesToDisplayTime(slotEnd);
+          const intervalLabel = `${start24} – ${end24}`;
 
           slots.push({
-            time: start12En,
+            time: intervalLabel,
             time24: start24,
-            label: start12En,
-            labelEn: start12En,
+            label: intervalLabel,
+            labelEn: intervalLabel,
             start: start24,
             end: end24,
             available: false,

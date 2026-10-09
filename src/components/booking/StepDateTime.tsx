@@ -118,7 +118,7 @@ export function StepDateTime() {
         selectedService?.id,
         selectedService?.title,
         orders,
-        selectedService?.serviceDurationMinutes || selectedService?.duration,
+        getTotalDuration() || selectedService?.serviceDurationMinutes || selectedService?.duration,
         selectedService?.travelTimeMinutes,
         currentServiceIds
       );
