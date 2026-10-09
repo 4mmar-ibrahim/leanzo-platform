@@ -276,6 +276,8 @@ export function CentralZoEngine() {
 
   if (!mounted || isAdmin) return null;
   if (!pageConfig || !pageConfig.enabled) return null;
+  // Booking page has its own dedicated inline mascot guide; exempt floating overlay to keep form inputs unobstructed
+  if (pathname === '/booking' || pathname?.startsWith('/booking/')) return null;
 
   // Active appearance config
   const expression = activeTrigger?.expression || pageConfig.character.expression;

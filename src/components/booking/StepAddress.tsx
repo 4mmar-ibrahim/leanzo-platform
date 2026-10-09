@@ -83,10 +83,10 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
 
   const initialPhone = isAdminContext
     ? (targetCustomer?.phone || '')
-    : (isAuthenticated && user?.phone ? user.phone : '');
+    : (isAuthenticated && user?.phone ? user.phone : (guestPhone || ''));
   const initialName = isAdminContext
     ? (targetCustomer?.name || '')
-    : (isAuthenticated && user?.name ? user.name : '');
+    : (isAuthenticated && user?.name ? user.name : (guestName || ''));
 
   const [guestPhoneInput, setGuestPhoneInput] = useState(initialPhone);
   const [phoneError, setPhoneError] = useState<string | null>(null);
@@ -96,21 +96,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
   const [nameTouched, setNameTouched] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Clear unauthenticated visitor inputs on logout or fresh visit
-  useEffect(() => {
-    if (!isAuthenticated && !isAdminContext) {
-      setGuestPhoneInput('');
-      setGuestNameInput('');
-      if (selectedAddress && selectedAddress.id !== 'guest-temp') {
-        setAddress(null);
-      }
-    } else if (isAuthenticated && user) {
-      if (user.phone && !guestPhoneInput) setGuestPhoneInput(user.phone);
-      if (user.name && !guestNameInput) setGuestNameInput(user.name);
-    }
-  }, [isAuthenticated, user, isAdminContext, selectedAddress, setAddress]);
-
-  // Synchronize customer phone/name in admin context when targetCustomer changes
+  // Synchronize customer phone/name in admin context or authenticated session
   useEffect(() => {
     if (isAdminContext && targetCustomer) {
       if (targetCustomer.phone) setGuestPhoneInput(targetCustomer.phone);
@@ -118,12 +104,19 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
         setGuestNameInput(targetCustomer.name);
         setNameError(null);
       }
+    } else if (isAuthenticated && user) {
+      if (user.phone && !guestPhoneInput) setGuestPhoneInput(user.phone);
+      if (user.name && !guestNameInput) {
+        setGuestNameInput(user.name);
+        setNameError(null);
+      }
     }
-  }, [isAdminContext, targetCustomer]);
+  }, [isAdminContext, targetCustomer, isAuthenticated, user]);
 
   const handleGuestNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setGuestNameInput(val);
+    setGuestInfo(val, guestPhoneInput);
 
     // Immediate feedback if symbols or digits are entered
     if (/[^\u0600-\u06FF\u0750-\u077F\u08A0-\u08FFa-zA-Z\s\-']/.test(val)) {
@@ -157,6 +150,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
 
     const digits = rawVal.replace(/[^0-9]/g, '').slice(0, 11);
     setGuestPhoneInput(digits);
+    setGuestInfo(guestNameInput, digits);
 
     if (digits.length >= 3) {
       const prefix = digits.slice(0, 3);
@@ -200,31 +194,9 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
     }
   };
 
-  // Synchronize guest phone/name if user logs in or out (customer portal only)
+  // Prefill form from existing selectedAddress if available
   useEffect(() => {
-    if (!isAdminContext) {
-      if (isAuthenticated && user) {
-        if (user.phone) setGuestPhoneInput(user.phone);
-        if (user.name) {
-          setGuestNameInput(user.name);
-          setNameError(null);
-        }
-      } else if (!isAuthenticated) {
-        setGuestPhoneInput('');
-        setGuestNameInput('');
-        setNameError(null);
-        setPhoneError(null);
-        clearAddresses();
-        if (selectedAddress?.customerPhone || selectedAddress?.id !== 'draft-address') {
-          setAddress(null);
-        }
-      }
-    }
-  }, [user, isAuthenticated, isAdminContext, clearAddresses, setAddress, selectedAddress]);
-
-  // Prefill form from existing selectedAddress if available (only for authenticated session or current guest session)
-  useEffect(() => {
-    if (selectedAddress && (hasSavedAddressesAccount || selectedAddress.id === 'draft-address')) {
+    if (selectedAddress) {
       if (selectedAddress.label) setLabel(selectedAddress.label);
       if (selectedAddress.governorateId) setGovernorateId(selectedAddress.governorateId);
       if (selectedAddress.cityId) setCityId(selectedAddress.cityId);
@@ -236,11 +208,14 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
       if (selectedAddress.notes || selectedAddress.details) {
         setNotes(selectedAddress.notes || selectedAddress.details || '');
       }
-      if (selectedAddress.customerPhone && hasSavedAddressesAccount) {
+      if (selectedAddress.customerPhone && !guestPhoneInput) {
         setGuestPhoneInput(selectedAddress.customerPhone);
       }
+      if (selectedAddress.customerName && !guestNameInput) {
+        setGuestNameInput(selectedAddress.customerName);
+      }
     }
-  }, [selectedAddress, hasSavedAddressesAccount]);
+  }, [selectedAddress]);
 
   // Fetch active locations and customer addresses on mount
   useEffect(() => {
@@ -354,7 +329,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
     }
   }, [guestNameInput, guestPhoneInput, guestName, guestPhone, selectedAddress, user, setGuestInfo]);
 
-  // Auto-sync draft address to booking store if first-time user fills form without clicking inner submit button
+  // Auto-sync draft address to booking store if user fills form without clicking inner submit button
   useEffect(() => {
     if (addresses.length === 0 && area.trim() && currentGov && currentCity) {
       const activeName = (!isAuthenticated ? guestNameInput : (guestNameInput || user?.name || '')).trim();
@@ -379,7 +354,21 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
         customerName: activeName || undefined,
         customerPhone: activePhone || undefined,
       };
-      setAddress(draftAddress);
+
+      if (
+        !selectedAddress ||
+        selectedAddress.area !== draftAddress.area ||
+        selectedAddress.cityId !== draftAddress.cityId ||
+        selectedAddress.governorateId !== draftAddress.governorateId ||
+        selectedAddress.customerName !== draftAddress.customerName ||
+        selectedAddress.customerPhone !== draftAddress.customerPhone ||
+        selectedAddress.building !== draftAddress.building ||
+        selectedAddress.floor !== draftAddress.floor ||
+        selectedAddress.apartment !== draftAddress.apartment ||
+        selectedAddress.landmark !== draftAddress.landmark
+      ) {
+        setAddress(draftAddress);
+      }
     }
   }, [
     addresses.length,
@@ -401,6 +390,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
     user?.phone,
     isAr,
     setAddress,
+    selectedAddress,
   ]);
 
   // Reset form
@@ -550,7 +540,6 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
 
       setIsEditingExisting(false);
       setIsModalOpen(false);
-      resetForm();
     } catch (err: any) {
       toast.error(err.message || (isAr ? 'فشل حفظ العنوان' : 'Failed to save address'));
     } finally {
@@ -580,11 +569,11 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
 
   // -------------------------------------------------------------
   // RENDER 1: GUEST OR NEW ADDRESS CREATION (No Saved Addresses Available)
-  // If selectedAddress already chosen in draft, display confirmed card with edit option
+  // If an address is already confirmed and we are not editing, display confirmed card.
   // Otherwise, show the embedded form.
   // -------------------------------------------------------------
   if (!showSavedAddressesList) {
-    if (selectedAddress && !isEditingExisting && (hasSavedAddressesAccount || (guestPhoneInput && guestNameInput))) {
+    if (selectedAddress && selectedAddress.id && selectedAddress.id !== 'draft-address' && !isEditingExisting) {
       return (
         <div className="space-y-6 text-start">
           <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-start justify-between gap-3">
