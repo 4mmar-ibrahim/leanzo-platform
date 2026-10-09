@@ -379,10 +379,20 @@ html:not(.dark) h6.text-white {
   color: #FFFFFF !important;
 }
 
-html:not(.dark) .bg-white p,
-html:not(.dark) .bg-slate-50 p,
-html:not(.dark) .bg-\[\#EAF8FC\] p,
-html:not(.dark) .bg-\[\#F6F8FA\] p {
+/* Safeguard: Paragraphs on dark overlays / deliberate navy cards must stay light and legible */
+html:not(.dark) .text-white p,
+html:not(.dark) p.text-white,
+html:not(.dark) [class*="from-[#041728]"] p,
+html:not(.dark) [class*="from-[#07345C]"] p,
+html:not(.dark) [class*="bg-[#041728]"] p,
+html:not(.dark) [class*="bg-[#07345C]"] p {
+  color: #CBD5E1 !important;
+}
+
+html:not(.dark) .bg-white p:not(.text-white):not([class*="text-white"]):not([class*="text-slate-1"]):not([class*="text-slate-2"]):not([class*="text-slate-3"]):not([class*="text-sky-"]):not([class*="text-blue-"]),
+html:not(.dark) .bg-slate-50 p:not(.text-white):not([class*="text-white"]):not([class*="text-slate-1"]):not([class*="text-slate-2"]):not([class*="text-slate-3"]):not([class*="text-sky-"]):not([class*="text-blue-"]),
+html:not(.dark) .bg-\[\#EAF8FC\] p:not(.text-white):not([class*="text-white"]):not([class*="text-slate-1"]):not([class*="text-slate-2"]):not([class*="text-slate-3"]):not([class*="text-sky-"]):not([class*="text-blue-"]),
+html:not(.dark) .bg-\[\#F6F8FA\] p:not(.text-white):not([class*="text-white"]):not([class*="text-slate-1"]):not([class*="text-slate-2"]):not([class*="text-slate-3"]):not([class*="text-sky-"]):not([class*="text-blue-"]) {
   color: #162631;
 }
 

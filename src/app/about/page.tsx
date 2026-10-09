@@ -72,7 +72,7 @@ export default function AboutPage() {
               : about?.titleEn || 'Redefining Professional Care & Cleanliness in Egypt'}
           </h1>
 
-          <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-sm sm:text-base text-slate-200 dark:text-slate-200 font-medium max-w-2xl mx-auto leading-relaxed">
             {isAr ? about?.description || t.brand.shortDescription : about?.descriptionEn || t.brand.shortDescription}
           </p>
         </div>

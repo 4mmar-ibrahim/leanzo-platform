@@ -49,7 +49,7 @@ export default function CarServicesPage() {
               {t.home.carCategoryTitle}
             </h1>
 
-            <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
+            <p className="text-sm sm:text-base text-slate-200 dark:text-slate-200 font-medium leading-relaxed">
               {t.home.carCategoryDesc}
             </p>
 

@@ -49,7 +49,7 @@ export default function HomeServicesPage() {
               {t.home.homeCategoryTitle}
             </h1>
 
-            <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
+            <p className="text-sm sm:text-base text-slate-200 dark:text-slate-200 font-medium leading-relaxed">
               {t.home.homeCategoryDesc}
             </p>
 
