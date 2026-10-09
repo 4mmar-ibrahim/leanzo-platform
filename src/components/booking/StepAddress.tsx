@@ -786,35 +786,23 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
     <div className="space-y-6 text-start">
       {/* Auto-selected Reassurance Banner for Returning Customer */}
       <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-sky-500/10 border border-emerald-500/30 dark:border-emerald-500/20 shadow-xs space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-            <div>
-              <h4 className="text-sm font-black text-emerald-950 dark:text-emerald-100 flex items-center gap-1.5 flex-wrap">
-                <span>{isAr ? 'تم تحديد عنوانك وبياناتك المحفوظة تلقائياً' : 'Saved Address & Info Selected Automatically'}</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">
-                  {isAr ? 'جاهز للمتابعة فوراً' : 'Ready to Proceed'}
-                </span>
-              </h4>
-              <p className="text-xs text-emerald-800/80 dark:text-emerald-300/90 mt-1">
-                {isAr
-                  ? 'بياناتك وعنوانك محفوظة ومحددة لطلبك تلقائياً؛ يمكنك المتابعة مباشرة للخطوة التالية بالضغط أدناه أو على زر التالي!'
-                  : 'Your address and details are automatically selected; you can proceed directly to the next step below!'}
-              </p>
-            </div>
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+            <CheckCircle2 className="w-4 h-4" />
           </div>
-          {selectedAddress && (
-            <button
-              type="button"
-              onClick={() => nextStep()}
-              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
-            >
-              <span>{isAr ? 'المتابعة لمراجعة وتأكيد الطلب' : 'Proceed to Confirmation'}</span>
-              <span className="text-sm font-bold">{isAr ? '←' : '→'}</span>
-            </button>
-          )}
+          <div>
+            <h4 className="text-sm font-black text-emerald-950 dark:text-emerald-100 flex items-center gap-1.5 flex-wrap">
+              <span>{isAr ? 'تم تحديد عنوانك وبياناتك المحفوظة تلقائياً' : 'Saved Address & Info Selected Automatically'}</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">
+                {isAr ? 'جاهز للمتابعة' : 'Ready'}
+              </span>
+            </h4>
+            <p className="text-xs text-emerald-800/80 dark:text-emerald-300/90 mt-1">
+              {isAr
+                ? 'بياناتك وعنوانك محفوظة ومحددة لطلبك تلقائياً؛ يمكنك المتابعة مباشرة للخطوة التالية بالضغط على زر التالي أدناه!'
+                : 'Your address and details are automatically selected; you can proceed to the next step below!'}
+            </p>
+          </div>
         </div>
 
         {/* Quick contact and selected address summary pill */}

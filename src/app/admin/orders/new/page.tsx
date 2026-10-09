@@ -153,7 +153,15 @@ function AdminNewBookingContent() {
       }
       return;
     }
-    nextStep();
+    if (currentStep < 5) {
+      setStep(currentStep + 1);
+    }
+  };
+
+  const handlePrev = () => {
+    if (currentStep > 1) {
+      setStep(currentStep - 1);
+    }
   };
 
   const handleSelectCustomer = (customer: CustomerProfile) => {
@@ -411,7 +419,7 @@ function AdminNewBookingContent() {
             {currentStep > 1 ? (
               <button
                 type="button"
-                onClick={prevStep}
+                onClick={handlePrev}
                 disabled={isSubmitting}
                 className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 transition-colors flex items-center gap-2 cursor-pointer"
               >
