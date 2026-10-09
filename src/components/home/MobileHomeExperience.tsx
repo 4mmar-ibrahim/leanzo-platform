@@ -166,11 +166,12 @@ export function MobileHomeExperience() {
     });
   }, [storeReviews]);
 
-  const openBookingForCategory = (cat: ServiceCategory) => {
+  const openBookingForCategory = (cat?: string) => {
+    const targetCat = (cat || 'car') as ServiceCategory;
     if (mobileSettings?.enableQuickBooking === false) {
-      router.push(`/booking?category=${cat}`);
+      router.push(`/booking?category=${encodeURIComponent(targetCat)}`);
     } else {
-      setActiveCategory(cat);
+      setActiveCategory(targetCat);
       setBookingSheetOpen(true);
     }
   };
@@ -377,7 +378,7 @@ export function MobileHomeExperience() {
                     <div className="w-full px-1 pt-1">
                       <button
                         type="button"
-                        onClick={() => openBookingForCategory(cat.slug as ServiceCategory)}
+                        onClick={() => openBookingForCategory(cat.slug || cat.id || 'car')}
                         style={{ backgroundColor: 'var(--cleanzo-blue)' }}
                         className="w-full py-2.5 px-3 rounded-full text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-sky-500/20 active:scale-95 transition-transform"
                       >

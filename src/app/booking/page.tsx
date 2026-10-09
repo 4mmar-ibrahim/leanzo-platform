@@ -78,8 +78,8 @@ function BookingContent() {
 
   // Synchronize category or direct service from URL search params
   useEffect(() => {
-    if (queryCat === 'car' || queryCat === 'home') {
-      setCategory(queryCat);
+    if (queryCat) {
+      setCategory(queryCat as ServiceCategory);
     }
     if (queryServiceId) {
       selectServiceById(queryServiceId);

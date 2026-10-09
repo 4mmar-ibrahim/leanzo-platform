@@ -175,14 +175,27 @@ export function StepService() {
 
   // Filter available services for currently active category tab
   const services = useMemo(() => {
-    return (storeServices || []).filter(
-      (s) =>
-        s.category === category &&
-        s.available !== false &&
-        !(s as any).isArchived &&
-        (s as any).active !== false
-    );
-  }, [storeServices, category]);
+    return (storeServices || []).filter((s) => {
+      if (!s || s.available === false || (s as any).isArchived || (s as any).active === false) return false;
+      if (s.category === category) return true;
+      const catInfo = resolveCategoryInfo(s.category, categories, isAr);
+      const targetCat = activeCategories.find((c) => c.slug === category || c.id === category);
+      return (
+        catInfo.slug === category ||
+        catInfo.matchedCategory?.id === category ||
+        catInfo.matchedCategory?.slug === category ||
+        (targetCat && (
+          catInfo.slug === targetCat.slug ||
+          catInfo.matchedCategory?.id === targetCat.id ||
+          s.category === targetCat.id ||
+          s.category === targetCat.slug ||
+          s.category === targetCat.name
+        )) ||
+        (category === 'car' && catInfo.isCar) ||
+        (category === 'home' && catInfo.isHome)
+      );
+    });
+  }, [storeServices, category, categories, activeCategories, isAr]);
 
   const handleCardToggle = (srv: Service) => {
     toggleService(srv);
@@ -222,13 +235,13 @@ export function StepService() {
           }`}
         >
           {activeCategories.map((cat, idx) => {
-            const isSelected = category === cat.slug;
+            const isSelected = category === cat.slug || category === cat.id;
             const CatIcon = getCategoryIconComponent(cat);
             const selectedCount = mounted
-              ? selectedServices.filter((item) => item.service.category === cat.slug).length
+              ? (selectedServices || []).filter((item) => item?.service?.category === cat.slug || item?.service?.category === cat.id).length
               : 0;
-            const catName = isAr ? cat.name : cat.nameEn || cat.name;
-            const catDesc = isAr ? cat.description : cat.descriptionEn || cat.description;
+            const catName = String(isAr ? (cat.name || '') : (cat.nameEn || cat.name || ''));
+            const catDesc = String(isAr ? (cat.description || '') : (cat.descriptionEn || cat.description || ''));
 
             return (
               <button

@@ -523,7 +523,7 @@ export function QuickBookingBottomSheet({
                       category === cat.slug ||
                       category === cat.id ||
                       (activeCategories.length === 1);
-                    const catName = isAr ? cat.name : cat.nameEn || cat.name;
+                    const catName = String(isAr ? (cat.name || '') : (cat.nameEn || cat.name || ''));
                     const slug = (cat.slug || '').toLowerCase();
                     const iconStr = (cat.icon || '').toLowerCase();
                     const CatIcon =
@@ -551,7 +551,7 @@ export function QuickBookingBottomSheet({
                         )}
                       >
                         <CatIcon className="w-4 h-4" />
-                        <span>{catName}</span>
+                        <span>{catName || (isAr ? 'قسم خدمات' : 'Category')}</span>
                       </button>
                     );
                   })}
@@ -632,7 +632,7 @@ export function QuickBookingBottomSheet({
               </div>
 
               {/* Package Selection */}
-              {selectedService && selectedService.packages && selectedService.packages.filter((p) => p.active !== false).length > 0 && (
+              {selectedService && Array.isArray(selectedService.packages) && selectedService.packages.filter((p) => p && p.active !== false).length > 0 && (
                 <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-800 dark:text-white block">
@@ -658,14 +658,14 @@ export function QuickBookingBottomSheet({
                           {selectedPkg === null && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                         </div>
                         <div className="flex flex-col">
-                          <span>بدون باقة (الخدمة الأساسية)</span>
+                           <span>بدون باقة (الخدمة الأساسية)</span>
                           <span className="text-[10px] text-slate-400 font-normal">الافتراضي</span>
                         </div>
                       </div>
                       <span className="font-mono">{selectedService.price} ج.م</span>
                     </div>
 
-                    {selectedService.packages.filter((p) => p.active !== false).map((pkg) => {
+                    {(selectedService.packages || []).filter((p) => p && p.active !== false).map((pkg) => {
                       const isChosen = selectedPkg?.id === pkg.id;
                       return (
                         <div
@@ -693,11 +693,11 @@ export function QuickBookingBottomSheet({
               )}
 
               {/* Add-ons Selection */}
-              {selectedService && selectedService.addons && selectedService.addons.filter((a) => a.active !== false).length > 0 && (
+              {selectedService && Array.isArray(selectedService.addons) && selectedService.addons.filter((a) => a && a.active !== false).length > 0 && (
                 <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
                   <span className="text-xs font-bold text-slate-800 dark:text-white block">إضافات اختيارية:</span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {selectedService.addons.filter((a) => a.active !== false).map((addon) => {
+                    {(selectedService.addons || []).filter((a) => a && a.active !== false).map((addon) => {
                       const isAdded = selectedAddonsList.some((a) => a.id === addon.id);
                       return (
                         <div
