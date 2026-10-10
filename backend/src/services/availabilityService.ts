@@ -423,7 +423,7 @@ export async function getAvailableSlots(
   // If service is specified, check if service exists and is active
   if (serviceId) {
     const srv = await Service.findOne({ id: serviceId });
-    if (!srv || srv.active === false || srv.available === false || srv.isArchived === true) {
+    if (srv && (srv.active === false || srv.available === false || srv.isArchived === true)) {
       return {
         date: dateStr,
         isDayAvailable: false,
@@ -837,7 +837,7 @@ export async function assertSlotAvailability(params: {
 
   if (serviceId) {
     const srv = await Service.findOne({ id: serviceId });
-    if (!srv || srv.active === false || srv.available === false || srv.isArchived === true) {
+    if (srv && (srv.active === false || srv.available === false || srv.isArchived === true)) {
       throw new Error('الخدمة المطلوبة غير متاحة حالياً');
     }
   }
