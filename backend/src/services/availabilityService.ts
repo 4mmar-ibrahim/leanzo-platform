@@ -1,6 +1,7 @@
 import { Booking, IBooking } from '../models/Booking.js';
 import { SubscriptionVisit } from '../models/SubscriptionVisit.js';
 import { Service } from '../models/Service.js';
+import { ServiceCategory } from '../models/ServiceCategory.js';
 import { SystemSettings } from '../models/SystemSettings.js';
 import { AuditLog } from '../models/AuditLog.js';
 
@@ -204,9 +205,9 @@ export async function getEffectiveBookingSettings() {
 
 /**
  * Resolves the service's duration, travel time, and total occupancy.
- * Formula: totalOccupiedMinutes = serviceDurationMinutes (travel time is NOT added)
- * Travel time is preserved as metadata but does NOT inflate the slot duration.
- * NO roundings to 30 or 60 minutes - minute-level precision is strictly preserved.
+ * Formula: totalOccupiedMinutes = serviceDurationMinutes ONLY.
+ * Service duration accounts for the complete scheduled appointment.
+ * NO arbitrary buffer is added.
  */
 export async function resolveServiceTiming(
   serviceId?: string,
@@ -216,11 +217,6 @@ export async function resolveServiceTiming(
   if (serviceId) {
     const service = await Service.findOne({ id: serviceId });
     if (service) {
-      const travelTimeMinutes =
-        service.travelTimeMinutes !== undefined && service.travelTimeMinutes !== null
-          ? Number(service.travelTimeMinutes)
-          : fallbackTravel;
-
       const baseServiceDuration = service.serviceDurationMinutes || service.duration || 45;
 
       const serviceDurationMinutes =
@@ -228,13 +224,10 @@ export async function resolveServiceTiming(
           ? customDuration
           : baseServiceDuration;
 
-      // totalOccupiedMinutes = serviceDurationMinutes ONLY (no travel time inflation)
-      const totalOccupiedMinutes = serviceDurationMinutes;
-
       return {
         serviceDurationMinutes,
-        travelTimeMinutes,
-        totalOccupiedMinutes,
+        travelTimeMinutes: 0,
+        totalOccupiedMinutes: serviceDurationMinutes,
       };
     }
   }
@@ -242,7 +235,7 @@ export async function resolveServiceTiming(
   const duration = customDuration !== undefined && customDuration > 0 ? customDuration : 45;
   return {
     serviceDurationMinutes: duration,
-    travelTimeMinutes: fallbackTravel,
+    travelTimeMinutes: 0,
     totalOccupiedMinutes: duration,
   };
 }
@@ -304,10 +297,32 @@ export function getBookingServiceIds(b: any): string[] {
   return Array.from(ids);
 }
 
+let cachedCategories: any[] = [];
+let lastCategoryFetch = 0;
+
+export async function getDynamicCategories(): Promise<any[]> {
+  const now = Date.now();
+  if (now - lastCategoryFetch > 30000 || cachedCategories.length === 0) {
+    try {
+      cachedCategories = await ServiceCategory.find({});
+      lastCategoryFetch = now;
+    } catch {
+      // Keep cached
+    }
+  }
+  return cachedCategories;
+}
+
 export function normalizeCategory(cat?: string | null): string {
   if (!cat) return '';
   const raw = String(cat).trim().toLowerCase();
-  if (raw === 'car' || raw === 'cars' || raw.includes('car') || raw.includes('سيار')) return 'car';
+  if (
+    raw === 'car' ||
+    raw === 'cars' ||
+    raw.includes('car') ||
+    raw.includes('سيار') ||
+    raw === 'cat-mv2vgjo7'
+  ) return 'car';
   if (
     raw === 'home' ||
     raw === 'homes' ||
@@ -315,9 +330,26 @@ export function normalizeCategory(cat?: string | null): string {
     raw.includes('منزل') ||
     raw.includes('منازل') ||
     raw.includes('سجاد') ||
-    raw === 'cat-mv2fyqvp'
+    raw === 'cat-mv2fyqvp' ||
+    raw === 'cat-mv2vh6ty'
   ) return 'home';
   return raw;
+}
+
+export async function mapCategoryCanonical(cat?: string | null): Promise<string> {
+  if (!cat) return '';
+  const norm = normalizeCategory(cat);
+  if (norm === 'car' || norm === 'home') return norm;
+
+  const categories = await getDynamicCategories();
+  const matched = categories.find((c: any) => c.id === cat || c.slug === cat);
+  if (matched) {
+    const text = `${matched.name || ''} ${matched.nameEn || ''} ${matched.slug || ''}`.toLowerCase();
+    if (text.includes('سيار') || text.includes('car')) return 'car';
+    if (text.includes('منزل') || text.includes('منازل') || text.includes('home')) return 'home';
+    return matched.slug || matched.id || norm;
+  }
+  return norm;
 }
 
 /**
@@ -331,19 +363,19 @@ export async function resolveTargetCategory(
 ): Promise<string | undefined> {
   if (serviceId) {
     const s = await Service.findOne({ id: serviceId });
-    if (s?.category) return normalizeCategory(s.category);
+    if (s?.category) return await mapCategoryCanonical(s.category);
   }
   if (Array.isArray(serviceIds) && serviceIds.length > 0) {
     for (const sId of serviceIds) {
       if (sId) {
         const s = await Service.findOne({ id: sId });
-        if (s?.category) return normalizeCategory(s.category);
+        if (s?.category) return await mapCategoryCanonical(s.category);
       }
     }
   }
   if (category && category !== 'all' && typeof category === 'string' && category.trim()) {
-    const norm = normalizeCategory(category.trim());
-    if (norm) return norm;
+    const mapped = await mapCategoryCanonical(category.trim());
+    if (mapped) return mapped;
   }
   return undefined;
 }
@@ -460,6 +492,15 @@ export async function getAvailableSlots(
   // 4. Resolve target category for unified scheduling
   const targetCategory = await resolveTargetCategory(category, serviceId, serviceIds);
 
+  // 4.1 Build service to canonical category map for fast lookup
+  const allServices = await Service.find({});
+  const serviceToCatMap = new Map<string, string>();
+  for (const s of allServices) {
+    if (s.id && s.category) {
+      serviceToCatMap.set(s.id, await mapCategoryCanonical(s.category));
+    }
+  }
+
   // 5. Fetch all bookings on this date
   const allBookings = await Booking.find({ date: dateStr }).select(
     'id status scheduledStart scheduledEnd timeSlotStart time duration serviceDurationMinutes travelTimeMinutes totalOccupiedMinutes cancelledAt timeline assignedTechnicianId serviceId serviceSnapshot category metadata'
@@ -487,10 +528,12 @@ export async function getAvailableSlots(
     // All services within targetCategory share the same schedule.
     // Services in other categories have an independent schedule and do NOT block this category.
     if (targetCategory) {
-      let bCat = getRecordCategory(b);
-      if (!bCat && b.serviceId && typeof b.serviceId === 'string') {
-        const s = await Service.findOne({ id: b.serviceId });
-        if (s?.category) bCat = normalizeCategory(s.category);
+      let bCat = b.category ? await mapCategoryCanonical(b.category) : undefined;
+      if ((!bCat || bCat === 'all' || bCat === 'general') && b.serviceId && serviceToCatMap.has(b.serviceId)) {
+        bCat = serviceToCatMap.get(b.serviceId);
+      }
+      if (!bCat && b.serviceSnapshot?.category) {
+        bCat = await mapCategoryCanonical(b.serviceSnapshot.category);
       }
       if (!bCat || bCat !== targetCategory) {
         continue; // Different or non-matching category -> independent schedule, DO NOT BLOCK!
@@ -504,7 +547,7 @@ export async function getAvailableSlots(
     }
 
     const bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
-    // Use service duration only - do NOT add travel time to occupied interval
+    // Pure service duration without arbitrary travel buffer inflation
     const bDuration = b.serviceDurationMinutes || b.duration || 45;
     const bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + bDuration;
 
@@ -537,10 +580,12 @@ export async function getAvailableSlots(
 
   for (const v of allVisits) {
     if (targetCategory) {
-      let vCat = getRecordCategory(v);
-      if (!vCat && v.serviceId && typeof v.serviceId === 'string') {
-        const s = await Service.findOne({ id: v.serviceId });
-        if (s?.category) vCat = normalizeCategory(s.category);
+      let vCat = v.category ? await mapCategoryCanonical(v.category) : undefined;
+      if ((!vCat || vCat === 'all' || vCat === 'general') && v.serviceId && serviceToCatMap.has(v.serviceId)) {
+        vCat = serviceToCatMap.get(v.serviceId);
+      }
+      if (!vCat && v.serviceSnapshot?.category) {
+        vCat = await mapCategoryCanonical(v.serviceSnapshot.category);
       }
       if (!vCat || vCat !== targetCategory) {
         continue;
@@ -554,7 +599,6 @@ export async function getAvailableSlots(
     }
 
     const vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart || v.time);
-    // Use service duration only - do NOT add travel time to occupied interval
     const vDuration = v.serviceDurationMinutes || v.duration || 45;
     const vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + vDuration;
 
@@ -639,29 +683,30 @@ export async function getAvailableSlots(
   // - Each free block is partitioned sequentially by timing.totalOccupiedMinutes,
   //   but each next slot snaps to the nearest 15-min boundary at or after the previous slot's end.
   // - Bookings or breaks (occupied intervals) are included and marked unavailable.
-  const requiredDuration = timing.totalOccupiedMinutes;
+  const requiredDuration = timing.serviceDurationMinutes;
   const candidateStarts = new Set<number>();
 
-  // A. Generate sequential slots within each free block (snapped to 15-min grid)
+  // A. Generate candidate slots within each free block (snapped to 15-min grid)
   for (const block of freeBlocks) {
-    // Snap the free block start to the next clean 15-min boundary
+    // 1. Sequential continuous slots starting from the free block start
     let slotCursor = snapTo15Minutes(block.start);
     while (slotCursor + requiredDuration <= block.end) {
       candidateStarts.add(slotCursor);
-      // Next slot starts at the next 15-min boundary at or after current slot ends
       const rawNext = slotCursor + requiredDuration;
       slotCursor = snapTo15Minutes(rawNext);
     }
 
-    // For today: if prior sequential slots in this free block have already elapsed,
-    // also generate slots starting from the next clean 15-min boundary after earliestAllowedMinutes
+    // 2. Also offer candidate start times on clean 15-minute grid within this free block
+    const blockStartSnap = snapTo15Minutes(block.start);
+    for (let t = blockStartSnap; t + requiredDuration <= block.end; t += 15) {
+      candidateStarts.add(t);
+    }
+
+    // 3. For today: if prior slots have already elapsed, ensure slots start from clean boundary after earliest notice
     if (isToday && earliestAllowedMinutes > block.start && earliestAllowedMinutes < block.end) {
       const alignedTodayStart = snapTo15Minutes(earliestAllowedMinutes);
-      let todayCursor = alignedTodayStart;
-      while (todayCursor >= block.start && todayCursor + requiredDuration <= block.end) {
-        candidateStarts.add(todayCursor);
-        const rawNext = todayCursor + requiredDuration;
-        todayCursor = snapTo15Minutes(rawNext);
+      for (let t = alignedTodayStart; t + requiredDuration <= block.end; t += 15) {
+        candidateStarts.add(t);
       }
     }
   }
@@ -817,7 +862,7 @@ export async function assertSlotAvailability(params: {
   // Snap the requested time to the nearest clean 15-minute boundary
   const rawStartMin = timeStringToMinutes(timeStr);
   const slotStartMin = snapTo15Minutes(rawStartMin);
-  const slotEndMin = slotStartMin + timing.totalOccupiedMinutes;
+  const slotEndMin = slotStartMin + timing.serviceDurationMinutes;
 
   const workStartMin = timeStringToMinutes(settings.workingHoursStart);
   const workEndMin = timeStringToMinutes(settings.workingHoursEnd);
@@ -869,6 +914,14 @@ export async function assertSlotAvailability(params: {
     ? serviceIds.filter(Boolean)
     : serviceId ? [serviceId] : [];
 
+  const allServicesForAssert = await Service.find({});
+  const assertServiceCatMap = new Map<string, string>();
+  for (const s of allServicesForAssert) {
+    if (s.id && s.category) {
+      assertServiceCatMap.set(s.id, await mapCategoryCanonical(s.category));
+    }
+  }
+
   for (const b of existingBookings) {
     if (technicianId && b.assignedTechnicianId && b.assignedTechnicianId !== technicianId) {
       continue;
@@ -882,10 +935,12 @@ export async function assertSlotAvailability(params: {
       // Category-Based Collision Check:
       // Only bookings belonging to the same category block this appointment.
       if (targetCategory) {
-        let bCat = getRecordCategory(b);
-        if (!bCat && b.serviceId && typeof b.serviceId === 'string') {
-          const s = await Service.findOne({ id: b.serviceId });
-          if (s?.category) bCat = normalizeCategory(s.category);
+        let bCat = b.category ? await mapCategoryCanonical(b.category) : undefined;
+        if ((!bCat || bCat === 'all' || bCat === 'general') && b.serviceId && assertServiceCatMap.has(b.serviceId)) {
+          bCat = assertServiceCatMap.get(b.serviceId);
+        }
+        if (!bCat && b.serviceSnapshot?.category) {
+          bCat = await mapCategoryCanonical(b.serviceSnapshot.category);
         }
         if (!bCat || bCat !== targetCategory) {
           continue; // Different category -> independent schedule!
@@ -900,7 +955,6 @@ export async function assertSlotAvailability(params: {
     }
 
     const bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
-    // Use service duration only - do NOT add travel time to occupied interval
     const bDuration = b.serviceDurationMinutes || b.duration || 45;
     const bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + bDuration;
 
@@ -952,8 +1006,14 @@ export async function assertSlotAvailability(params: {
 
     if (!isSameTechnician) {
       if (targetCategory) {
-        const vCat = getRecordCategory(v);
-        if (vCat && vCat !== targetCategory) {
+        let vCat = v.category ? await mapCategoryCanonical(v.category) : undefined;
+        if ((!vCat || vCat === 'all' || vCat === 'general') && v.serviceId && assertServiceCatMap.has(v.serviceId)) {
+          vCat = assertServiceCatMap.get(v.serviceId);
+        }
+        if (!vCat && v.serviceSnapshot?.category) {
+          vCat = await mapCategoryCanonical(v.serviceSnapshot.category);
+        }
+        if (!vCat || vCat !== targetCategory) {
           continue;
         }
       } else if (targetServiceIds.length > 0) {
@@ -966,7 +1026,6 @@ export async function assertSlotAvailability(params: {
     }
 
     const vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart || v.time);
-    // Use service duration only - do NOT add travel time to occupied interval
     const vDuration = v.serviceDurationMinutes || v.duration || 45;
     const vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + vDuration;
 
@@ -1005,8 +1064,8 @@ export async function assertSlotAvailability(params: {
     scheduledStart,
     scheduledEnd,
     serviceDurationMinutes: timing.serviceDurationMinutes,
-    travelTimeMinutes: timing.travelTimeMinutes,
-    totalOccupiedMinutes: timing.totalOccupiedMinutes,
+    travelTimeMinutes: 0,
+    totalOccupiedMinutes: timing.serviceDurationMinutes,
   };
 }
 

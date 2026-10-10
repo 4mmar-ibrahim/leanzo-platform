@@ -87,7 +87,13 @@ export function resolveCategoryInfo(
 export function normalizeCategory(category?: string | null): 'car' | 'home' | string {
   if (!category) return '';
   const raw = String(category).trim().toLowerCase();
-  if (raw === 'car' || raw === 'cars' || raw.includes('car') || raw.includes('سيار')) return 'car';
+  if (
+    raw === 'car' ||
+    raw === 'cars' ||
+    raw.includes('car') ||
+    raw.includes('سيار') ||
+    raw === 'cat-mv2vgjo7'
+  ) return 'car';
   if (
     raw === 'home' ||
     raw === 'homes' ||
@@ -95,7 +101,8 @@ export function normalizeCategory(category?: string | null): 'car' | 'home' | st
     raw.includes('منزل') ||
     raw.includes('منازل') ||
     raw.includes('سجاد') ||
-    raw === 'cat-mv2fyqvp'
+    raw === 'cat-mv2fyqvp' ||
+    raw === 'cat-mv2vh6ty'
   ) return 'home';
   return raw;
 }

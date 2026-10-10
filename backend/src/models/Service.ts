@@ -74,9 +74,7 @@ ServiceSchema.pre('save', function (next) {
   if (this.serviceDurationMinutes === undefined || this.serviceDurationMinutes === null) {
     this.serviceDurationMinutes = this.duration || 45;
   }
-  if (this.travelTimeMinutes === undefined || this.travelTimeMinutes === null) {
-    this.travelTimeMinutes = 0;
-  }
+  this.travelTimeMinutes = 0;
   this.duration = this.serviceDurationMinutes;
   // totalOccupiedMinutes = serviceDurationMinutes ONLY (no travel time inflation)
   this.totalOccupiedMinutes = this.serviceDurationMinutes;

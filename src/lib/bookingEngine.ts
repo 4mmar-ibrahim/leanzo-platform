@@ -94,8 +94,7 @@ export function getBookingTimeInterval(b?: {
 
   const timeStr = String(b.time || '').trim();
   const fullDuration =
-    b.totalOccupiedMinutes ||
-    (b.serviceDurationMinutes ? b.serviceDurationMinutes + (b.travelTimeMinutes || 0) : undefined) ||
+    b.serviceDurationMinutes ||
     b.duration ||
     b.service?.duration ||
     b.serviceSnapshot?.duration ||
@@ -576,8 +575,8 @@ export function getTimeSlotsForDate(
   const endMin = timeStringToMinutes(endStr);
 
   const durationMin = serviceDuration !== undefined && serviceDuration > 0 ? serviceDuration : 45;
-  const travelMin = travelDuration !== undefined ? Number(travelDuration) : 0;
-  const totalOccupancy = durationMin + travelMin;
+  const travelMin = 0;
+  const totalOccupancy = durationMin;
 
   if (totalOccupancy <= 0 || startMin + durationMin > endMin) {
     return [];
@@ -716,24 +715,25 @@ export function getTimeSlotsForDate(
   const candidateStarts = new Set<number>();
 
   for (const block of freeBlocks) {
-    // Snap the free block start to the next clean 15-min boundary
+    // 1. Sequential continuous slots starting from the free block start
     let slotCursor = snapTo15Minutes(block.start);
     while (slotCursor + totalOccupancy <= block.end) {
       candidateStarts.add(slotCursor);
-      // Next slot starts at the next 15-min boundary at or after current slot ends
       const rawNext = slotCursor + totalOccupancy;
       slotCursor = snapTo15Minutes(rawNext);
     }
 
-    // For today: if prior sequential slots in this free block have already elapsed,
-    // also generate slots starting from the next clean 15-min boundary after earliestAllowedMinutes
+    // 2. Candidate start times on 15-minute grid within this free block
+    const blockStartSnap = snapTo15Minutes(block.start);
+    for (let t = blockStartSnap; t + totalOccupancy <= block.end; t += 15) {
+      candidateStarts.add(t);
+    }
+
+    // 3. For today: if prior sequential slots have elapsed, start from next clean boundary
     if (isToday && earliestAllowedMinutes > block.start && earliestAllowedMinutes < block.end) {
       const alignedTodayStart = snapTo15Minutes(earliestAllowedMinutes);
-      let todayCursor = alignedTodayStart;
-      while (todayCursor >= block.start && todayCursor + totalOccupancy <= block.end) {
-        candidateStarts.add(todayCursor);
-        const rawNext = todayCursor + totalOccupancy;
-        todayCursor = snapTo15Minutes(rawNext);
+      for (let t = alignedTodayStart; t + totalOccupancy <= block.end; t += 15) {
+        candidateStarts.add(t);
       }
     }
   }

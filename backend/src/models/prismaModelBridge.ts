@@ -411,10 +411,8 @@ export function createPrismaRepository(prismaDelegateName: keyof typeof prisma) 
 
       if (modelName === 'service') {
         const sDur = cleanData.serviceDurationMinutes ?? cleanData.duration ?? 60;
-        // totalOccupiedMinutes = serviceDurationMinutes ONLY (no travel time inflation)
-        if (cleanData.totalOccupiedMinutes === undefined) {
-          cleanData.totalOccupiedMinutes = sDur;
-        }
+        cleanData.travelTimeMinutes = 0;
+        cleanData.totalOccupiedMinutes = sDur;
       }
 
       if (modelName === 'technician') {
