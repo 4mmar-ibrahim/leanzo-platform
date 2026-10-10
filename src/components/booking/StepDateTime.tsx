@@ -67,18 +67,22 @@ export function StepDateTime() {
     }
   }, [selectedDate, dateOptions, setDate]);
 
-  // Query live availability from backend when date, service, addons, duration, or category changes (category-based aware)
+  // Query live availability from backend with real-time reactive sync & auto-polling
   useEffect(() => {
-    if (!selectedDate) return;
+    if (!selectedDate) {
+      setLiveSlots(null);
+      return;
+    }
     let isMounted = true;
     const duration = getTotalDuration() || selectedService?.serviceDurationMinutes || selectedService?.duration || 45;
     const effectiveCategory = selectedService?.category || selectedServices[0]?.service?.category || category;
 
-    cleanzoApi.availability
-      .checkDate(selectedDate, selectedService?.id, duration, currentServiceIds, undefined, effectiveCategory)
-      .then((res) => {
-        if (isMounted) {
-          if (res?.slots && Array.isArray(res.slots) && res.slots.length > 0) {
+    const fetchLiveSlots = () => {
+      cleanzoApi.availability
+        .checkDate(selectedDate, selectedService?.id, duration, currentServiceIds, undefined, effectiveCategory)
+        .then((res) => {
+          if (!isMounted) return;
+          if (res && Array.isArray(res.slots)) {
             const formattedSlots: BookingSlot[] = res.slots.map((slot: any) => {
               const labelAr = formatTimeTo12Hour(slot.label || slot.time, { locale: 'ar' });
               const labelEn = formatTimeTo12Hour(slot.label || slot.time, { locale: 'en' });
@@ -86,7 +90,7 @@ export function StepDateTime() {
                 time: labelEn,
                 label: labelAr,
                 labelEn: labelEn,
-                isAvailable: slot.available,
+                isAvailable: Boolean(slot.available),
                 reason: slot.reason,
                 scheduledStart: slot.start || slot.scheduledStart || slot.time24,
                 scheduledEnd: slot.end || slot.scheduledEnd,
@@ -95,19 +99,52 @@ export function StepDateTime() {
               };
             });
             setLiveSlots(formattedSlots);
-          } else {
+          }
+        })
+        .catch(() => {
+          if (isMounted) {
+            // Keep current live slots or fallback only on true network failure
             setLiveSlots(null);
           }
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          // Fallback cleanly to deterministic local engine using bookingSettings
-          setLiveSlots(null);
-        }
-      });
+        });
+    };
+
+    // 1. Initial immediate fetch
+    fetchLiveSlots();
+
+    // 2. Real-time BroadcastChannel listener (updates across tabs/windows instantly when any booking occurs)
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        bc = new BroadcastChannel('cleanzo_availability');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'BOOKING_CHANGED' || event.data?.type?.startsWith('BOOKING_')) {
+            fetchLiveSlots();
+          }
+        };
+      }
+    } catch {}
+
+    // 3. Local window custom event listener
+    const handleBookingChanged = () => {
+      fetchLiveSlots();
+    };
+    window.addEventListener('cleanzo:booking-changed', handleBookingChanged);
+    window.addEventListener('focus', fetchLiveSlots);
+
+    // 4. Short live polling interval (every 3.5s) to guarantee live slot sync without manual refresh
+    const pollTimer = setInterval(fetchLiveSlots, 3500);
+
     return () => {
       isMounted = false;
+      clearInterval(pollTimer);
+      window.removeEventListener('cleanzo:booking-changed', handleBookingChanged);
+      window.removeEventListener('focus', fetchLiveSlots);
+      if (bc) {
+        try {
+          bc.close();
+        } catch {}
+      }
     };
   }, [selectedDate, selectedService?.id, currentServiceIds, getTotalDuration, bookingSettings, category, selectedService?.category]);
 

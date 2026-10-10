@@ -309,7 +309,15 @@ export function normalizeCategory(cat?: string | null): string {
   if (!cat) return '';
   const raw = String(cat).trim().toLowerCase();
   if (raw === 'car' || raw === 'cars' || raw.includes('car') || raw.includes('سيار')) return 'car';
-  if (raw === 'home' || raw === 'homes' || raw.includes('home') || raw.includes('منزل') || raw.includes('منازل')) return 'home';
+  if (
+    raw === 'home' ||
+    raw === 'homes' ||
+    raw.includes('home') ||
+    raw.includes('منزل') ||
+    raw.includes('منازل') ||
+    raw.includes('سجاد') ||
+    raw === 'cat-mv2fyqvp'
+  ) return 'home';
   return raw;
 }
 

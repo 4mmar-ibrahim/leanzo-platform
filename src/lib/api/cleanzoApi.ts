@@ -208,6 +208,7 @@ export const cleanzoApi = {
       if (serviceIds && serviceIds.length > 0) params.append('serviceIds', serviceIds.join(','));
       if (excludeBookingId) params.append('excludeBookingId', excludeBookingId);
       if (category && category !== 'all') params.append('category', category);
+      params.append('_t', String(Date.now()));
       return apiRequest<{
         date: string;
         isDayAvailable: boolean;
@@ -225,7 +226,7 @@ export const cleanzoApi = {
           travelTimeMinutes?: number;
           totalOccupiedMinutes?: number;
         }>;
-      }>(`/availability?${params.toString()}`);
+      }>(`/availability?${params.toString()}`, { cache: 'no-store' });
     },
     validateSlot: (
       date: string,

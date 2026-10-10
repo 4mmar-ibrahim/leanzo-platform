@@ -922,6 +922,9 @@ export async function trackOrderPublic(req: Request, res: Response): Promise<voi
     sendSuccess(res, {
       id: booking.id,
       status: booking.status,
+      customerPhone: booking.customerPhone || cleanPhone,
+      customerName: booking.customerName,
+      serviceId: booking.serviceId || booking.serviceSnapshot?.id,
       serviceTitle: booking.serviceSnapshot?.title || '',
       serviceSnapshot: booking.serviceSnapshot,
       category: booking.category,
@@ -929,6 +932,8 @@ export async function trackOrderPublic(req: Request, res: Response): Promise<voi
       time: booking.time,
       scheduledStart: booking.scheduledStart,
       scheduledEnd: booking.scheduledEnd,
+      rescheduledFrom: booking.rescheduledFrom,
+      rescheduledAt: booking.rescheduledAt,
       serviceDurationMinutes: booking.serviceDurationMinutes,
       travelTimeMinutes: booking.travelTimeMinutes,
       totalOccupiedMinutes: booking.totalOccupiedMinutes,
@@ -1564,25 +1569,15 @@ export async function assignTechnicianToBooking(req: AuthenticatedAdminRequest, 
       const currentInterval = getBookingTimeInterval(freshBooking);
       const cleanDate = String(freshBooking.date || '').split('T')[0].trim();
 
-      // 1. Check other active regular bookings assigned to this technician on the same date (any category)
-      const conflictingBookings = await prisma.booking.findMany({
-        where: {
-          id: { not: freshBooking.id },
-          OR: [
-            { date: cleanDate },
-            { date: { startsWith: cleanDate } },
-          ],
-          status: { notIn: ['cancelled', 'CANCELLED'] },
-          AND: [
-            {
-              OR: [
-                { assignedTechnicianId: tech.id },
-                { technician: { path: ['id'], equals: tech.id } },
-                { technician: { equals: tech.id } },
-              ],
-            },
-          ],
-        },
+      // 1. Check other active regular bookings assigned to this technician on the same date (any category) - Authoritative MongoDB
+      const conflictingBookings = await Booking.find({
+        id: { $ne: freshBooking.id },
+        date: cleanDate,
+        status: { $nin: ['cancelled', 'CANCELLED'] },
+        $or: [
+          { assignedTechnicianId: tech.id },
+          { 'technician.id': tech.id },
+        ],
       });
 
       for (const conflict of conflictingBookings) {
@@ -1601,23 +1596,14 @@ export async function assignTechnicianToBooking(req: AuthenticatedAdminRequest, 
 
       // 2. Check other active subscription visits assigned to this technician on the same date
       try {
-        const conflictingVisits = await prisma.subscriptionVisit.findMany({
-          where: {
-            OR: [
-              { date: cleanDate },
-              { date: { startsWith: cleanDate } },
-            ],
-            status: { notIn: ['cancelled', 'CANCELLED'] },
-            AND: [
-              {
-                OR: [
-                  { assignedTechnicianId: tech.id },
-                  { technician: { path: ['id'], equals: tech.id } },
-                  { technician: { equals: tech.id } },
-                ],
-              },
-            ],
-          },
+        const { SubscriptionVisit } = await import('../models/SubscriptionVisit.js');
+        const conflictingVisits = await SubscriptionVisit.find({
+          date: cleanDate,
+          status: { $nin: ['cancelled', 'CANCELLED'] },
+          $or: [
+            { assignedTechnicianId: tech.id },
+            { 'technician.id': tech.id },
+          ],
         });
 
         for (const visit of conflictingVisits) {
@@ -1633,8 +1619,8 @@ export async function assignTechnicianToBooking(req: AuthenticatedAdminRequest, 
             return;
           }
         }
-      } catch {
-        // Prisma fallback
+      } catch (visitErr) {
+        // Fallback or ignore if SubscriptionVisit model is unavailable
       }
 
       const prevStatus = freshBooking.status;
@@ -2048,16 +2034,14 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
           totalOccupiedMinutes: booking.totalOccupiedMinutes || booking.duration,
         });
 
-        const techConflict = await prisma.booking.findFirst({
-          where: {
-            id: { not: booking.id },
-            date: newDate,
-            status: { notIn: ['cancelled', 'CANCELLED'] },
-            OR: [
-              { assignedTechnicianId: booking.assignedTechnicianId },
-              { technician: { path: ['id'], equals: booking.assignedTechnicianId } },
-            ],
-          },
+        const techConflict = await Booking.findOne({
+          id: { $ne: booking.id },
+          date: newDate,
+          status: { $nin: ['cancelled', 'CANCELLED'] },
+          $or: [
+            { assignedTechnicianId: booking.assignedTechnicianId },
+            { 'technician.id': booking.assignedTechnicianId },
+          ],
         });
 
         if (techConflict) {

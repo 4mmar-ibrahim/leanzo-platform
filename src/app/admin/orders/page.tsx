@@ -184,6 +184,36 @@ export default function AdminOrdersPage() {
     loadOrders();
     fetchTechnicians();
     fetchSubscriptionVisits();
+
+    const handleBookingChanged = () => {
+      loadOrders();
+      fetchSubscriptionVisits();
+    };
+
+    window.addEventListener('cleanzo:booking-changed', handleBookingChanged);
+    window.addEventListener('focus', handleBookingChanged);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        bc = new BroadcastChannel('cleanzo_availability');
+        bc.onmessage = (event) => {
+          if (event.data?.type?.startsWith('BOOKING_') || event.data?.type === 'BOOKING_CHANGED') {
+            handleBookingChanged();
+          }
+        };
+      }
+    } catch {}
+
+    return () => {
+      window.removeEventListener('cleanzo:booking-changed', handleBookingChanged);
+      window.removeEventListener('focus', handleBookingChanged);
+      if (bc) {
+        try {
+          bc.close();
+        } catch {}
+      }
+    };
   }, [loadOrders, fetchTechnicians, fetchSubscriptionVisits]);
 
   const handleFilterChange = useCallback((newValues: GlobalFilterValues) => {

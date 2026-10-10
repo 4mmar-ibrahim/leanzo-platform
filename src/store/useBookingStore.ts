@@ -453,6 +453,7 @@ export const useBookingStore = create<BookingState>()(
           const catalogDisc = Math.max(0, baseOriginal - baseSelling);
           const addonsTot = addons.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
           const addonsDur = addons.reduce((sum, a) => sum + (Number(a.durationMinutes) || 0), 0);
+          const travelDur = Number(s.travelTimeMinutes || 0);
           const baseDur = pkg
             ? Number(pkg.durationMinutes) || 45
             : Number(s.serviceDurationMinutes || s.duration) || 45;
@@ -469,7 +470,7 @@ export const useBookingStore = create<BookingState>()(
             selectedPackage: pkg,
             selectedAddons: addons,
             addonsTotal: addonsTot,
-            durationMinutes: baseDur + addonsDur,
+            durationMinutes: baseDur + addonsDur + travelDur,
             itemSubtotal: baseSelling + addonsTot,
             itemOriginalTotal: baseOriginal + addonsTot,
           };

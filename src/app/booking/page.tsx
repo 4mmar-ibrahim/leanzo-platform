@@ -358,6 +358,16 @@ function BookingContent() {
       // Save authoritative server booking to store
       addOrder(createdBooking);
 
+      // Immediately notify all active tabs and windows that availability has changed
+      try {
+        if (typeof window !== 'undefined') {
+          if ('BroadcastChannel' in window) {
+            new BroadcastChannel('cleanzo_availability').postMessage({ type: 'BOOKING_CHANGED', date: selectedDate });
+          }
+          window.dispatchEvent(new CustomEvent('cleanzo:booking-changed', { detail: { date: selectedDate } }));
+        }
+      } catch {}
+
       // Ensure address is saved or updated without creating duplicate addresses
       if (selectedAddress && isAuthenticated) {
         const addressStore = useAddressStore.getState();

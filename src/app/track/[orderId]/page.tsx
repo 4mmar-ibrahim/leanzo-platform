@@ -283,7 +283,11 @@ export default function DirectOrderTrackPage() {
         </div>
       </div>
 
-      <OrderTracker order={order} onOpenReview={() => setReviewOpen(true)} />
+      <OrderTracker
+        order={order}
+        onOpenReview={() => setReviewOpen(true)}
+        onOrderUpdate={(updated) => setOrder({ ...updated })}
+      />
 
       <OrderReviewModal
         order={order}

@@ -35,9 +35,10 @@ import { RescheduleModal } from './RescheduleModal';
 interface OrderTrackerProps {
   order: Order;
   onOpenReview?: () => void;
+  onOrderUpdate?: (updated: Order) => void;
 }
 
-export function OrderTracker({ order, onOpenReview }: OrderTrackerProps) {
+export function OrderTracker({ order, onOpenReview, onOrderUpdate }: OrderTrackerProps) {
   const { locale, direction } = useLocaleStore();
   const isAr = locale === 'ar';
   const router = useRouter();
@@ -366,7 +367,11 @@ export function OrderTracker({ order, onOpenReview }: OrderTrackerProps) {
         isOpen={isRescheduleOpen}
         onClose={() => setIsRescheduleOpen(false)}
         order={order}
-        onSuccess={() => {
+        onSuccess={(updatedOrder) => {
+          if (updatedOrder) {
+            Object.assign(order, updatedOrder);
+            onOrderUpdate?.(updatedOrder);
+          }
           router.refresh();
         }}
       />

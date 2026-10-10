@@ -255,11 +255,13 @@ export function QuickBookingBottomSheet({
     }
     let isMounted = true;
     const effectiveCategory = selectedService?.category;
-    cleanzoApi.availability
-      .checkDate(selectedDate, selectedService.id, serviceDuration, [selectedService.id], undefined, effectiveCategory)
-      .then((res) => {
-        if (isMounted) {
-          if (res?.slots && Array.isArray(res.slots) && res.slots.length > 0) {
+
+    const fetchLiveSlots = () => {
+      cleanzoApi.availability
+        .checkDate(selectedDate, selectedService.id, serviceDuration, [selectedService.id], undefined, effectiveCategory)
+        .then((res) => {
+          if (!isMounted) return;
+          if (res && Array.isArray(res.slots)) {
             const formattedSlots: BookingSlot[] = res.slots.map((slot: any) => {
               const labelAr = formatTimeTo12Hour(slot.label || slot.time, { locale: 'ar' });
               const labelEn = formatTimeTo12Hour(slot.label || slot.time, { locale: 'en' });
@@ -267,7 +269,7 @@ export function QuickBookingBottomSheet({
                 time: labelEn,
                 label: labelAr,
                 labelEn: labelEn,
-                isAvailable: slot.available,
+                isAvailable: Boolean(slot.available),
                 reason: slot.reason,
                 scheduledStart: slot.start || slot.scheduledStart || slot.time24,
                 scheduledEnd: slot.end || slot.scheduledEnd,
@@ -276,18 +278,45 @@ export function QuickBookingBottomSheet({
               };
             });
             setLiveSlots(formattedSlots);
-          } else {
+          }
+        })
+        .catch(() => {
+          if (isMounted) {
             setLiveSlots(null);
           }
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setLiveSlots(null);
-        }
-      });
+        });
+    };
+
+    fetchLiveSlots();
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        bc = new BroadcastChannel('cleanzo_availability');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'BOOKING_CHANGED' || event.data?.type?.startsWith('BOOKING_')) {
+            fetchLiveSlots();
+          }
+        };
+      }
+    } catch {}
+
+    const handleBookingChanged = () => fetchLiveSlots();
+    window.addEventListener('cleanzo:booking-changed', handleBookingChanged);
+    window.addEventListener('focus', fetchLiveSlots);
+
+    const pollTimer = setInterval(fetchLiveSlots, 3500);
+
     return () => {
       isMounted = false;
+      clearInterval(pollTimer);
+      window.removeEventListener('cleanzo:booking-changed', handleBookingChanged);
+      window.removeEventListener('focus', fetchLiveSlots);
+      if (bc) {
+        try {
+          bc.close();
+        } catch {}
+      }
     };
   }, [selectedDate, selectedService?.id, serviceDuration, selectedService?.category]);
 
@@ -450,7 +479,7 @@ export function QuickBookingBottomSheet({
     cleanzoApi.availability
       .checkDate(selectedDate, selectedService.id, serviceDuration, [selectedService.id], undefined, effectiveCategory)
       .then((res) => {
-        if (res?.slots && Array.isArray(res.slots) && res.slots.length > 0) {
+        if (res && Array.isArray(res.slots)) {
           const formattedSlots: BookingSlot[] = res.slots.map((slot: any) => {
             const labelAr = formatTimeTo12Hour(slot.label || slot.time, { locale: 'ar' });
             const labelEn = formatTimeTo12Hour(slot.label || slot.time, { locale: 'en' });
@@ -458,7 +487,7 @@ export function QuickBookingBottomSheet({
               time: labelEn,
               label: labelAr,
               labelEn: labelEn,
-              isAvailable: slot.available,
+              isAvailable: Boolean(slot.available),
               reason: slot.reason,
               scheduledStart: slot.start || slot.scheduledStart || slot.time24,
               scheduledEnd: slot.end || slot.scheduledEnd,
@@ -566,6 +595,17 @@ export function QuickBookingBottomSheet({
 
       // Immediately re-fetch live slots so the booked time disappears from the UI without page refresh
       refreshLiveSlots();
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('cleanzo:booking-changed', { detail: { date: selectedDate } }));
+        try {
+          const channel = new BroadcastChannel('cleanzo_availability');
+          channel.postMessage({ type: 'BOOKING_CREATED', date: selectedDate, category: selectedService?.category });
+          channel.close();
+        } catch {
+          // ignore BroadcastChannel errors
+        }
+      }
 
       setConfirmedOrderId(createdBooking.id);
       setStep(4);

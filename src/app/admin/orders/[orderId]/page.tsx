@@ -147,6 +147,36 @@ export default function AdminOrderDetailPage() {
     // Pre-fetch technicians and orders on mount
     fetchTechnicians();
     fetchAdminOrders();
+
+    const handleBookingChanged = () => {
+      fetchOrder();
+      fetchAdminOrders();
+    };
+
+    window.addEventListener('cleanzo:booking-changed', handleBookingChanged);
+    window.addEventListener('focus', handleBookingChanged);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        bc = new BroadcastChannel('cleanzo_availability');
+        bc.onmessage = (event) => {
+          if (event.data?.type?.startsWith('BOOKING_') || event.data?.type === 'BOOKING_CHANGED') {
+            handleBookingChanged();
+          }
+        };
+      }
+    } catch {}
+
+    return () => {
+      window.removeEventListener('cleanzo:booking-changed', handleBookingChanged);
+      window.removeEventListener('focus', handleBookingChanged);
+      if (bc) {
+        try {
+          bc.close();
+        } catch {}
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId]);
 

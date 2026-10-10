@@ -21,6 +21,8 @@ import { useOrderStore } from '@/store/useOrderStore';
 import { getUpcomingBookingDates } from '@/lib/bookingEngine';
 import { formatTimeTo12Hour } from '@/lib/timeUtils';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
+import { useAuthStore } from '@/store/useAuthStore';
+import { useBookingStore } from '@/store/useBookingStore';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -96,8 +98,11 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
     setIsLoadingSlots(true);
     setSelectedSlotTime('');
 
+    const targetServiceId = order.serviceId || order.service?.id || (order as any).serviceSnapshot?.id;
+    const targetCategory = order.category || (order as any).serviceSnapshot?.category || order.service?.category;
+
     cleanzoApi.availability
-      .checkDate(selectedDate, order.serviceId, duration, serviceIds, order.id)
+      .checkDate(selectedDate, targetServiceId, duration, serviceIds, order.id, targetCategory)
       .then((res) => {
         if (!isMounted) return;
         setIsDayAvailable(res?.isDayAvailable ?? true);
@@ -131,6 +136,12 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
       return;
     }
 
+    const customerPhone =
+      order.customerPhone ||
+      useAuthStore.getState().user?.phone ||
+      useBookingStore.getState().guestPhone ||
+      '';
+
     setIsSubmitting(true);
     try {
       const updated = await rescheduleOrder(
@@ -138,8 +149,17 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
         selectedDate,
         selectedSlotTime,
         reason.trim() || undefined,
-        order.customerPhone
+        customerPhone || undefined
       );
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('cleanzo:booking-changed', { detail: { date: selectedDate } }));
+        try {
+          const channel = new BroadcastChannel('cleanzo_availability');
+          channel.postMessage({ type: 'BOOKING_RESCHEDULED', date: selectedDate, orderId: order.id });
+          channel.close();
+        } catch {}
+      }
 
       toast.success(
         isAr

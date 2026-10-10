@@ -412,21 +412,8 @@ export function isSameTime(timeA?: string, timeB?: string): boolean {
   const tB = timeB.trim().toUpperCase();
   if (tA === tB) return true;
 
-  const toMinutes = (str: string): number => {
-    const firstPart = str.split(/[-–—]/)[0].trim();
-    const isPM = firstPart.includes('PM') || firstPart.includes('مساء');
-    const isAM = firstPart.includes('AM') || firstPart.includes('صباح');
-    const clean = firstPart.replace(/[^0-9:]/g, '').trim();
-    const [hStr, mStr] = clean.split(':');
-    let h = parseInt(hStr || '0', 10);
-    const m = parseInt(mStr || '0', 10);
-    if (isPM && h < 12) h += 12;
-    if (isAM && h === 12) h = 0;
-    return h * 60 + (isNaN(m) ? 0 : m);
-  };
-
-  const minA = toMinutes(tA);
-  const minB = toMinutes(tB);
+  const minA = timeStringToMinutes(tA);
+  const minB = timeStringToMinutes(tB);
   return minA === minB && minA >= 0;
 }
 
