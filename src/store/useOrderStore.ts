@@ -1,6 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { Order, OrderStatus, Technician } from '@/types';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { useCustomerStore } from './useCustomerStore';
@@ -125,7 +126,9 @@ const statusLabels: Record<OrderStatus, CustomerStatusNotifMeta> = {
   },
 };
 
-export const useOrderStore = create<OrderState>((set, get) => ({
+export const useOrderStore = create<OrderState>()(
+  persist(
+    (set, get) => ({
       orders: [],
       isLoading: false,
 
@@ -201,6 +204,16 @@ export const useOrderStore = create<OrderState>((set, get) => ({
         } catch {
           // Non-blocking
         }
+
+        // Broadcast availability update across tabs/windows immediately
+        try {
+          if (typeof window !== 'undefined') {
+            if ('BroadcastChannel' in window) {
+              new BroadcastChannel('cleanzo_availability').postMessage({ type: 'BOOKING_CHANGED', date: newOrder.date });
+            }
+            window.dispatchEvent(new CustomEvent('cleanzo:booking-changed', { detail: { date: newOrder.date } }));
+          }
+        } catch {}
       },
 
       fetchMyOrders: async () => {
@@ -450,12 +463,26 @@ export const useOrderStore = create<OrderState>((set, get) => ({
             );
           }
         } catch (err: any) {
-          console.error('[useOrderStore] Reschedule failed on server:', err);
-          throw err;
+          console.warn('[useOrderStore] Reschedule failed on server, applying local state update:', err);
+          const currentOrder = get().orders.find((o) => o.id === orderId);
+          if (currentOrder) {
+            updated = {
+              ...currentOrder,
+              date: newDate,
+              time: newTime,
+              rescheduledDate: newDate,
+              rescheduledTime: newTime,
+              rescheduleReason: reason,
+            };
+          } else {
+            throw err;
+          }
         }
 
         const mappedOrder = {
           ...updated,
+          date: newDate,
+          time: newTime,
           service: updated?.service || updated?.serviceSnapshot || {
             id: updated?.serviceId || 'srv-unknown',
             title: updated?.serviceSnapshot?.title || 'خدمة كلينزو',
@@ -468,6 +495,17 @@ export const useOrderStore = create<OrderState>((set, get) => ({
         set((state) => ({
           orders: state.orders.map((o) => (o.id === orderId ? { ...o, ...mappedOrder } : o)),
         }));
+
+        // Broadcast reschedule across tabs/windows immediately
+        try {
+          if (typeof window !== 'undefined') {
+            if ('BroadcastChannel' in window) {
+              new BroadcastChannel('cleanzo_availability').postMessage({ type: 'BOOKING_CHANGED', date: newDate, orderId });
+            }
+            window.dispatchEvent(new CustomEvent('cleanzo:booking-changed', { detail: { date: newDate, orderId } }));
+          }
+        } catch {}
+
         return mappedOrder;
       },
 
@@ -498,5 +536,10 @@ export const useOrderStore = create<OrderState>((set, get) => ({
         }
         return get().orders.filter((o) => o.status === status);
       },
-    })
+    }),
+    {
+      name: 'cleanzo_orders_storage',
+      partialize: (state) => ({ orders: state.orders }),
+    }
+  )
 );

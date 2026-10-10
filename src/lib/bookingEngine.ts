@@ -560,7 +560,8 @@ export function getTimeSlotsForDate(
   serviceDuration?: number,
   travelDuration?: number,
   serviceIds?: string[],
-  category?: string
+  category?: string,
+  includeUnavailable: boolean = false
 ): BookingSlot[] {
   const isBlocked = (settings?.blockedDates || []).includes(dateString);
   const holiday = (settings?.holidays || []).find((h) => h.date === dateString);
@@ -737,15 +738,22 @@ export function getTimeSlotsForDate(
     }
   }
 
-  // Include starts of occupied booking intervals so they are visible as unavailable slots
-  for (const occ of mergedOccupied) {
-    candidateStarts.add(snapTo15Minutes(occ.start));
+  // Only include starts of occupied booking intervals if explicitly requested (e.g. for admin inspection)
+  if (includeUnavailable) {
+    for (const occ of mergedOccupied) {
+      candidateStarts.add(snapTo15Minutes(occ.start));
+    }
   }
 
   const sortedStarts = Array.from(candidateStarts).sort((a, b) => a - b);
   const slots: BookingSlot[] = [];
 
   for (const slotStart of sortedStarts) {
+    // Strict 15-minute grid check: start must be multiple of 15 (:00, :15, :30, :45)
+    if (slotStart % 15 !== 0) {
+      continue;
+    }
+
     const slotEnd = slotStart + totalOccupancy;
 
     // Check service completion before end of working hours (allow 1440 for 23:59 end-of-day)
@@ -763,6 +771,11 @@ export function getTimeSlotsForDate(
     const collidingOcc = mergedOccupied.find((occ) => slotStart < occ.end && slotEnd > occ.start);
     const isAvailable = !collidingOcc;
     const reason = collidingOcc ? collidingOcc.reason : undefined;
+
+    // Strict user rule: Booked / unavailable slots must NOT appear at all!
+    if (!isAvailable && !includeUnavailable) {
+      continue;
+    }
 
     const start24 = minutesTo24H(slotStart);
     const end24 = minutesTo24H(Math.min(endMin, slotEnd));

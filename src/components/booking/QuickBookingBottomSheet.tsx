@@ -262,21 +262,23 @@ export function QuickBookingBottomSheet({
         .then((res) => {
           if (!isMounted) return;
           if (res && Array.isArray(res.slots)) {
-            const formattedSlots: BookingSlot[] = res.slots.map((slot: any) => {
-              const labelAr = formatTimeTo12Hour(slot.label || slot.time, { locale: 'ar' });
-              const labelEn = formatTimeTo12Hour(slot.label || slot.time, { locale: 'en' });
-              return {
-                time: labelEn,
-                label: labelAr,
-                labelEn: labelEn,
-                isAvailable: Boolean(slot.available),
-                reason: slot.reason,
-                scheduledStart: slot.start || slot.scheduledStart || slot.time24,
-                scheduledEnd: slot.end || slot.scheduledEnd,
-                totalOccupiedMinutes: slot.totalOccupiedMinutes || serviceDuration,
-                serviceDurationMinutes: slot.serviceDurationMinutes || serviceDuration,
-              };
-            });
+            const formattedSlots: BookingSlot[] = res.slots
+              .filter((slot: any) => Boolean(slot.available ?? slot.isAvailable))
+              .map((slot: any) => {
+                const labelAr = formatTimeTo12Hour(slot.label || slot.time, { locale: 'ar' });
+                const labelEn = formatTimeTo12Hour(slot.label || slot.time, { locale: 'en' });
+                return {
+                  time: labelEn,
+                  label: labelAr,
+                  labelEn: labelEn,
+                  isAvailable: true,
+                  reason: undefined,
+                  scheduledStart: slot.start || slot.scheduledStart || slot.time24,
+                  scheduledEnd: slot.end || slot.scheduledEnd,
+                  totalOccupiedMinutes: slot.totalOccupiedMinutes || serviceDuration,
+                  serviceDurationMinutes: slot.serviceDurationMinutes || serviceDuration,
+                };
+              });
             setLiveSlots(formattedSlots);
           }
         })
@@ -335,25 +337,12 @@ export function QuickBookingBottomSheet({
         serviceDuration,
         selectedService?.travelTimeMinutes,
         selectedService?.id ? [selectedService.id] : [],
-        effectiveCategory
+        effectiveCategory,
+        false
       );
     }
 
-    if (liveSlots !== null) {
-      return liveSlots;
-    }
-
-    return getTimeSlotsForDate(
-      selectedDate,
-      bookingSettings,
-      selectedService?.id,
-      selectedService?.title,
-      orders,
-      serviceDuration,
-      selectedService?.travelTimeMinutes,
-      selectedService?.id ? [selectedService.id] : [],
-      effectiveCategory
-    );
+    return baseSlots.filter((s) => s.isAvailable);
   }, [selectedDate, liveSlots, bookingSettings, selectedService, orders, serviceDuration]);
 
   const [selectedTime, setSelectedTime] = useState<string>('');
@@ -1000,28 +989,21 @@ export function QuickBookingBottomSheet({
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1">
                     {timeSlots.map((slot) => {
                       const isSelected = selectedTime === slot.time || isSameTime(selectedTime, slot.time);
-                      const isAvailable = slot.isAvailable;
                       const displayLabel = formatTimeTo12Hour(isAr ? slot.label : slot.labelEn);
 
                       return (
                         <button
                           key={slot.time}
                           type="button"
-                          disabled={!isAvailable}
-                          onClick={() => isAvailable && setSelectedTime(slot.time)}
+                          onClick={() => setSelectedTime(slot.time)}
                           className={cn(
                             'py-2.5 px-2 rounded-xl text-xs font-bold border transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer',
-                            !isAvailable
-                              ? 'bg-slate-100/60 dark:bg-slate-900/40 border-slate-200/40 opacity-50 cursor-not-allowed text-slate-400'
-                              : isSelected
+                            isSelected
                               ? 'bg-[#0866C6] text-white border-[#0866C6] shadow-md shadow-[#0866C6]/25 font-bold'
                               : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-[#0866C6]'
                           )}
                         >
                           <span className="font-mono font-bold" dir="ltr">{displayLabel}</span>
-                          {!isAvailable && slot.reason && (
-                            <span className="text-[9px] text-rose-500 font-normal mt-0.5">{slot.reason}</span>
-                          )}
                         </button>
                       );
                     })}

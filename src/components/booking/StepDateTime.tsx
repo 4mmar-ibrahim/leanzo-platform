@@ -83,21 +83,23 @@ export function StepDateTime() {
         .then((res) => {
           if (!isMounted) return;
           if (res && Array.isArray(res.slots)) {
-            const formattedSlots: BookingSlot[] = res.slots.map((slot: any) => {
-              const labelAr = formatTimeTo12Hour(slot.label || slot.time, { locale: 'ar' });
-              const labelEn = formatTimeTo12Hour(slot.label || slot.time, { locale: 'en' });
-              return {
-                time: labelEn,
-                label: labelAr,
-                labelEn: labelEn,
-                isAvailable: Boolean(slot.available),
-                reason: slot.reason,
-                scheduledStart: slot.start || slot.scheduledStart || slot.time24,
-                scheduledEnd: slot.end || slot.scheduledEnd,
-                totalOccupiedMinutes: slot.totalOccupiedMinutes || duration,
-                serviceDurationMinutes: slot.serviceDurationMinutes || duration,
-              };
-            });
+            const formattedSlots: BookingSlot[] = res.slots
+              .filter((slot: any) => Boolean(slot.available ?? slot.isAvailable))
+              .map((slot: any) => {
+                const labelAr = formatTimeTo12Hour(slot.label || slot.time, { locale: 'ar' });
+                const labelEn = formatTimeTo12Hour(slot.label || slot.time, { locale: 'en' });
+                return {
+                  time: labelEn,
+                  label: labelAr,
+                  labelEn: labelEn,
+                  isAvailable: true,
+                  reason: undefined,
+                  scheduledStart: slot.start || slot.scheduledStart || slot.time24,
+                  scheduledEnd: slot.end || slot.scheduledEnd,
+                  totalOccupiedMinutes: slot.totalOccupiedMinutes || duration,
+                  serviceDurationMinutes: slot.serviceDurationMinutes || duration,
+                };
+              });
             setLiveSlots(formattedSlots);
           }
         })
@@ -155,10 +157,10 @@ export function StepDateTime() {
 
     const effectiveCategory = selectedService?.category || selectedServices[0]?.service?.category || category;
     if (liveSlots !== null) {
-      return liveSlots;
+      return liveSlots.filter((s) => s.isAvailable);
     }
 
-    return getTimeSlotsForDate(
+    const calculated = getTimeSlotsForDate(
       selectedDate,
       bookingSettings,
       selectedService?.id,
@@ -167,8 +169,10 @@ export function StepDateTime() {
       getTotalDuration() || selectedService?.serviceDurationMinutes || selectedService?.duration,
       selectedService?.travelTimeMinutes,
       currentServiceIds,
-      effectiveCategory
+      effectiveCategory,
+      false
     );
+    return calculated.filter((s) => s.isAvailable);
   }, [selectedDate, liveSlots, bookingSettings, selectedService, currentServiceIds, orders, category, getTotalDuration]);
 
   // Auto-select first available slot if current slot is invalid, or invalidate clearly if none available
@@ -363,25 +367,19 @@ export function StepDateTime() {
               ) : (
                 timeSlots.map((slot) => {
                   const isSelected = selectedTime === slot.time || isSameTime(selectedTime, slot.time);
-                  const isAvailable = slot.isAvailable;
                   const displayLabel = formatTimeTo12Hour(isAr ? slot.label : slot.labelEn);
 
                   return (
                     <button
                       key={slot.time}
                       type="button"
-                      disabled={!isAvailable}
                       onClick={() => {
-                        if (isAvailable) {
-                          setTime(slot.time);
-                          setIsTimeOpen(false);
-                        }
+                        setTime(slot.time);
+                        setIsTimeOpen(false);
                       }}
                       className={cn(
                         "w-full px-3 py-2 rounded-lg flex items-center justify-between text-xs sm:text-sm transition-colors text-start cursor-pointer",
-                        !isAvailable
-                          ? "opacity-40 cursor-not-allowed text-slate-400 dark:text-slate-500"
-                          : isSelected
+                        isSelected
                           ? "bg-[#0866C6]/10 text-[#0866C6] dark:text-[#83AED0] font-bold"
                           : "hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-200"
                       )}
@@ -391,10 +389,6 @@ export function StepDateTime() {
                       </span>
                       {isSelected ? (
                         <Check className="w-4 h-4 text-[#0866C6] shrink-0" />
-                      ) : !isAvailable ? (
-                        <span className="text-[10px] text-[#F0444C] font-semibold">
-                          {slot.reason || (isAr ? 'غير متاح' : 'Unavailable')}
-                        </span>
                       ) : null}
                     </button>
                   );

@@ -682,6 +682,11 @@ export async function getAvailableSlots(
   const slots: TimeSlotOption[] = [];
 
   for (const slotStart of sortedStarts) {
+    // Strict 15-minute grid check: start must be multiple of 15 (:00, :15, :30, :45)
+    if (slotStart % 15 !== 0) {
+      continue;
+    }
+
     const slotEnd = slotStart + requiredDuration;
 
     // Check service completion before end of working hours (allow 1440 for 23:59 end-of-day)

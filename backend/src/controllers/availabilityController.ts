@@ -4,7 +4,7 @@ import { sendSuccess, sendError } from '../utils/responseHandler.js';
 
 export async function checkDateAvailability(req: Request, res: Response): Promise<void> {
   try {
-    const { date, duration, serviceId, serviceIds, excludeBookingId, category } = req.query;
+    const { date, duration, serviceId, serviceIds, excludeBookingId, category, includeUnavailable } = req.query;
     if (!date || typeof date !== 'string') {
       sendError(res, 'يرجى تحديد التاريخ المراد فحصه (YYYY-MM-DD)', 422);
       return;
@@ -29,6 +29,12 @@ export async function checkDateAvailability(req: Request, res: Response): Promis
       excludeBookingId as string | undefined,
       category as string | undefined
     );
+
+    // If availableOnly=true is requested (e.g. from customer booking flow), filter out unavailable slots
+    if (req.query.availableOnly === 'true') {
+      result.slots = result.slots.filter((s) => s.available);
+    }
+
     sendSuccess(res, result);
   } catch (err: any) {
     sendError(res, err.message, 500);
