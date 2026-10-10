@@ -10,7 +10,7 @@ import { useBookingStore } from '@/store/useBookingStore';
 import { useServiceStore } from '@/store/useServiceStore';
 import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { Button } from '@/components/ui/Button';
-import { formatDuration, cn } from '@/lib/utils';
+import { formatDuration, getServiceTotalMinutes, cn } from '@/lib/utils';
 import { CleanzoImage } from '@/components/common/CleanzoImage';
 import { getServiceDisplayPrice } from '@/lib/pricing';
 import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
@@ -129,7 +129,7 @@ export function ServiceCard({ service, featured = false }: ServiceCardProps) {
               </div>
               <div className="flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5 text-sky-500" />
-                <span>{formatDuration(service.duration, isAr)}</span>
+                <span>{formatDuration(getServiceTotalMinutes(service), isAr)}</span>
               </div>
             </div>
 

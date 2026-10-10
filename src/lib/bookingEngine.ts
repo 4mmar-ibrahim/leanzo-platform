@@ -36,10 +36,22 @@ export function timeStringToMinutes(timeStr: string): number {
   // If given a range or hyphenated string, extract the first segment
   const firstSegment = raw.split(/[-–—]/)[0].trim();
   const clean = firstSegment.toUpperCase();
-  const isPM = clean.includes('PM') || clean.includes('مساء');
-  const isAM = clean.includes('AM') || clean.includes('صباح');
 
-  const timePart = clean.replace(/(AM|PM|مساءً|مساء|صباحاً|صباح)/g, '').trim();
+  const isPM =
+    clean.includes('PM') ||
+    clean.includes('مساء') ||
+    clean.includes('ظهراً') ||
+    clean.includes('عصراً') ||
+    /(?:^|\s|\d)م(?:$|\s)/.test(clean) ||
+    clean.endsWith('م');
+
+  const isAM =
+    clean.includes('AM') ||
+    clean.includes('صباح') ||
+    /(?:^|\s|\d)ص(?:$|\s)/.test(clean) ||
+    clean.endsWith('ص');
+
+  const timePart = clean.replace(/(AM|PM|مساءً|مساء|صباحاً|صباح|ظهراً|عصراً|[صم])/gi, '').trim();
   const cleanNumbers = timePart.replace(/[^0-9:]/g, '');
   const [hourStr, minuteStr] = cleanNumbers.split(':');
   let hours = parseInt(hourStr || '0', 10);
@@ -56,6 +68,15 @@ export function minutesTo24H(totalMinutes: number): string {
   const hours = Math.floor(normalized / 60);
   const mins = normalized % 60;
   return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Snaps a time in minutes to the next clean 15-minute boundary.
+ * Examples: 607 (10:07) -> 615 (10:15), 540 (9:00) -> 540, 541 -> 555 (9:15)
+ * This ensures all displayed/accepted times are :00, :15, :30, or :45.
+ */
+export function snapTo15Minutes(minutes: number): number {
+  return Math.ceil(minutes / 15) * 15;
 }
 
 export function getBookingTimeInterval(b?: {
@@ -87,7 +108,7 @@ export function getBookingTimeInterval(b?: {
     if (sMin > 0 && eMin > sMin) {
       return {
         startMin: sMin,
-        endMin: eMin,
+        endMin: Math.max(eMin, sMin + fullDuration),
         display: timeStr || `${b.scheduledStart} – ${b.scheduledEnd}`,
       };
     }
@@ -103,7 +124,7 @@ export function getBookingTimeInterval(b?: {
       if (min1 > 0 && min2 > 0) {
         // Robust against both LTR and RTL string ordering:
         const startMin = Math.min(min1, min2);
-        const endMin = Math.max(min1, min2);
+        const endMin = Math.max(Math.max(min1, min2), startMin + fullDuration);
         return {
           startMin,
           endMin,
@@ -146,16 +167,21 @@ export function findConflictingOrder(
 ): any | undefined {
   if (!targetOrder || !technicianId) return undefined;
   const currentInterval = getBookingTimeInterval(targetOrder);
+  const targetDateNorm = String(targetOrder.date || '').split('T')[0].trim();
 
-  // 1. Check regular bookings
+  // 1. Check regular bookings across ALL categories (car, home, etc.)
   const regularConflict = allOrders.find((o) => {
     if (!o) return false;
     if (o.id === targetOrder.id) return false;
-    if (o.status === 'cancelled') return false;
-    if (o.date !== targetOrder.date) return false;
+    if (o.status === 'cancelled' || o.status === 'CANCELLED') return false;
+    const oDateNorm = String(o.date || '').split('T')[0].trim();
+    if (oDateNorm !== targetDateNorm) return false;
 
-    const assignedId = o.technician?.id || o.assignedTechnicianId || (o.technician as any)?.technicianId;
-    if (assignedId !== technicianId) return false;
+    const assignedId =
+      (typeof o.technician === 'string' ? o.technician : o.technician?.id) ||
+      o.assignedTechnicianId ||
+      (o.technician as any)?.technicianId;
+    if (!assignedId || String(assignedId) !== String(technicianId)) return false;
 
     const otherInterval = getBookingTimeInterval(o);
     return isTimeIntervalOverlapping(currentInterval, otherInterval);
@@ -168,11 +194,15 @@ export function findConflictingOrder(
     const visitConflict = subscriptionVisits.find((v) => {
       if (!v) return false;
       if (v.id === targetOrder.id) return false;
-      if (v.status === 'cancelled') return false;
-      if (v.date !== targetOrder.date) return false;
+      if (v.status === 'cancelled' || v.status === 'CANCELLED') return false;
+      const vDateNorm = String(v.date || '').split('T')[0].trim();
+      if (vDateNorm !== targetDateNorm) return false;
 
-      const assignedId = v.technician?.id || v.assignedTechnicianId || (v.technician as any)?.technicianId;
-      if (assignedId !== technicianId) return false;
+      const assignedId =
+        (typeof v.technician === 'string' ? v.technician : v.technician?.id) ||
+        v.assignedTechnicianId ||
+        (v.technician as any)?.technicianId;
+      if (!assignedId || String(assignedId) !== String(technicianId)) return false;
 
       const otherInterval = getBookingTimeInterval(v);
       return isTimeIntervalOverlapping(currentInterval, otherInterval);
@@ -694,32 +724,35 @@ export function getTimeSlotsForDate(
     freeBlocks.push({ start: blockCursor, end: endMin });
   }
 
-  // Generate sequential slots within each free block
+  // Generate sequential slots within each free block (snapped to 15-min grid)
   const candidateStarts = new Set<number>();
 
   for (const block of freeBlocks) {
-    let slotCursor = block.start;
+    // Snap the free block start to the next clean 15-min boundary
+    let slotCursor = snapTo15Minutes(block.start);
     while (slotCursor + totalOccupancy <= block.end) {
       candidateStarts.add(slotCursor);
-      slotCursor += totalOccupancy;
+      // Next slot starts at the next 15-min boundary at or after current slot ends
+      const rawNext = slotCursor + totalOccupancy;
+      slotCursor = snapTo15Minutes(rawNext);
     }
 
     // For today: if prior sequential slots in this free block have already elapsed,
-    // also generate slots starting from the next approved slot interval after earliestAllowedMinutes
+    // also generate slots starting from the next clean 15-min boundary after earliestAllowedMinutes
     if (isToday && earliestAllowedMinutes > block.start && earliestAllowedMinutes < block.end) {
-      const interval = Number(settings?.slotInterval) || 60;
-      const alignedTodayStart = Math.ceil(earliestAllowedMinutes / interval) * interval;
+      const alignedTodayStart = snapTo15Minutes(earliestAllowedMinutes);
       let todayCursor = alignedTodayStart;
       while (todayCursor >= block.start && todayCursor + totalOccupancy <= block.end) {
         candidateStarts.add(todayCursor);
-        todayCursor += totalOccupancy;
+        const rawNext = todayCursor + totalOccupancy;
+        todayCursor = snapTo15Minutes(rawNext);
       }
     }
   }
 
   // Include starts of occupied booking intervals so they are visible as unavailable slots
   for (const occ of mergedOccupied) {
-    candidateStarts.add(occ.start);
+    candidateStarts.add(snapTo15Minutes(occ.start));
   }
 
   const sortedStarts = Array.from(candidateStarts).sort((a, b) => a - b);

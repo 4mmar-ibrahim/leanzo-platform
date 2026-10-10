@@ -100,10 +100,21 @@ export function timeStringToMinutes(timeStr: string): number {
   const firstPart = raw.split(/[-–—]/)[0].trim();
 
   const clean = firstPart.toUpperCase();
-  const isPM = clean.includes('PM') || clean.includes('مساء');
-  const isAM = clean.includes('AM') || clean.includes('صباح');
+  const isPM =
+    clean.includes('PM') ||
+    clean.includes('مساء') ||
+    clean.includes('ظهراً') ||
+    clean.includes('عصراً') ||
+    /(?:^|\s|\d)م(?:$|\s)/.test(clean) ||
+    clean.endsWith('م');
 
-  const timePart = clean.replace(/(AM|PM|مساءً|صباحاً|مساء|صباح)/g, '').trim();
+  const isAM =
+    clean.includes('AM') ||
+    clean.includes('صباح') ||
+    /(?:^|\s|\d)ص(?:$|\s)/.test(clean) ||
+    clean.endsWith('ص');
+
+  const timePart = clean.replace(/(AM|PM|مساءً|صباحاً|مساء|صباح|ظهراً|عصراً|[صم])/gi, '').trim();
   const [hourStr, minuteStr] = timePart.split(':');
   let hours = parseInt(hourStr || '0', 10);
   const minutes = parseInt(minuteStr || '0', 10);
@@ -154,6 +165,15 @@ export function doIntervalsOverlap(
   endB: number
 ): boolean {
   return startA < endB && endA > startB;
+}
+
+/**
+ * Snaps a time in minutes to the next clean 15-minute boundary.
+ * Examples: 607 (10:07) -> 615 (10:15), 540 (9:00) -> 540, 541 -> 555 (9:15)
+ * This ensures all displayed/accepted times are :00, :15, :30, or :45.
+ */
+export function snapTo15Minutes(minutes: number): number {
+  return Math.ceil(minutes / 15) * 15;
 }
 
 /**
@@ -611,32 +631,34 @@ export async function getAvailableSlots(
     freeBlocks.push({ start: blockCursor, end: workEndMin });
   }
 
-  // 6. Dynamic Sequential Continuous Slot Generation
-  // - Each free block within this category is partitioned sequentially by timing.totalOccupiedMinutes.
-  // - Starts exactly at block.start, and next slot starts at block.start + timing.totalOccupiedMinutes.
+  // 6. Dynamic Sequential Continuous Slot Generation (15-Minute Clean Grid)
+  // - All slot start times are snapped to clean 15-minute boundaries (:00, :15, :30, :45).
+  // - Each free block is partitioned sequentially by timing.totalOccupiedMinutes,
+  //   but each next slot snaps to the nearest 15-min boundary at or after the previous slot's end.
   // - Bookings or breaks (occupied intervals) are included and marked unavailable.
-  // - For occupied intervals, we also add candidate starts at intermediate points if they lie inside the occupied block,
-  //   so that overlapping queries in this category explicitly reflect unavailability.
   const requiredDuration = timing.totalOccupiedMinutes;
   const candidateStarts = new Set<number>();
 
-  // A. Generate sequential slots within each free block
+  // A. Generate sequential slots within each free block (snapped to 15-min grid)
   for (const block of freeBlocks) {
-    let slotCursor = block.start;
+    // Snap the free block start to the next clean 15-min boundary
+    let slotCursor = snapTo15Minutes(block.start);
     while (slotCursor + requiredDuration <= block.end) {
       candidateStarts.add(slotCursor);
-      slotCursor += requiredDuration;
+      // Next slot starts at the next 15-min boundary at or after current slot ends
+      const rawNext = slotCursor + requiredDuration;
+      slotCursor = snapTo15Minutes(rawNext);
     }
 
     // For today: if prior sequential slots in this free block have already elapsed,
-    // also generate slots starting from the next approved slot interval after earliestAllowedMinutes
+    // also generate slots starting from the next clean 15-min boundary after earliestAllowedMinutes
     if (isToday && earliestAllowedMinutes > block.start && earliestAllowedMinutes < block.end) {
-      const interval = settings.slotInterval || 60;
-      const alignedTodayStart = Math.ceil(earliestAllowedMinutes / interval) * interval;
+      const alignedTodayStart = snapTo15Minutes(earliestAllowedMinutes);
       let todayCursor = alignedTodayStart;
       while (todayCursor >= block.start && todayCursor + requiredDuration <= block.end) {
         candidateStarts.add(todayCursor);
-        todayCursor += requiredDuration;
+        const rawNext = todayCursor + requiredDuration;
+        todayCursor = snapTo15Minutes(rawNext);
       }
     }
   }
@@ -644,7 +666,7 @@ export async function getAvailableSlots(
   // B. Include active booking and break intervals so they are retained and marked unavailable
   for (const occ of mergedOccupied) {
     if (occ.type === 'booking' || occ.type === 'break') {
-      candidateStarts.add(occ.start);
+      candidateStarts.add(snapTo15Minutes(occ.start));
     }
   }
 
@@ -784,7 +806,9 @@ export async function assertSlotAvailability(params: {
     throw new Error('هذا اليوم يقع خارج أيام العمل المتاحة للحجز');
   }
 
-  const slotStartMin = timeStringToMinutes(timeStr);
+  // Snap the requested time to the nearest clean 15-minute boundary
+  const rawStartMin = timeStringToMinutes(timeStr);
+  const slotStartMin = snapTo15Minutes(rawStartMin);
   const slotEndMin = slotStartMin + timing.totalOccupiedMinutes;
 
   const workStartMin = timeStringToMinutes(settings.workingHoursStart);

@@ -206,13 +206,14 @@ export async function runDynamicSchedulingTestSuite() {
     const res2 = await makeRequest('GET', `/availability?date=${testFutureDate}&serviceId=${s2.id}`);
     assert(res2.status === 200, 'Availability responds with 200');
     const slots2 = res2.body.data.slots;
-    // 13:00 to 18:00 is 300 minutes. 300 / 27 = 11 full slots (11 * 27 = 297 min, leaves 3 min < 27 min so exactly 11 slots)
-    assert(slots2.length === 11, `Expected 11 slots for 27-minute intervals in 300 min window, got ${slots2.length}`);
+    // 13:00 to 18:00 (300 min). With 27m occupancy and 15m clean grid snapping:
+    // Slots start at: 13:00, 13:30, 14:00, 14:30, 15:00, 15:30, 16:00, 16:30, 17:00, 17:30 (exactly 10 clean quarter-hour slots)
+    assert(slots2.length === 10, `Expected 10 slots for 27-minute intervals snapped to 15m grid in 300 min window, got ${slots2.length}`);
     assert(slots2[0].time === '13:00 – 13:27', `First slot is 13:00 – 13:27, got ${slots2[0].time}`);
-    assert(slots2[1].time === '13:27 – 13:54', `Second slot is 13:27 – 13:54, got ${slots2[1].time}`);
-    assert(slots2[2].time === '13:54 – 14:21', `Third slot is 13:54 – 14:21, got ${slots2[2].time}`);
-    assert(slots2[3].time === '14:21 – 14:48', `Fourth slot is 14:21 – 14:48, got ${slots2[3].time}`);
-    assert(slots2[10].time === '17:30 – 17:57', `Eleventh slot is 17:30 – 17:57, got ${slots2[10].time}`);
+    assert(slots2[1].time === '13:30 – 13:57', `Second slot is 13:30 – 13:57, got ${slots2[1].time}`);
+    assert(slots2[2].time === '14:00 – 14:27', `Third slot is 14:00 – 14:27, got ${slots2[2].time}`);
+    assert(slots2[3].time === '14:30 – 14:57', `Fourth slot is 14:30 – 14:57, got ${slots2[3].time}`);
+    assert(slots2[9].time === '17:30 – 17:57', `Tenth slot is 17:30 – 17:57, got ${slots2[9].time}`);
 
     // -------------------------------------------------------------------
     // TEST 3: Service 45 min + Travel 15 min = 60-min intervals
@@ -365,9 +366,9 @@ export async function runDynamicSchedulingTestSuite() {
 
     const res6 = await makeRequest('GET', `/availability?date=${testDate6}&serviceId=${s6.id}`);
     const slotTimes6 = res6.body.data.slots.map((s: any) => s.time);
-    // Because cancellation happened at 13:12, the first released continuous slot starts at 13:12!
-    assert(slotTimes6[0] === '13:12 – 13:35', `Newly available interval starts dynamically from cancellation time 13:12 (13:12 – 13:35), got ${slotTimes6[0]}`);
-    assert(slotTimes6[1] === '13:35 – 13:58', `Next slot is 13:35 – 13:58, got ${slotTimes6[1]}`);
+    // Because cancellation happened at 13:12, the newly available block starts after 13:12 and snaps to the next 15-min boundary (13:15)!
+    assert(slotTimes6[0] === '13:15 – 13:38', `Newly available interval starts cleanly snapped from 13:15 (13:15 – 13:38), got ${slotTimes6[0]}`);
+    assert(slotTimes6[1] === '13:45 – 14:08', `Next slot snaps to 13:45 (13:45 – 14:08), got ${slotTimes6[1]}`);
 
     // -------------------------------------------------------------------
     // TEST 7: Overlapping booking request is REJECTED
@@ -491,11 +492,11 @@ export async function runDynamicSchedulingTestSuite() {
     assert(oldBooking?.totalOccupiedMinutes === 30, `Old booking retained 30m total occupancy, got ${oldBooking?.totalOccupiedMinutes}`);
     assert(oldBooking?.scheduledEnd === '13:30', `Old booking retained 13:30 scheduled end, got ${oldBooking?.scheduledEnd}`);
 
-    // Check NEW availability on another date: should use 55m total occupancy!
+    // Check NEW availability on another date: should use 55m total occupancy snapped to 15m grid!
     const res9New = await makeRequest('GET', `/availability?date=2026-11-25&serviceId=${s9.id}`);
     const slots9New = res9New.body.data.slots;
     assert(slots9New[0].time === '13:00 – 13:55', `New availability reflects 55-minute interval: 13:00 – 13:55, got ${slots9New[0].time}`);
-    assert(slots9New[1].time === '13:55 – 14:50', `Second new slot is 13:55 – 14:50, got ${slots9New[1].time}`);
+    assert(slots9New[1].time === '14:00 – 14:55', `Second new slot snaps to 14:00 boundary: 14:00 – 14:55, got ${slots9New[1].time}`);
 
     // -------------------------------------------------------------------
     // TEST 10: Current time filtering (Past times are not offered)
@@ -536,7 +537,7 @@ export async function runDynamicSchedulingTestSuite() {
     // If only 20 min remains and service requires 27 min
     // In Test 2, 300 minutes divided by 27 = 11 intervals (297 min). Remaining 3 minutes < 27 minutes.
     // Verify engine did NOT offer a 12th slot extending past 18:00!
-    assert(slots2.length === 11, 'Did not offer partial interval that cannot fit within operating hours');
+    assert(slots2.length === 10, 'Did not offer partial interval that cannot fit within operating hours');
 
     // -------------------------------------------------------------------
     // TEST 13: Different services on same date generate distinct schedules

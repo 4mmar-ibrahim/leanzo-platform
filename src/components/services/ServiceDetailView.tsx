@@ -34,7 +34,7 @@ import { ServiceCard } from '@/components/services/ServiceCard';
 import { ServiceHowItWorks } from '@/components/services/ServiceHowItWorks';
 
 import { Button } from '@/components/ui/Button';
-import { formatDuration, cn } from '@/lib/utils';
+import { formatDuration, getServiceTotalMinutes, cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { CleanzoImage } from '@/components/common/CleanzoImage';
@@ -181,11 +181,12 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
       ? itemizedPricing.originalTotal
       : undefined;
 
-  const displayDuration = selectedPkg
+  const travelDuration = Number(service?.travelTimeMinutes || 0);
+  const displayDuration = (selectedPkg
     ? Number(selectedPkg.durationMinutes) + selectedAddonsList.reduce((s, a) => s + (Number(a.durationMinutes) || 0), 0)
     : service
     ? Number(service.serviceDurationMinutes || service.duration || 45) + selectedAddonsList.reduce((s, a) => s + (Number(a.durationMinutes) || 0), 0)
-    : 45;
+    : 45) + travelDuration;
 
   const handleBookService = () => {
     if (!service) return;
@@ -409,7 +410,7 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
 
                 <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-3.5 py-1.5 rounded-xl border border-slate-200/60 dark:border-slate-700">
                   <Clock className="w-4 h-4 text-sky-500" />
-                  <span>{formatDuration(service.duration, isAr)}</span>
+                  <span>{formatDuration(getServiceTotalMinutes(service), isAr)}</span>
                 </div>
               </div>
             </div>
@@ -501,7 +502,7 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
                         {isAr ? 'الاستمتاع بالخدمة بالسعر والمدة الأساسية دون ترقية' : 'Enjoy service at base rate and duration without tier upgrade'}
                       </p>
                       <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-mono ps-6">
-                        <span className="text-slate-400">{service.serviceDurationMinutes || service.duration || 45} {isAr ? 'دقيقة' : 'min'}</span>
+                        <span className="text-slate-400">{getServiceTotalMinutes(service)} {isAr ? 'دقيقة' : 'min'}</span>
                         <span className="font-bold text-slate-900 dark:text-white text-sm">{service.price} {isAr ? 'ج.م' : 'EGP'}</span>
                       </div>
                     </div>

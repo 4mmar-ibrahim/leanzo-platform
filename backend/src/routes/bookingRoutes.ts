@@ -33,6 +33,7 @@ router.get('/admin/all', authenticateAdmin, authorize('orders', 'view'), getAllB
 router.get('/admin/:id', authenticateAdmin, authorize('orders', 'view'), getBookingById);
 router.put('/admin/:id/status', authenticateAdmin, authorize('orders', 'edit'), recordAuditLog('update_order_status', 'orders'), updateBookingStatus);
 router.put('/admin/:id/assign', authenticateAdmin, authorize('orders', 'assign'), recordAuditLog('assign_technician', 'orders'), assignTechnicianToBooking);
+router.post(['/admin/:id/reschedule', '/admin/reschedule/:id'], authenticateAdmin, authorize('orders', 'edit'), recordAuditLog('reschedule_order', 'orders'), rescheduleBookingCustomer);
 router.delete('/admin/:id', authenticateAdmin, authorize('orders', 'delete'), recordAuditLog('delete_order', 'orders'), deleteBookingAdmin);
 
 // Fallback / root endpoints

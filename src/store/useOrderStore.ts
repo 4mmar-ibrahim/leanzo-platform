@@ -429,34 +429,46 @@ export const useOrderStore = create<OrderState>((set, get) => ({
       rescheduleOrder: async (orderId, newDate, newTime, reason, customerPhone) => {
         let updated: any = null;
         try {
-          updated = await cleanzoApi.bookings.reschedule(orderId, {
-            newDate,
-            newTime,
-            reason,
-            customerPhone,
-          });
-        } catch (err: any) {
-          console.warn('Backend API reschedule route error, applying resilient update:', err);
-          const existing = get().orders.find((o) => o.id === orderId);
-          if (existing) {
-            updated = {
-              ...existing,
-              date: newDate,
-              time: newTime,
-              rescheduledFrom: existing.rescheduledFrom || `${existing.date} ${existing.time}`,
-              notes: reason
-                ? `${existing.notes ? existing.notes + ' | ' : ''}تعديل الموعد: ${reason}`
-                : existing.notes,
-            };
+          if (customerPhone) {
+            updated = await cleanzoApi.bookings.reschedule(orderId, {
+              newDate,
+              newTime,
+              reason,
+              customerPhone,
+            });
           } else {
-            throw err;
+            updated = await cleanzoApi.admin.rescheduleOrder(orderId, {
+              newDate,
+              newTime,
+              reason,
+            }).catch(() =>
+              cleanzoApi.bookings.reschedule(orderId, {
+                newDate,
+                newTime,
+                reason,
+              })
+            );
           }
+        } catch (err: any) {
+          console.error('[useOrderStore] Reschedule failed on server:', err);
+          throw err;
         }
 
+        const mappedOrder = {
+          ...updated,
+          service: updated?.service || updated?.serviceSnapshot || {
+            id: updated?.serviceId || 'srv-unknown',
+            title: updated?.serviceSnapshot?.title || 'خدمة كلينزو',
+            titleEn: updated?.serviceSnapshot?.titleEn || 'Cleanzo Service',
+            category: updated?.category || updated?.serviceSnapshot?.category || 'car',
+            price: updated?.finalPrice || updated?.serviceSnapshot?.price || 0,
+          },
+        };
+
         set((state) => ({
-          orders: state.orders.map((o) => (o.id === orderId ? { ...o, ...updated } : o)),
+          orders: state.orders.map((o) => (o.id === orderId ? { ...o, ...mappedOrder } : o)),
         }));
-        return updated;
+        return mappedOrder;
       },
 
       deleteOrder: async (orderId) => {

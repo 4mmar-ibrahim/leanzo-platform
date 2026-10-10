@@ -13,8 +13,23 @@ export function formatPriceEn(price: number, currency: string = "EGP"): string {
   return `${price.toLocaleString("en-US")} ${currency}`;
 }
 
+export function getServiceTotalMinutes(service?: {
+  serviceDurationMinutes?: number;
+  duration?: number;
+  travelTimeMinutes?: number;
+  totalOccupiedMinutes?: number;
+} | null): number {
+  if (!service) return 0;
+  if (service.totalOccupiedMinutes && Number(service.totalOccupiedMinutes) > 0) {
+    return Number(service.totalOccupiedMinutes);
+  }
+  const serviceDur = Number(service.serviceDurationMinutes || service.duration || 0);
+  const travel = Number(service.travelTimeMinutes || 0);
+  return serviceDur + travel;
+}
+
 export function formatDuration(minutes: number, isArabic: boolean = true): string {
-  if (minutes < 60) {
+  if (minutes <= 60) {
     return isArabic ? `${minutes} دقيقة` : `${minutes} mins`;
   }
   const hours = Math.floor(minutes / 60);

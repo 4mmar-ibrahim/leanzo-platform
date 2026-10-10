@@ -27,7 +27,7 @@ import { StepReview } from '@/components/booking/StepReview';
 import { AuthModalPrompt } from '@/components/booking/AuthModalPrompt';
 import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { Button } from '@/components/ui/Button';
-import { generateOrderId, formatDuration } from '@/lib/utils';
+import { generateOrderId, formatDuration, getServiceTotalMinutes } from '@/lib/utils';
 import { Order, OrderStatus, ServiceCategory } from '@/types';
 import { toast } from 'sonner';
 import { useZoStudioStore } from '@/store/useZoStudioStore';
@@ -655,7 +655,7 @@ function BookingContent() {
                         {isAr ? selectedService.title : selectedService.titleEn}
                       </p>
                       <p className="text-[11px] text-slate-400">
-                        {formatDuration(selectedService.duration, isAr)}
+                        {formatDuration(getServiceTotalMinutes(selectedService), isAr)}
                       </p>
                     </div>
                   </div>

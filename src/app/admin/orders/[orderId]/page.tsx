@@ -37,6 +37,7 @@ import { apiGet } from '@/lib/api';
 import { Order, OrderStatus } from '@/types';
 import { generateOfficialInvoiceHtml, printHtmlDocument } from '@/lib/printUtils';
 import { findConflictingOrder, formatReservationSchedule } from '@/lib/bookingEngine';
+import { RescheduleModal } from '@/components/orders/RescheduleModal';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { getCategoryDisplayName } from '@/lib/services/categoryUtils';
@@ -66,22 +67,41 @@ export default function AdminOrderDetailPage() {
   const [notesText, setNotesText] = useState('');
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [techSearch, setTechSearch] = useState('');
   const [assigningTechId, setAssigningTechId] = useState<string | null>(null);
   const [subscriptionVisits, setSubscriptionVisits] = useState<any[]>([]);
+  const [dayOrders, setDayOrders] = useState<any[]>([]);
+
+  // Memoize unified orders list for robust cross-category conflict detection
+  const allOrdersForConflict = React.useMemo(() => {
+    const map = new Map<string, any>();
+    for (const o of orders) {
+      if (o?.id) map.set(o.id, o);
+    }
+    for (const o of dayOrders) {
+      if (o?.id) map.set(o.id, o);
+    }
+    return Array.from(map.values());
+  }, [orders, dayOrders]);
 
   const handleOpenAssignModal = async () => {
     setTechSearch('');
     setAssignModalOpen(true);
-    // Always fetch fresh technicians, orders, and subscription visits when opening the modal
+    // Always fetch fresh technicians, date-specific orders (across all categories), and subscription visits
     setIsFetchingTechs(true);
     try {
-      const [, , visitsRes] = await Promise.all([
+      const targetDate = String(order?.date || '').split('T')[0].trim();
+      const [, ordersRes, visitsRes] = await Promise.all([
         fetchTechnicians(),
-        fetchAdminOrders(),
-        apiGet('/subscriptions/admin/visits/all?limit=200').catch(() => null),
+        cleanzoApi.admin.getOrders(targetDate ? { date: targetDate, limit: 500 } : { limit: 100 }).catch(() => null),
+        apiGet(targetDate ? `/subscriptions/admin/visits/all?date=${targetDate}&limit=200` : '/subscriptions/admin/visits/all?limit=200').catch(() => null),
       ]);
+
+      if (ordersRes && Array.isArray((ordersRes as any).bookings)) {
+        setDayOrders((ordersRes as any).bookings);
+      }
       if (visitsRes && (visitsRes as any).data) {
         const payload = (visitsRes as any).data;
         const list = Array.isArray(payload) ? payload : payload.visits || [];
@@ -213,11 +233,12 @@ export default function AdminOrderDetailPage() {
       return;
     }
 
-    // Overlap prevention check
-    const conflict = findConflictingOrder(order, tech.id, orders, subscriptionVisits);
+    // Overlap prevention check across all categories
+    const conflict = findConflictingOrder(order, tech.id, allOrdersForConflict, subscriptionVisits);
     if (conflict) {
+      const conflictTime = conflict.time || `${conflict.scheduledStart} – ${conflict.scheduledEnd}`;
       toast.error(
-        `تعذر إسناد الطلب للفني (${tech.name}): الفني مرتبط بالفعل بحجز آخر متعارض في نفس التاريخ (${order.date}) في الفترة من ${conflict.time} (${conflict.type === 'visit' ? 'زيارة اشتراك' : 'طلب'} #${conflict.id}). يرجى اختيار فني آخر غير متعارض.`
+        `تعذر إسناد الطلب للفني (${tech.name}): الفني مرتبط بالفعل بحجز آخر متعارض في نفس التاريخ (${order.date}) في الفترة من ${conflictTime} (${conflict.type === 'visit' ? 'زيارة اشتراك' : 'طلب'} #${conflict.id}). يرجى اختيار فني آخر غير متعارض.`
       );
       return;
     }
@@ -446,6 +467,19 @@ export default function AdminOrderDetailPage() {
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>تم الانتهاء</span>
+            </button>
+          )}
+
+          {/* Reschedule allowed for active non-terminal orders */}
+          {order.status !== 'cancelled' && order.status !== 'completed' && (
+            <button
+              onClick={() => setIsRescheduleOpen(true)}
+              disabled={!canEditOrders || isUpdating}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500 hover:text-white transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              title="تعديل موعد الحجز"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>تعديل الموعد</span>
             </button>
           )}
 
@@ -944,8 +978,8 @@ export default function AdminOrderDetailPage() {
 
               // Sort technicians: available workers first, conflicting ones below
               const sorted = [...filtered].sort((a, b) => {
-                const confA = findConflictingOrder(order, a.id, orders, subscriptionVisits);
-                const confB = findConflictingOrder(order, b.id, orders, subscriptionVisits);
+                const confA = findConflictingOrder(order, a.id, allOrdersForConflict, subscriptionVisits);
+                const confB = findConflictingOrder(order, b.id, allOrdersForConflict, subscriptionVisits);
                 if (!confA && confB) return -1;
                 if (confA && !confB) return 1;
                 return 0;
@@ -964,7 +998,7 @@ export default function AdminOrderDetailPage() {
                   {sorted.map((t) => {
                     const isCurrent = order.technician?.id === t.id || (order as any).assignedTechnicianId === t.id;
                     const isAssigningThis = assigningTechId === t.id;
-                    const conflictingOrder = findConflictingOrder(order, t.id, orders, subscriptionVisits);
+                    const conflictingOrder = findConflictingOrder(order, t.id, allOrdersForConflict, subscriptionVisits);
                     const isConflicting = !!conflictingOrder;
 
                     return (
@@ -1107,6 +1141,19 @@ export default function AdminOrderDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {order && (
+        <RescheduleModal
+          isOpen={isRescheduleOpen}
+          onClose={() => setIsRescheduleOpen(false)}
+          order={order}
+          onSuccess={async (updated) => {
+            setOrder(updated);
+            await fetchOrder();
+            toast.success('تم تحديث موعد الطلب في لوحة التحكم بنجاح');
+          }}
+        />
       )}
     </div>
   );

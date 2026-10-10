@@ -20,7 +20,7 @@ import { useLocaleStore } from '@/store/useLocaleStore';
 import { useBookingStore } from '@/store/useBookingStore';
 import { useServiceStore } from '@/store/useServiceStore';
 import { PriceDisplay } from '@/components/common/PriceDisplay';
-import { formatDuration, cn } from '@/lib/utils';
+import { formatDuration, getServiceTotalMinutes, cn } from '@/lib/utils';
 import { Service, ServicePackage, ServiceAddon, ServiceCategory } from '@/types';
 import { getServiceDisplayPrice } from '@/lib/pricing';
 import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
@@ -495,10 +495,10 @@ export function StepService() {
                         {isAr ? srv.title : (srv.titleEn || autoTranslate(srv.title, 'en'))}
                       </h4>
 
-                      {/* Duration */}
+                      {/* Duration (Total: Service + Travel Time) */}
                       <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 pt-1 w-full">
                         <Clock className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                        <span className="truncate">{formatDuration(srv.serviceDurationMinutes || srv.duration, isAr)}</span>
+                        <span className="truncate">{formatDuration(getServiceTotalMinutes(srv), isAr)}</span>
                       </div>
 
                       {/* Short Description */}
@@ -665,7 +665,8 @@ export function StepService() {
               (sum, a) => sum + (Number(a.durationMinutes) || 0),
               0
             );
-            const currentItemDuration = baseOrPkgDuration + addonsDuration;
+            const travelDuration = Number(modalService.travelTimeMinutes || 0);
+            const currentItemDuration = baseOrPkgDuration + addonsDuration + travelDuration;
 
             return (
               <div className="space-y-6 pt-2 text-start">
@@ -709,7 +710,7 @@ export function StepService() {
                               {isAr ? 'الخدمة الأساسية' : 'Standard Base'}
                             </span>
                             <span className="text-[10px] text-slate-400">
-                              {formatDuration(modalService.serviceDurationMinutes || modalService.duration, isAr)}
+                              {formatDuration(getServiceTotalMinutes(modalService), isAr)}
                             </span>
                           </div>
                         </div>
@@ -757,7 +758,7 @@ export function StepService() {
                                   </span>
                                   {pkg.durationMinutes && (
                                     <span className="text-[10px] text-slate-400">
-                                      {formatDuration(pkg.durationMinutes, isAr)}
+                                      {formatDuration(Number(pkg.durationMinutes) + Number(modalService.travelTimeMinutes || 0), isAr)}
                                     </span>
                                   )}
                                 </div>

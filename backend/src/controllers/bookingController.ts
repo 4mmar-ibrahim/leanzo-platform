@@ -31,10 +31,22 @@ function timeStringToMinutes(timeStr: string): number {
   const raw = String(timeStr).trim();
   const firstSegment = raw.split(/[-–—]/)[0].trim();
   const clean = firstSegment.toUpperCase();
-  const isPM = clean.includes('PM') || clean.includes('مساء');
-  const isAM = clean.includes('AM') || clean.includes('صباح');
 
-  const timePart = clean.replace(/(AM|PM|مساءً|مساء|صباحاً|صباح)/g, '').trim();
+  const isPM =
+    clean.includes('PM') ||
+    clean.includes('مساء') ||
+    clean.includes('ظهراً') ||
+    clean.includes('عصراً') ||
+    /(?:^|\s|\d)م(?:$|\s)/.test(clean) ||
+    clean.endsWith('م');
+
+  const isAM =
+    clean.includes('AM') ||
+    clean.includes('صباح') ||
+    /(?:^|\s|\d)ص(?:$|\s)/.test(clean) ||
+    clean.endsWith('ص');
+
+  const timePart = clean.replace(/(AM|PM|مساءً|مساء|صباحاً|صباح|ظهراً|عصراً|[صم])/gi, '').trim();
   const cleanNumbers = timePart.replace(/[^0-9:]/g, '');
   const [hourStr, minuteStr] = cleanNumbers.split(':');
   let hours = parseInt(hourStr || '0', 10);
@@ -1550,16 +1562,25 @@ export async function assignTechnicianToBooking(req: AuthenticatedAdminRequest, 
 
       // Authoritative Schedule overlap prevention check:
       const currentInterval = getBookingTimeInterval(freshBooking);
+      const cleanDate = String(freshBooking.date || '').split('T')[0].trim();
 
-      // 1. Check other active regular bookings assigned to this technician on the same date
+      // 1. Check other active regular bookings assigned to this technician on the same date (any category)
       const conflictingBookings = await prisma.booking.findMany({
         where: {
           id: { not: freshBooking.id },
-          date: freshBooking.date,
-          status: { not: 'cancelled' },
           OR: [
-            { assignedTechnicianId: tech.id },
-            { technician: { path: ['id'], equals: tech.id } },
+            { date: cleanDate },
+            { date: { startsWith: cleanDate } },
+          ],
+          status: { notIn: ['cancelled', 'CANCELLED'] },
+          AND: [
+            {
+              OR: [
+                { assignedTechnicianId: tech.id },
+                { technician: { path: ['id'], equals: tech.id } },
+                { technician: { equals: tech.id } },
+              ],
+            },
           ],
         },
       });
@@ -1567,9 +1588,10 @@ export async function assignTechnicianToBooking(req: AuthenticatedAdminRequest, 
       for (const conflict of conflictingBookings) {
         const conflictInterval = getBookingTimeInterval(conflict);
         if (isTimeIntervalOverlapping(currentInterval, conflictInterval)) {
+          const conflictTime = conflict.time || `${conflict.scheduledStart} – ${conflict.scheduledEnd}`;
           sendError(
             res,
-            'هذا العامل غير متاح في هذا الوقت لوجود حجز آخر متداخل.',
+            `تعذر إسناد الطلب: الفني (${tech.name}) مرتبط بالفعل بالطلب #${conflict.id} في نفس التوقيت (${conflictTime}). لا يمكن إسناد طلبين لنفس الفني في وقت متداخل.`,
             409,
             'TECHNICIAN_SCHEDULE_OVERLAP'
           );
@@ -1581,11 +1603,19 @@ export async function assignTechnicianToBooking(req: AuthenticatedAdminRequest, 
       try {
         const conflictingVisits = await prisma.subscriptionVisit.findMany({
           where: {
-            date: freshBooking.date,
-            status: { not: 'cancelled' },
             OR: [
-              { assignedTechnicianId: tech.id },
-              { technician: { path: ['id'], equals: tech.id } },
+              { date: cleanDate },
+              { date: { startsWith: cleanDate } },
+            ],
+            status: { notIn: ['cancelled', 'CANCELLED'] },
+            AND: [
+              {
+                OR: [
+                  { assignedTechnicianId: tech.id },
+                  { technician: { path: ['id'], equals: tech.id } },
+                  { technician: { equals: tech.id } },
+                ],
+              },
             ],
           },
         });
@@ -1593,9 +1623,10 @@ export async function assignTechnicianToBooking(req: AuthenticatedAdminRequest, 
         for (const visit of conflictingVisits) {
           const visitInterval = getBookingTimeInterval(visit);
           if (isTimeIntervalOverlapping(currentInterval, visitInterval)) {
+            const visitTime = visit.time || `${visit.scheduledStart} – ${visit.scheduledEnd}`;
             sendError(
               res,
-              'هذا العامل غير متاح في هذا الوقت لوجود حجز آخر متداخل.',
+              `تعذر إسناد الطلب: الفني (${tech.name}) مرتبط بالفعل بزيارة اشتراك #${visit.id} في نفس التوقيت (${visitTime}). لا يمكن إسناد مهمتين لنفس الفني في وقت متداخل.`,
               409,
               'TECHNICIAN_SCHEDULE_OVERLAP'
             );
@@ -1908,7 +1939,7 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       booking = await Booking.findById(id);
     }
     if (!booking) {
-      booking = await Booking.findOne({ $or: [{ id }, { bookingNumber: id }, { orderNumber: id }] });
+      booking = await Booking.findOne({ $or: [{ id }, { bookingNumber: id }] });
     }
 
     if (!booking) {
@@ -1916,19 +1947,24 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       return;
     }
 
-    // IDOR Protection: Must be authenticated owner or verified customer phone
-    if (req.user) {
-      const isOwner =
-        booking.customerId?.toString() === req.user._id.toString() ||
-        booking.customerPhone === req.user.phone;
-      if (!isOwner) {
-        sendError(res, 'غير مصرح لك بإعادة جدولة هذا الحجز', 403, 'FORBIDDEN_RESCHEDULE');
-        return;
-      }
-    } else {
-      if (!customerPhone || String(customerPhone).trim() !== booking.customerPhone) {
-        sendError(res, 'يرجى تأكيد رقم الهاتف المرتبط بالحجز للمتابعة', 403, 'FORBIDDEN_RESCHEDULE_PHONE_MISMATCH');
-        return;
+    const isAdmin = Boolean((req as any).admin);
+    const normPhone = (p?: string) => String(p || '').replace(/\D/g, '').replace(/^20/, '').replace(/^0/, '');
+
+    // IDOR Protection: Admins bypass; customers must be authenticated owner or verified phone
+    if (!isAdmin) {
+      if (req.user) {
+        const isOwner =
+          booking.customerId?.toString() === req.user._id?.toString() ||
+          normPhone(booking.customerPhone) === normPhone(req.user.phone);
+        if (!isOwner) {
+          sendError(res, 'غير مصرح لك بإعادة جدولة هذا الحجز', 403, 'FORBIDDEN_RESCHEDULE');
+          return;
+        }
+      } else {
+        if (!customerPhone || normPhone(customerPhone) !== normPhone(booking.customerPhone)) {
+          sendError(res, 'يرجى تأكيد رقم الهاتف المرتبط بالحجز للمتابعة', 403, 'FORBIDDEN_RESCHEDULE_PHONE_MISMATCH');
+          return;
+        }
       }
     }
 
@@ -1945,23 +1981,25 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       return;
     }
 
-    // 6-hour policy check
-    const subSettings = await getSubscriptionSettings();
-    const noticeHours = subSettings.normalBookingRescheduleNoticeHours ?? 6;
-    const { isAllowed } = isNoticeSufficient(
-      booking.date,
-      booking.scheduledStart || booking.timeSlotStart || booking.time,
-      noticeHours
-    );
-
-    if (!isAllowed) {
-      sendError(
-        res,
-        'لا يمكن إلغاء أو تغيير الحجز قبل الموعد بأقل من 6 ساعات. يُرجى التواصل مع الدعم للمساعدة.',
-        400,
-        'RESCHEDULE_RESTRICTED_6H'
+    // 6-hour policy check (Admins can override)
+    if (!isAdmin) {
+      const subSettings = await getSubscriptionSettings();
+      const noticeHours = subSettings.normalBookingRescheduleNoticeHours ?? 6;
+      const { isAllowed } = isNoticeSufficient(
+        booking.date,
+        booking.scheduledStart || booking.timeSlotStart || booking.time,
+        noticeHours
       );
-      return;
+
+      if (!isAllowed) {
+        sendError(
+          res,
+          'لا يمكن إلغاء أو تغيير الحجز قبل الموعد بأقل من 6 ساعات. يُرجى التواصل مع الدعم للمساعدة.',
+          400,
+          'RESCHEDULE_RESTRICTED_6H'
+        );
+        return;
+      }
     }
 
     const targetServiceIds: string[] = Array.from(
@@ -1996,31 +2034,88 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       booking.scheduledStart = slotTiming.scheduledStart;
       booking.scheduledEnd = slotTiming.scheduledEnd;
       booking.rescheduledFrom = previousTime;
+      booking.rescheduledAt = new Date();
       booking.metadata = {
         ...(booking.metadata || {}),
         rescheduledAt: new Date(),
       };
 
+      // If a technician was assigned, check if they have a schedule conflict at the new date/time
+      if (booking.assignedTechnicianId) {
+        const currentInterval = getBookingTimeInterval({
+          scheduledStart: slotTiming.scheduledStart,
+          scheduledEnd: slotTiming.scheduledEnd,
+          totalOccupiedMinutes: booking.totalOccupiedMinutes || booking.duration,
+        });
+
+        const techConflict = await prisma.booking.findFirst({
+          where: {
+            id: { not: booking.id },
+            date: newDate,
+            status: { notIn: ['cancelled', 'CANCELLED'] },
+            OR: [
+              { assignedTechnicianId: booking.assignedTechnicianId },
+              { technician: { path: ['id'], equals: booking.assignedTechnicianId } },
+            ],
+          },
+        });
+
+        if (techConflict) {
+          const conflictInterval = getBookingTimeInterval(techConflict);
+          if (isTimeIntervalOverlapping(currentInterval, conflictInterval)) {
+            // Unassign technician so operations can assign an available technician
+            booking.assignedTechnicianId = null;
+            booking.technician = null;
+            if (booking.status === 'assigned') {
+              booking.status = 'confirmed';
+            }
+          }
+        }
+      }
+
+      const actorName = (req as any).admin?.name || req.user?.name || booking.customerName || (isAdmin ? 'Admin' : 'Customer');
       booking.timeline.push({
         status: booking.status,
-        label: 'تم تعديل الموعد بواسطة العميل',
-        labelEn: 'Rescheduled by Customer',
+        label: isAdmin ? 'تم تعديل الموعد بواسطة الإدارة' : 'تم تعديل الموعد بواسطة العميل',
+        labelEn: isAdmin ? 'Rescheduled by Operations' : 'Rescheduled by Customer',
         timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
         completed: true,
         description: reason || `تم تعديل الموعد من (${previousTime}) إلى (${newDate} ${newTimeLabel})`,
         descriptionEn: `Rescheduled from (${previousTime}) to (${newDate} ${newTimeLabel})`,
-        changedBy: req.user?.name || booking.customerName || 'customer',
+        changedBy: actorName,
       });
 
       await booking.save();
+
+      // Authoritative direct persist in PostgreSQL via Prisma
+      try {
+        await prisma.booking.update({
+          where: { id: booking.id },
+          data: {
+            date: newDate,
+            time: newTimeLabel,
+            timeSlotStart: slotTiming.scheduledStart,
+            scheduledStart: slotTiming.scheduledStart,
+            scheduledEnd: slotTiming.scheduledEnd,
+            rescheduledFrom: previousTime,
+            assignedTechnicianId: booking.assignedTechnicianId,
+            technician: booking.technician,
+            status: booking.status,
+            timeline: booking.timeline,
+            metadata: booking.metadata,
+          },
+        });
+      } catch (prismaUpdateErr) {
+        console.warn('Non-critical Prisma direct update note:', prismaUpdateErr);
+      }
 
       try {
         await Notification.create({
           target: 'admin',
           title: `تعديل موعد حجز #${booking.id}`,
           titleEn: `Booking Rescheduled #${booking.id}`,
-          message: `قام العميل ${booking.customerName} بتغيير موعد الطلب #${booking.id} إلى ${newDate} ${newTimeLabel}`,
-          messageEn: `Customer ${booking.customerName} rescheduled order #${booking.id} to ${newDate} ${newTimeLabel}`,
+          message: `تم تغيير موعد الطلب #${booking.id} إلى يوم ${newDate} (${newTimeLabel}) بواسطة (${actorName})`,
+          messageEn: `Order #${booking.id} was rescheduled to ${newDate} (${newTimeLabel}) by ${actorName}`,
           type: 'order',
           read: false,
           link: `/admin/orders/${booking.id}`,
@@ -2041,7 +2136,7 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
         }
       } catch (e) {}
 
-      sendSuccess(res, booking, 'تم إعادة جدولة الحجز بنجاح');
+      sendSuccess(res, booking, 'تم إعادة جدولة الحجز بنجاح وتحديث بيانات الطلب');
     });
   } catch (err: any) {
     sendError(res, err.message, err.statusCode || 500, err.code);

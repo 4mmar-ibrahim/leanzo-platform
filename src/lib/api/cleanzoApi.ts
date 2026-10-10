@@ -727,6 +727,12 @@ export const cleanzoApi = {
         isAdmin: true,
         body: JSON.stringify({ technicianId }),
       }),
+    rescheduleOrder: (orderId: string, data: { newDate: string; newTime: string; reason?: string }) =>
+      apiRequest<Order>(`/bookings/admin/${orderId}/reschedule`, {
+        method: 'POST',
+        isAdmin: true,
+        body: JSON.stringify(data),
+      }),
     deleteOrder: (orderId: string) =>
       apiRequest<{ id: string; deleted: boolean }>(`/bookings/admin/${orderId}`, {
         method: 'DELETE',

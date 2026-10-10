@@ -26,10 +26,22 @@ function timeStringToMinutes(timeStr: string): number {
   const raw = String(timeStr).trim();
   const firstSegment = raw.split(/[-–—]/)[0].trim();
   const clean = firstSegment.toUpperCase();
-  const isPM = clean.includes('PM') || clean.includes('مساء');
-  const isAM = clean.includes('AM') || clean.includes('صباح');
 
-  const timePart = clean.replace(/(AM|PM|مساءً|مساء|صباحاً|صباح)/g, '').trim();
+  const isPM =
+    clean.includes('PM') ||
+    clean.includes('مساء') ||
+    clean.includes('ظهراً') ||
+    clean.includes('عصراً') ||
+    /(?:^|\s|\d)م(?:$|\s)/.test(clean) ||
+    clean.endsWith('م');
+
+  const isAM =
+    clean.includes('AM') ||
+    clean.includes('صباح') ||
+    /(?:^|\s|\d)ص(?:$|\s)/.test(clean) ||
+    clean.endsWith('ص');
+
+  const timePart = clean.replace(/(AM|PM|مساءً|مساء|صباحاً|صباح|ظهراً|عصراً|[صم])/gi, '').trim();
   const cleanNumbers = timePart.replace(/[^0-9:]/g, '');
   const [hourStr, minuteStr] = cleanNumbers.split(':');
   let hours = parseInt(hourStr || '0', 10);
@@ -670,18 +682,28 @@ export async function assignTechnicianToVisitAdmin(req: AuthenticatedAdminReques
         return;
       }
 
-      await withBookingLock(`tech_assign_${tech.id}_${visit.date}`, async () => {
+      const cleanDate = String(visit.date || '').split('T')[0].trim();
+
+      await withBookingLock(`tech_assign_${tech.id}_${cleanDate}`, async () => {
         // Schedule overlap prevention check
         const currentInterval = getBookingTimeInterval(visit);
 
-        // 1. Check overlapping regular bookings (Prisma & MongoDB)
+        // 1. Check overlapping regular bookings (any category)
         const conflictingBookings = await prisma.booking.findMany({
           where: {
-            date: visit.date,
-            status: { notIn: ['cancelled', 'CANCELLED'] },
             OR: [
-              { assignedTechnicianId: tech.id },
-              { technician: { path: ['id'], equals: tech.id } },
+              { date: cleanDate },
+              { date: { startsWith: cleanDate } },
+            ],
+            status: { notIn: ['cancelled', 'CANCELLED'] },
+            AND: [
+              {
+                OR: [
+                  { assignedTechnicianId: tech.id },
+                  { technician: { path: ['id'], equals: tech.id } },
+                  { technician: { equals: tech.id } },
+                ],
+              },
             ],
           },
         });
@@ -689,9 +711,10 @@ export async function assignTechnicianToVisitAdmin(req: AuthenticatedAdminReques
         for (const b of conflictingBookings) {
           const bInterval = getBookingTimeInterval(b);
           if (isTimeIntervalOverlapping(currentInterval, bInterval)) {
+            const bTime = b.time || `${b.scheduledStart} – ${b.scheduledEnd}`;
             sendError(
               res,
-              'هذا العامل غير متاح في هذا الوقت لوجود حجز آخر متداخل.',
+              `تعذر تعيين الفني: الفني (${tech.name}) مرتبط بالفعل بالطلب #${b.id} في نفس التوقيت (${bTime}). لا يمكن تعيين فني لزيارة متعارضة مع طلب آخر.`,
               409,
               'TECHNICIAN_SCHEDULE_OVERLAP'
             );
@@ -703,11 +726,19 @@ export async function assignTechnicianToVisitAdmin(req: AuthenticatedAdminReques
         const otherVisits = await prisma.subscriptionVisit.findMany({
           where: {
             id: { not: visitId },
-            date: visit.date,
-            status: { notIn: ['cancelled', 'CANCELLED'] },
             OR: [
-              { assignedTechnicianId: tech.id },
-              { technician: { path: ['id'], equals: tech.id } },
+              { date: cleanDate },
+              { date: { startsWith: cleanDate } },
+            ],
+            status: { notIn: ['cancelled', 'CANCELLED'] },
+            AND: [
+              {
+                OR: [
+                  { assignedTechnicianId: tech.id },
+                  { technician: { path: ['id'], equals: tech.id } },
+                  { technician: { equals: tech.id } },
+                ],
+              },
             ],
           },
         });
@@ -715,9 +746,10 @@ export async function assignTechnicianToVisitAdmin(req: AuthenticatedAdminReques
         for (const v of otherVisits) {
           const vInterval = getBookingTimeInterval(v);
           if (isTimeIntervalOverlapping(currentInterval, vInterval)) {
+            const vTime = v.time || `${v.scheduledStart} – ${v.scheduledEnd}`;
             sendError(
               res,
-              'هذا العامل غير متاح في هذا الوقت لوجود حجز آخر متداخل.',
+              `تعذر تعيين الفني: الفني (${tech.name}) مرتبط بالفعل بزيارة اشتراك #${v.id} في نفس التوقيت (${vTime}).`,
               409,
               'TECHNICIAN_SCHEDULE_OVERLAP'
             );

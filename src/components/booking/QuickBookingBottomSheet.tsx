@@ -20,6 +20,7 @@ import {
   ArrowLeft,
   ShieldCheck,
   MessageCircle,
+  Loader2,
 } from 'lucide-react';
 import { useServiceStore } from '@/store/useServiceStore';
 import { useOrderStore } from '@/store/useOrderStore';
@@ -440,7 +441,43 @@ export function QuickBookingBottomSheet({
     return filteredServices.some((s) => s.id === selectedService.id);
   }, [selectedService, filteredServices]);
 
-  const handleConfirmBooking = () => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Helper: Re-fetch live slots to reflect real-time changes immediately (no page refresh needed)
+  const refreshLiveSlots = () => {
+    if (!selectedDate || !selectedService?.id) return;
+    const effectiveCategory = selectedService?.category;
+    cleanzoApi.availability
+      .checkDate(selectedDate, selectedService.id, serviceDuration, [selectedService.id], undefined, effectiveCategory)
+      .then((res) => {
+        if (res?.slots && Array.isArray(res.slots) && res.slots.length > 0) {
+          const formattedSlots: BookingSlot[] = res.slots.map((slot: any) => {
+            const labelAr = formatTimeTo12Hour(slot.label || slot.time, { locale: 'ar' });
+            const labelEn = formatTimeTo12Hour(slot.label || slot.time, { locale: 'en' });
+            return {
+              time: labelEn,
+              label: labelAr,
+              labelEn: labelEn,
+              isAvailable: slot.available,
+              reason: slot.reason,
+              scheduledStart: slot.start || slot.scheduledStart || slot.time24,
+              scheduledEnd: slot.end || slot.scheduledEnd,
+              totalOccupiedMinutes: slot.totalOccupiedMinutes || serviceDuration,
+              serviceDurationMinutes: slot.serviceDurationMinutes || serviceDuration,
+            };
+          });
+          setLiveSlots(formattedSlots);
+        } else {
+          setLiveSlots(null);
+        }
+      })
+      .catch(() => {
+        setLiveSlots(null);
+      });
+  };
+
+  const handleConfirmBooking = async () => {
+    if (isSubmitting) return;
     if (!selectedService || !isSelectedServiceValid) {
       toast.error(isAr ? 'يرجى اختيار الخدمة المطابقة للقسم المحدد' : 'Please select a valid service for this category');
       return;
@@ -471,31 +508,6 @@ export function QuickBookingBottomSheet({
       // Continue
     }
 
-    // Category-Based Slot Conflict Prevention:
-    const existingOrders = useOrderStore.getState().orders || [];
-    const requestedInterval = getBookingTimeInterval({
-      time: selectedTime,
-      totalOccupiedMinutes: serviceDuration + (selectedService.travelTimeMinutes || 0),
-    });
-
-    const isAlreadyBooked = existingOrders.some((o) => {
-      if (o.status === 'cancelled') return false;
-      if (o.date !== selectedDate) return false;
-      if (!isSameCategory(getOrderCategory(o), selectedService.category)) return false;
-      const oInterval = getBookingTimeInterval(o);
-      return isTimeIntervalOverlapping(requestedInterval, oInterval);
-    });
-
-    if (isAlreadyBooked) {
-      toast.error(
-        isAr
-          ? `عذراً، موعد (${selectedTime}) يتعارض مع حجز قائم في قسم (${selectedService.category === 'car' ? 'خدمات السيارات' : 'خدمات المنازل'}). يرجى اختيار موعد متاح بعد انتهاء الحجز الحالي.`
-          : `Selected time (${selectedTime}) conflicts with an existing booking in this category. Please select another time.`
-      );
-      return;
-    }
-
-    const orderId = `CLZ-${Date.now().toString().slice(-6)}`;
     const finalAddress: Address = {
       id: `addr-${Date.now()}`,
       label: isAr ? 'موقع الحجز السريع' : 'Quick Booking Address',
@@ -511,87 +523,59 @@ export function QuickBookingBottomSheet({
       customerPhone: customerPhone.trim(),
     };
 
-    const intervalMeta = getBookingTimeInterval({
-      time: selectedTime,
-      duration: serviceDuration,
-      serviceDurationMinutes: serviceDuration,
-      travelTimeMinutes: selectedService.travelTimeMinutes || 0,
-      totalOccupiedMinutes: serviceDuration + (selectedService.travelTimeMinutes || 0),
-    });
+    setIsSubmitting(true);
 
-    const newOrder: Order = {
-      id: orderId,
-      userId: user?.id || 'guest-user',
-      serviceId: selectedService.id,
-      service: selectedService,
-      category: normalizeCategory(selectedService.category) as any,
-      date: selectedDate,
-      time: selectedTime,
-      scheduledStart: minutesTo24H(intervalMeta.startMin),
-      scheduledEnd: minutesTo24H(intervalMeta.endMin),
-      duration: serviceDuration,
-      serviceDurationMinutes: serviceDuration,
-      travelTimeMinutes: selectedService.travelTimeMinutes || 0,
-      totalOccupiedMinutes: intervalMeta.endMin - intervalMeta.startMin,
-      address: finalAddress,
-      basePrice: quickPricing.baseOriginalPrice + quickPricing.addonsTotal,
-      packageId: selectedPkg?.id,
-      packageSnapshot: selectedPkg
-        ? {
-            id: selectedPkg.id,
-            name: selectedPkg.name,
-            nameEn: selectedPkg.nameEn,
-            price: selectedPkg.price,
-            originalPrice: selectedPkg.originalPrice,
-            durationMinutes: selectedPkg.durationMinutes,
-          }
-        : undefined,
-      addons: selectedAddonsList.map((a) => ({
-        id: a.id,
-        name: a.name,
-        nameEn: a.nameEn,
-        price: a.price,
-        durationMinutes: a.durationMinutes,
-      })),
-      discount: quickPricing.totalDiscount,
-      serviceFee: 0,
-      finalPrice: quickPricing.finalPrice,
-      currency: isAr ? 'ج.م' : 'EGP',
-      status: 'pending',
-      timeline: [
-        {
-          status: 'pending',
-          label: isAr ? 'طلب حجز سريع جديد' : 'New Quick Booking Request',
-          labelEn: 'New Quick Booking Request',
-          timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-          completed: true,
-          description: isAr ? 'تم استلام طلب الحجز السريع بنجاح من الصفحة الرئيسية للموبايل.' : 'Quick order received.',
-        },
-      ],
-      notes: notes || undefined,
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      // Send booking to backend API (authoritative server-side validation + category-based slot blocking)
+      const createdBooking = await cleanzoApi.bookings.create({
+        serviceId: selectedService.id,
+        services: [{ serviceId: selectedService.id, packageId: selectedPkg?.id, addonIds: selectedAddonsList.map((a) => a.id) }],
+        packageId: selectedPkg?.id,
+        addonIds: selectedAddonsList.map((a) => a.id),
+        category: selectedService.category,
+        date: selectedDate,
+        time: selectedTime,
+        address: finalAddress,
+        notes: notes || undefined,
+        guestName: customerName.trim(),
+        guestPhone: customerPhone.trim(),
+        saveAddress: true,
+      });
 
-    addOrder(newOrder);
+      if (!createdBooking || !createdBooking.id) {
+        throw new Error(isAr ? 'لم يتم استلام تأكيد الحجز من الخادم' : 'Did not receive booking confirmation from server');
+      }
 
-    // Persist address and contact details across subsequent bookings for all services without duplication
-    const existingAddresses = useAddressStore.getState().addresses || [];
-    const matchedAddress = existingAddresses.find((a) => isSameAddress(a, finalAddress));
-    const savedAddrPayload: Address = {
-      ...(matchedAddress || finalAddress),
-      customerName: customerName.trim(),
-      customerPhone: customerPhone.trim(),
-      isDefault: true,
-    };
-    if (!matchedAddress) {
-      useAddressStore.getState().addAddress(savedAddrPayload);
+      // Save authoritative server booking to local store
+      addOrder(createdBooking);
+
+      // Persist address and contact details across subsequent bookings for all services without duplication
+      const existingAddresses = useAddressStore.getState().addresses || [];
+      const matchedAddress = existingAddresses.find((a) => isSameAddress(a, finalAddress));
+      const savedAddrPayload: Address = {
+        ...(matchedAddress || finalAddress),
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
+        isDefault: true,
+      };
+      if (!matchedAddress) {
+        useAddressStore.getState().addAddress(savedAddrPayload);
+      }
+      useBookingStore.getState().setGuestInfo(customerName.trim(), customerPhone.trim());
+      useBookingStore.getState().setAddress(savedAddrPayload);
+
+      // Immediately re-fetch live slots so the booked time disappears from the UI without page refresh
+      refreshLiveSlots();
+
+      setConfirmedOrderId(createdBooking.id);
+      setStep(4);
+      toast.success(isAr ? `تم تسجيل طلبك بنجاح برقم #${createdBooking.id}` : `Booking created successfully #${createdBooking.id}`);
+    } catch (err: any) {
+      console.error('[QuickBooking Submit Error]:', err);
+      toast.error(err?.message || (isAr ? 'فشل إتمام الحجز، يرجى المحاولة مجدداً' : 'Failed to complete booking'));
+    } finally {
+      setIsSubmitting(false);
     }
-    useBookingStore.getState().setGuestInfo(customerName.trim(), customerPhone.trim());
-    useBookingStore.getState().setAddress(savedAddrPayload);
-
-    setConfirmedOrderId(orderId);
-    setStep(4);
-    toast.success('تم إرسال طلب الحجز بنجاح!');
   };
 
   if (!isOpen) return null;
@@ -1279,11 +1263,21 @@ export function QuickBookingBottomSheet({
               <Button
                 variant="primary"
                 size="md"
+                disabled={isSubmitting}
                 onClick={handleConfirmBooking}
-                className="flex-1 justify-center rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/25"
+                className="flex-1 justify-center rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/25 disabled:opacity-50"
               >
-                <span>تأكيد الحجز الفوري الآن</span>
-                <CheckCircle2 className="w-4 h-4" />
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>{isAr ? 'جاري تأكيد الحجز...' : 'Confirming booking...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>تأكيد الحجز الفوري الآن</span>
+                    <CheckCircle2 className="w-4 h-4" />
+                  </>
+                )}
               </Button>
             )}
           </div>
