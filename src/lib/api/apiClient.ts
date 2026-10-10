@@ -138,7 +138,7 @@ export function clearCustomerAuthSession(): void {
       } catch {}
     }
     localStorage.removeItem('cleanzo_address_storage');
-    localStorage.removeItem('cleanzo_booking_store');
+    // Preserve cleanzo_booking_store so user's active booking progress is never lost
     window.dispatchEvent(new CustomEvent('cleanzo:customer-session-expired'));
   } catch {}
 }
@@ -384,19 +384,22 @@ export async function apiRequest<T = any>(
         !endpoint.includes('/auth/customer/login') &&
         !endpoint.includes('/auth/customer/register')
       ) {
-        const freshToken = await executeCustomerTokenRefresh();
-        if (freshToken) {
-          return await apiRequest<T>(endpoint, {
-            ...options,
-            isAdmin: false,
-            _isRetry: true,
-            headers: {
-              ...(headers as Record<string, string>),
-              Authorization: `Bearer ${freshToken}`,
-            },
-          });
-        } else {
-          clearCustomerAuthSession();
+        const hasCustomerToken = !!getCustomerAuthToken();
+        if (hasCustomerToken) {
+          const freshToken = await executeCustomerTokenRefresh();
+          if (freshToken) {
+            return await apiRequest<T>(endpoint, {
+              ...options,
+              isAdmin: false,
+              _isRetry: true,
+              headers: {
+                ...(headers as Record<string, string>),
+                Authorization: `Bearer ${freshToken}`,
+              },
+            });
+          } else {
+            clearCustomerAuthSession();
+          }
         }
       }
     }

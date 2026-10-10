@@ -624,16 +624,13 @@ if (typeof window !== 'undefined') {
     try {
       useAddressStore.getState().clearAddresses();
     } catch {}
-    try {
-      useBookingStore.getState().resetBooking();
-    } catch {}
+    // Retain useBookingStore selections so user does not lose chosen service & datetime
     try {
       useCustomerNotificationStore.getState().clearAll();
     } catch {}
     if (typeof window !== 'undefined') {
       try {
         localStorage.removeItem('cleanzo_address_storage');
-        localStorage.removeItem('cleanzo_booking_store');
         localStorage.removeItem('cleanzo-customer-notifications');
       } catch {}
     }
