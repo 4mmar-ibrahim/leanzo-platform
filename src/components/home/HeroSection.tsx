@@ -64,13 +64,15 @@ export function HeroSection() {
           {/* ================= RIGHT SIDE: BRAND HEADLINE & CONTROLS ================= */}
           <div className="lg:col-span-6 space-y-6 sm:space-y-7 text-start order-1">
 
-            {/* Brand Eyebrow with Mini Badge */}
-            <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-[#EAF8FC] dark:bg-[#072540] border border-[#0866C6]/20 dark:border-[#0866C6]/40 text-xs font-bold text-[#0866C6] dark:text-[#38BDF8] shadow-2xs font-sans">
-              <span className="w-2 h-2 rounded-full bg-[#0866C6] dark:bg-[#38BDF8] animate-pulse" />
-              <span>
-                {heroContent.badge ||
-                  (isAr ? 'CLEANZO • خدمات تنظيف احترافية' : 'CLEANZO • Professional Cleaning Services')}
-              </span>
+            {/* Brand Eyebrow with Mini Badge - Centered */}
+            <div className="w-full flex justify-center">
+              <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-[#EAF8FC] dark:bg-[#072540] border border-[#0866C6]/20 dark:border-[#0866C6]/40 text-xs font-bold text-[#0866C6] dark:text-[#38BDF8] shadow-2xs font-sans">
+                <span className="w-2 h-2 rounded-full bg-[#0866C6] dark:bg-[#38BDF8] animate-pulse" />
+                <span>
+                  {heroContent.badge ||
+                    (isAr ? 'CLEANZO • خدمات تنظيف احترافية' : 'CLEANZO • Professional Cleaning Services')}
+                </span>
+              </div>
             </div>
 
             {/* Powerful Dynamic Headline with Cleanzo Blue Highlight */}
