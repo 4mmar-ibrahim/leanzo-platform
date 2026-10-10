@@ -191,8 +191,8 @@ export async function getEffectiveBookingSettings() {
     breakEnd: b.breakEnd,
     slotInterval: Number(b.slotInterval) || 60,
     slotDuration: Number(b.slotDuration) || 60,
-    defaultTravelTime: b.bufferTime !== undefined ? Number(b.bufferTime) : 15,
-    bufferTime: b.bufferTime !== undefined ? Number(b.bufferTime) : 15,
+    defaultTravelTime: b.bufferTime !== undefined ? Number(b.bufferTime) : 0,
+    bufferTime: b.bufferTime !== undefined ? Number(b.bufferTime) : 0,
     maxBookingsPerSlot: Number(b.maxBookingsPerSlot) || 1,
     advanceBookingDays: Number(b.advanceBookingDays) || 14,
     minNoticeHours: Number(b.minNoticeHours) || 0,
@@ -204,7 +204,8 @@ export async function getEffectiveBookingSettings() {
 
 /**
  * Resolves the service's duration, travel time, and total occupancy.
- * Formula: totalOccupiedMinutes = serviceDurationMinutes + travelTimeMinutes
+ * Formula: totalOccupiedMinutes = serviceDurationMinutes (travel time is NOT added)
+ * Travel time is preserved as metadata but does NOT inflate the slot duration.
  * NO roundings to 30 or 60 minutes - minute-level precision is strictly preserved.
  */
 export async function resolveServiceTiming(
@@ -227,10 +228,8 @@ export async function resolveServiceTiming(
           ? customDuration
           : baseServiceDuration;
 
-      const totalOccupiedMinutes =
-        customDuration !== undefined && customDuration > 0
-          ? customDuration + travelTimeMinutes
-          : (serviceDurationMinutes + travelTimeMinutes);
+      // totalOccupiedMinutes = serviceDurationMinutes ONLY (no travel time inflation)
+      const totalOccupiedMinutes = serviceDurationMinutes;
 
       return {
         serviceDurationMinutes,
@@ -244,7 +243,7 @@ export async function resolveServiceTiming(
   return {
     serviceDurationMinutes: duration,
     travelTimeMinutes: fallbackTravel,
-    totalOccupiedMinutes: duration + fallbackTravel,
+    totalOccupiedMinutes: duration,
   };
 }
 
@@ -505,10 +504,8 @@ export async function getAvailableSlots(
     }
 
     const bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
-    const bTravel = b.travelTimeMinutes !== undefined && b.travelTimeMinutes !== null ? Number(b.travelTimeMinutes) : 0;
-    const bDuration =
-      b.totalOccupiedMinutes ||
-      (b.serviceDurationMinutes ? b.serviceDurationMinutes + bTravel : (b.duration || 45) + bTravel);
+    // Use service duration only - do NOT add travel time to occupied interval
+    const bDuration = b.serviceDurationMinutes || b.duration || 45;
     const bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + bDuration;
 
     if (b.status !== 'cancelled') {
@@ -557,10 +554,8 @@ export async function getAvailableSlots(
     }
 
     const vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart || v.time);
-    const vTravel = v.travelTimeMinutes !== undefined && v.travelTimeMinutes !== null ? Number(v.travelTimeMinutes) : 0;
-    const vDuration =
-      v.totalOccupiedMinutes ||
-      (v.serviceDurationMinutes ? v.serviceDurationMinutes + vTravel : (v.duration || 45) + vTravel);
+    // Use service duration only - do NOT add travel time to occupied interval
+    const vDuration = v.serviceDurationMinutes || v.duration || 45;
     const vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + vDuration;
 
     if (v.status !== 'cancelled') {
@@ -905,10 +900,8 @@ export async function assertSlotAvailability(params: {
     }
 
     const bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
-    const bTravel = b.travelTimeMinutes !== undefined && b.travelTimeMinutes !== null ? Number(b.travelTimeMinutes) : 0;
-    const bDuration =
-      b.totalOccupiedMinutes ||
-      (b.serviceDurationMinutes ? b.serviceDurationMinutes + bTravel : (b.duration || 45) + bTravel);
+    // Use service duration only - do NOT add travel time to occupied interval
+    const bDuration = b.serviceDurationMinutes || b.duration || 45;
     const bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + bDuration;
 
     let isOccupied = false;
@@ -973,9 +966,8 @@ export async function assertSlotAvailability(params: {
     }
 
     const vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart || v.time);
-    const vDuration =
-      v.totalOccupiedMinutes ||
-      (v.serviceDurationMinutes ? v.serviceDurationMinutes + (v.travelTimeMinutes || 15) : (v.duration || 45) + (v.travelTimeMinutes || 15));
+    // Use service duration only - do NOT add travel time to occupied interval
+    const vDuration = v.serviceDurationMinutes || v.duration || 45;
     const vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + vDuration;
 
     let isOccupied = false;

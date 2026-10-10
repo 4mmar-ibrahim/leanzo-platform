@@ -50,8 +50,8 @@ const ServiceSchema = new Schema<IService>(
     originalPrice: { type: Number },
     duration: { type: Number, required: true, min: 5, default: 45 }, // minutes
     serviceDurationMinutes: { type: Number, min: 1, default: 45 },
-    travelTimeMinutes: { type: Number, min: 0, default: 15 },
-    totalOccupiedMinutes: { type: Number, default: 60 },
+    travelTimeMinutes: { type: Number, min: 0, default: 0 },
+    totalOccupiedMinutes: { type: Number, default: 45 },
     rating: { type: Number, default: 5.0 },
     reviewCount: { type: Number, default: 0 },
     popular: { type: Boolean, default: false },
@@ -75,10 +75,11 @@ ServiceSchema.pre('save', function (next) {
     this.serviceDurationMinutes = this.duration || 45;
   }
   if (this.travelTimeMinutes === undefined || this.travelTimeMinutes === null) {
-    this.travelTimeMinutes = 15;
+    this.travelTimeMinutes = 0;
   }
   this.duration = this.serviceDurationMinutes;
-  this.totalOccupiedMinutes = this.serviceDurationMinutes + this.travelTimeMinutes;
+  // totalOccupiedMinutes = serviceDurationMinutes ONLY (no travel time inflation)
+  this.totalOccupiedMinutes = this.serviceDurationMinutes;
   next();
 });
 

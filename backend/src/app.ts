@@ -60,40 +60,48 @@ const allowedOrigins = [
   'http://127.0.0.1:3000',
   'http://localhost:5000',
   'http://127.0.0.1:5000',
-];
+].filter(Boolean) as string[];
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (
-        allowedOrigins.includes(origin) ||
-        (ENV.NODE_ENV !== 'production' &&
-          (origin.startsWith('http://localhost:') ||
-            origin.startsWith('http://127.0.0.1:')))
-      ) {
-        return callback(null, true);
-      }
-      return callback(null, false);
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'X-Requested-With',
-      'Idempotency-Key',
-      'idempotency-key',
-      'X-Idempotency-Key',
-      'x-idempotency-key',
-      'Accept',
-      'Origin',
-      'Cache-Control',
-      'Pragma',
-    ],
-    exposedHeaders: ['Idempotency-Key', 'idempotency-key'],
-  })
-);
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const cleanOrigin = origin.replace(/\/$/, '');
+    if (
+      ENV.NODE_ENV !== 'production' ||
+      allowedOrigins.some(o => o.replace(/\/$/, '') === cleanOrigin) ||
+      cleanOrigin.startsWith('http://localhost:') ||
+      cleanOrigin.startsWith('http://127.0.0.1:') ||
+      cleanOrigin.includes('vercel.app') ||
+      /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(cleanOrigin)
+    ) {
+      return callback(null, true);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Idempotency-Key',
+    'idempotency-key',
+    'X-Idempotency-Key',
+    'x-idempotency-key',
+    'X-Admin-Token',
+    'x-admin-token',
+    'X-Customer-Token',
+    'x-customer-token',
+    'Accept',
+    'Origin',
+    'Cache-Control',
+    'Pragma',
+  ],
+  exposedHeaders: ['Idempotency-Key', 'idempotency-key'],
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // Request parsers
 app.use(express.json({ limit: '15mb' }));

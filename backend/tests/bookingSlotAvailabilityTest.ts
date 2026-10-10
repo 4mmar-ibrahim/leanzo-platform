@@ -27,18 +27,18 @@ async function run() {
 
   await connectDB();
 
-  // 1. Setup clean test service (60 min total occupancy: 45m wash + 15m travel)
-  const testService60 = await Service.findOneAndUpdate(
-    { id: 'srv-bug06-60m' },
+  // 1. Setup clean test service (45 min service duration, travel time NOT added to slot)
+  const testService45 = await Service.findOneAndUpdate(
+    { id: 'srv-bug06-45m' },
     {
-      id: 'srv-bug06-60m',
-      title: 'غسيل 45 دقيقة مع تنقل 15 دقيقة',
-      titleEn: 'Wash 45m + Transit 15m',
+      id: 'srv-bug06-45m',
+      title: 'غسيل 45 دقيقة',
+      titleEn: 'Wash 45m',
       category: 'cars',
       price: 220,
       duration: 45,
       serviceDurationMinutes: 45,
-      travelTimeMinutes: 15,
+      travelTimeMinutes: 15, // preserved as metadata, NOT added to slot
       image: '/images/car-wash.jpg',
       active: true,
       available: true,
@@ -50,45 +50,44 @@ async function run() {
   await Booking.deleteMany({ date: testDate });
 
   // =========================================================================
-  // PHASE 5 — STANDARD SEQUENCE: 10:00, 11:00, 12:00, 13:00
+  // PHASE 5 — STANDARD SEQUENCE: Slots are 45 minutes (service duration only)
   // =========================================================================
-  await test('Phase 5.1: 10–11, 11–12, 12–13 all appear as available when day is free', async () => {
-    const res = await getAvailableSlots(testDate, testService60.id);
+  await test('Phase 5.1: 45-min slots appear correctly when day is free', async () => {
+    const res = await getAvailableSlots(testDate, testService45.id);
     assert(res.isDayAvailable === true, 'Day should be available');
     
     const slotTimes = res.slots.map((s) => s.time);
-    assert(slotTimes.includes('10:00 – 11:00'), '10:00 – 11:00 slot must appear');
-    assert(slotTimes.includes('11:00 – 12:00'), '11:00 – 12:00 slot must appear');
-    assert(slotTimes.includes('12:00 – 13:00'), '12:00 – 13:00 slot must appear');
+    // 45-minute service: slots at 09:00–09:45, 09:45–10:30, 10:30–11:15, etc.
+    assert(slotTimes.includes('09:00 – 09:45'), '09:00 – 09:45 slot must appear');
+    assert(slotTimes.includes('09:45 – 10:30'), '09:45 – 10:30 slot must appear');
+    assert(slotTimes.includes('10:30 – 11:15'), '10:30 – 11:15 slot must appear');
 
-    const s10 = res.slots.find((s) => s.time === '10:00 – 11:00');
-    const s11 = res.slots.find((s) => s.time === '11:00 – 12:00');
-    const s12 = res.slots.find((s) => s.time === '12:00 – 13:00');
+    const s0900 = res.slots.find((s) => s.time === '09:00 – 09:45');
+    const s0945 = res.slots.find((s) => s.time === '09:45 – 10:30');
 
-    assert(s10?.available === true, '10:00 – 11:00 should be available');
-    assert(s11?.available === true, '11:00 – 12:00 should be available');
-    assert(s12?.available === true, '12:00 – 13:00 should be available');
+    assert(s0900?.available === true, '09:00 – 09:45 should be available');
+    assert(s0945?.available === true, '09:45 – 10:30 should be available');
   });
 
   let createdBookingId = '';
 
-  await test('Phase 5.2: Occupying capacity for 11–12 retains slot and marks it Unavailable (محجوز بالكامل)', async () => {
-    // Occupy 11:00 – 12:00
+  await test('Phase 5.2: Booking marks exact 45-min slot as unavailable', async () => {
+    // Occupy 09:00 – 09:45 (exactly 45 minutes, NO travel time inflation)
     const b = await Booking.create({
-      id: 'BK-BUG06-11TO12',
-      serviceId: testService60.id,
-      serviceSnapshot: { id: testService60.id, title: testService60.title, price: 220 },
+      id: 'BK-BUG06-09TO0945',
+      serviceId: testService45.id,
+      serviceSnapshot: { id: testService45.id, title: testService45.title, price: 220 },
       customerName: 'عميل تجريبي',
       customerPhone: '01012345678',
       category: 'cars',
       date: testDate,
-      time: '11:00 – 12:00',
-      timeSlotStart: '11:00 – 12:00',
-      scheduledStart: '11:00',
-      scheduledEnd: '12:00',
+      time: '09:00 – 09:45',
+      timeSlotStart: '09:00',
+      scheduledStart: '09:00',
+      scheduledEnd: '09:45',
       serviceDurationMinutes: 45,
       travelTimeMinutes: 15,
-      totalOccupiedMinutes: 60,
+      totalOccupiedMinutes: 45,
       duration: 45,
       basePrice: 220,
       totalPrice: 220,
@@ -99,46 +98,37 @@ async function run() {
     });
     createdBookingId = b.id;
 
-    const res = await getAvailableSlots(testDate, testService60.id);
-    const slotTimes = res.slots.map((s) => s.time);
+    const res = await getAvailableSlots(testDate, testService45.id);
+    const s0900 = res.slots.find((s) => s.time === '09:00 – 09:45');
+    const s0945 = res.slots.find((s) => s.time === '09:45 – 10:30');
 
-    // CRITICAL: 11:00 – 12:00 MUST NOT BE SILENTLY DROPPED!
-    assert(slotTimes.includes('10:00 – 11:00'), '10:00 – 11:00 must appear');
-    assert(slotTimes.includes('11:00 – 12:00'), '11:00 – 12:00 MUST APPEAR (NOT MISSING!)');
-    assert(slotTimes.includes('12:00 – 13:00'), '12:00 – 13:00 must appear');
-
-    const s10 = res.slots.find((s) => s.time === '10:00 – 11:00');
-    const s11 = res.slots.find((s) => s.time === '11:00 – 12:00');
-    const s12 = res.slots.find((s) => s.time === '12:00 – 13:00');
-
-    assert(s10?.available === true, '10:00 – 11:00 must remain available');
-    assert(s11?.available === false, '11:00 – 12:00 must be marked available: false');
-    assert(s11?.reason === 'محجوز بالكامل', `11:00 – 12:00 reason must be 'محجوز بالكامل', got: ${s11?.reason}`);
-    assert(s12?.available === true, '12:00 – 13:00 must remain available');
+    assert(s0900 !== undefined, '09:00 – 09:45 must appear');
+    assert(s0900?.available === false, '09:00 – 09:45 must be marked unavailable');
+    assert(s0945 !== undefined, '09:45 – 10:30 must appear');
+    assert(s0945?.available === true, '09:45 – 10:30 must remain available (next slot starts at boundary)');
   });
 
-  await test('Phase 5.3: Release capacity -> 11–12 becomes available and selectable again', async () => {
-    // Release booking
+  await test('Phase 5.3: Cancellation releases slot for new booking', async () => {
     await Booking.updateOne({ id: createdBookingId }, { status: 'cancelled' });
 
-    const res = await getAvailableSlots(testDate, testService60.id);
-    const s11 = res.slots.find((s) => s.time === '11:00 – 12:00');
+    const res = await getAvailableSlots(testDate, testService45.id);
+    const s0900 = res.slots.find((s) => s.time === '09:00 – 09:45');
 
-    assert(s11 !== undefined, '11:00 – 12:00 must be present');
-    assert(s11?.available === true, '11:00 – 12:00 must be released and available: true');
-    assert(!s11?.reason, 'No unavailable reason when released');
+    assert(s0900 !== undefined, '09:00 – 09:45 must be present');
+    assert(s0900?.available === true, '09:00 – 09:45 must be released and available');
+    assert(!s0900?.reason, 'No unavailable reason when released');
   });
 
   // =========================================================================
   // EDGE CASES
   // =========================================================================
-  await test('Edge Case: Service duration 30 min (20m work + 10m travel)', async () => {
-    const srv30 = await Service.findOneAndUpdate(
-      { id: 'srv-bug06-30m' },
+  await test('Edge Case: Service duration 20 min (no travel time inflation)', async () => {
+    const srv20 = await Service.findOneAndUpdate(
+      { id: 'srv-bug06-20m' },
       {
-        id: 'srv-bug06-30m',
-        title: 'خدمة 30 دقيقة',
-        titleEn: 'Service 30m',
+        id: 'srv-bug06-20m',
+        title: 'خدمة 20 دقيقة',
+        titleEn: 'Service 20m',
         category: 'cars',
         price: 150,
         serviceDurationMinutes: 20,
@@ -151,22 +141,24 @@ async function run() {
       { upsert: true, new: true }
     );
 
-    const date30 = '2026-10-26';
-    await Booking.deleteMany({ date: date30 });
+    const date20 = '2026-10-26';
+    await Booking.deleteMany({ date: date20 });
 
-    // Book 10:30 – 11:00
+    // Book 10:30 – 10:50 (exactly 20 minutes, NOT 30)
     await Booking.create({
-      id: 'BK-BUG06-30M',
-      serviceId: srv30.id,
-      serviceSnapshot: { id: srv30.id, title: srv30.title, price: 150 },
+      id: 'BK-BUG06-20M',
+      serviceId: srv20.id,
+      serviceSnapshot: { id: srv20.id, title: srv20.title, price: 150 },
       customerName: 'عميل تجريبي',
       customerPhone: '01012345678',
       category: 'cars',
-      date: date30,
-      time: '10:30 – 11:00',
+      date: date20,
+      time: '10:30 – 10:50',
       scheduledStart: '10:30',
-      scheduledEnd: '11:00',
-      totalOccupiedMinutes: 30,
+      scheduledEnd: '10:50',
+      serviceDurationMinutes: 20,
+      travelTimeMinutes: 10,
+      totalOccupiedMinutes: 20,
       basePrice: 150,
       totalPrice: 150,
       finalPrice: 150,
@@ -174,23 +166,24 @@ async function run() {
       status: 'confirmed',
     });
 
-    const res = await getAvailableSlots(date30, srv30.id);
-    const s1030 = res.slots.find((s) => s.time === '10:30 – 11:00');
-    const s1100 = res.slots.find((s) => s.time === '11:00 – 11:30');
+    const res = await getAvailableSlots(date20, srv20.id);
+    // Slot at 10:30 should be unavailable, next available slot should be at 10:45 (snapped to 15-min)
+    const s1030 = res.slots.find((s) => s.start === '10:30');
+    assert(s1030 !== undefined, '10:30 slot is present');
+    assert(s1030!.available === false, '10:30 slot is marked unavailable');
 
-    assert(s1030 !== undefined, '10:30 – 11:00 is present');
-    assert(s1030.available === false, '10:30 – 11:00 is marked unavailable');
-    assert(s1100 !== undefined, '11:00 – 11:30 is present');
-    assert(s1100.available === true, '11:00 – 11:30 is available');
+    // totalOccupiedMinutes should be 20 (service duration only, no travel)
+    assert(res.serviceTiming.totalOccupiedMinutes === 20, `Total occupancy should be 20, got: ${res.serviceTiming.totalOccupiedMinutes}`);
+    assert(res.serviceTiming.serviceDurationMinutes === 20, `Service duration should be 20, got: ${res.serviceTiming.serviceDurationMinutes}`);
   });
 
-  await test('Edge Case: Service duration 90 min (75m work + 15m travel)', async () => {
-    const srv90 = await Service.findOneAndUpdate(
-      { id: 'srv-bug06-90m' },
+  await test('Edge Case: Service duration 75 min (no travel time inflation)', async () => {
+    const srv75 = await Service.findOneAndUpdate(
+      { id: 'srv-bug06-75m' },
       {
-        id: 'srv-bug06-90m',
-        title: 'خدمة 90 دقيقة',
-        titleEn: 'Service 90m',
+        id: 'srv-bug06-75m',
+        title: 'خدمة 75 دقيقة',
+        titleEn: 'Service 75m',
         category: 'cars',
         price: 350,
         serviceDurationMinutes: 75,
@@ -203,12 +196,14 @@ async function run() {
       { upsert: true, new: true }
     );
 
-    const date90 = '2026-10-27';
-    await Booking.deleteMany({ date: date90 });
+    const date75 = '2026-10-27';
+    await Booking.deleteMany({ date: date75 });
 
-    const res = await getAvailableSlots(date90, srv90.id);
-    assert(res.slots.length > 0, '90m slots generated');
-    assert(res.slots[0].totalOccupiedMinutes === 90, 'Total occupancy is 90 minutes');
+    const res = await getAvailableSlots(date75, srv75.id);
+    assert(res.slots.length > 0, '75m slots generated');
+    // totalOccupiedMinutes = serviceDurationMinutes = 75 (NOT 90)
+    assert(res.serviceTiming.totalOccupiedMinutes === 75, `Total occupancy should be 75 (not 90), got: ${res.serviceTiming.totalOccupiedMinutes}`);
+    assert(res.serviceTiming.serviceDurationMinutes === 75, `Service duration should be 75, got: ${res.serviceTiming.serviceDurationMinutes}`);
   });
 
   await test('Edge Case: Business breaks retain slot as unavailable with reason (استراحة عمل)', async () => {
@@ -229,12 +224,13 @@ async function run() {
     const dateBreak = '2026-10-28';
     await Booking.deleteMany({ date: dateBreak });
 
-    const res = await getAvailableSlots(dateBreak, testService60.id);
-    const breakSlot = res.slots.find((s) => s.time === '13:00 – 14:00');
+    const res = await getAvailableSlots(dateBreak, testService45.id);
+    // Find any slot that starts at 13:00 and is marked as break
+    const breakSlot = res.slots.find((s) => s.start === '13:00' && s.available === false);
 
-    assert(breakSlot !== undefined, 'Break slot 13:00 – 14:00 must appear in schedule');
-    assert(breakSlot.available === false, 'Break slot must be unavailable');
-    assert(breakSlot.reason === 'استراحة عمل', `Reason should be 'استراحة عمل', got: ${breakSlot.reason}`);
+    assert(breakSlot !== undefined, 'Break slot at 13:00 must appear in schedule');
+    assert(breakSlot!.available === false, 'Break slot must be unavailable');
+    assert(breakSlot!.reason === 'استراحة عمل', `Reason should be 'استراحة عمل', got: ${breakSlot!.reason}`);
 
     // Restore settings
     await SystemSettings.updateOne(
@@ -255,19 +251,20 @@ async function run() {
     const dateReval = '2026-10-29';
     await Booking.deleteMany({ date: dateReval });
 
-    // Active booking at 11:00
+    // Active booking at 11:00 (45 min service)
     await Booking.create({
       id: 'BK-REVAL-EXISTING',
-      serviceId: testService60.id,
-      serviceSnapshot: { id: testService60.id, title: testService60.title, price: 220 },
+      serviceId: testService45.id,
+      serviceSnapshot: { id: testService45.id, title: testService45.title, price: 220 },
       customerName: 'عميل موجود',
       customerPhone: '01011112222',
       category: 'cars',
       date: dateReval,
-      time: '11:00 – 12:00',
+      time: '11:00 – 11:45',
       scheduledStart: '11:00',
-      scheduledEnd: '12:00',
-      totalOccupiedMinutes: 60,
+      scheduledEnd: '11:45',
+      serviceDurationMinutes: 45,
+      totalOccupiedMinutes: 45,
       basePrice: 220,
       totalPrice: 220,
       finalPrice: 220,
@@ -280,7 +277,7 @@ async function run() {
       await assertSlotAvailability({
         dateStr: dateReval,
         timeStr: '11:00',
-        serviceId: testService60.id,
+        serviceId: testService45.id,
       });
     } catch (err: any) {
       assert(err.statusCode === 409 || err.code === 'SLOT_UNAVAILABLE', 'Must throw 409 Conflict');
@@ -290,7 +287,8 @@ async function run() {
   });
 
   // Cleanup test data
-  await Booking.deleteMany({ id: { $in: ['BK-BUG06-11TO12', 'BK-BUG06-30M', 'BK-REVAL-EXISTING'] } });
+  await Booking.deleteMany({ id: { $in: ['BK-BUG06-09TO0945', 'BK-BUG06-20M', 'BK-REVAL-EXISTING'] } });
+  await Service.deleteMany({ id: { $in: ['srv-bug06-45m', 'srv-bug06-20m', 'srv-bug06-75m'] } });
   await disconnectDB();
 
   console.log('\n============================================================');
