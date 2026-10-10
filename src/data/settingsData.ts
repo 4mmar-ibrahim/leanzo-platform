@@ -38,7 +38,7 @@ export const initialSystemSettings: SystemSettings = {
     bufferTime: 15,
     maxBookingsPerSlot: 4,
     advanceBookingDays: 30,
-    minNoticeHours: 2,
+    minNoticeHours: 0,
     sameDayBooking: true,
     blockedDates: ['2026-09-25'],
     holidays: [

@@ -56,7 +56,7 @@ export async function getAllSettingsAdmin(req: Request, res: Response): Promise<
           bufferTime: 15,
           maxBookingsPerSlot: 1,
           advanceBookingDays: 14,
-          minNoticeHours: 1,
+          minNoticeHours: 0,
           sameDayBooking: true,
           blockedDates: [],
           holidays: [],

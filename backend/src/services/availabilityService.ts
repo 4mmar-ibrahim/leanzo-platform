@@ -627,6 +627,18 @@ export async function getAvailableSlots(
       candidateStarts.add(slotCursor);
       slotCursor += requiredDuration;
     }
+
+    // For today: if prior sequential slots in this free block have already elapsed,
+    // also generate slots starting from the next approved slot interval after earliestAllowedMinutes
+    if (isToday && earliestAllowedMinutes > block.start && earliestAllowedMinutes < block.end) {
+      const interval = settings.slotInterval || 60;
+      const alignedTodayStart = Math.ceil(earliestAllowedMinutes / interval) * interval;
+      let todayCursor = alignedTodayStart;
+      while (todayCursor >= block.start && todayCursor + requiredDuration <= block.end) {
+        candidateStarts.add(todayCursor);
+        todayCursor += requiredDuration;
+      }
+    }
   }
 
   // B. Include active booking and break intervals so they are retained and marked unavailable
@@ -642,8 +654,9 @@ export async function getAvailableSlots(
   for (const slotStart of sortedStarts) {
     const slotEnd = slotStart + requiredDuration;
 
-    // Check service completion before end of working hours
-    if (slotStart + timing.serviceDurationMinutes > workEndMin) {
+    // Check service completion before end of working hours (allow 1440 for 23:59 end-of-day)
+    const completionLimit = workEndMin === 1439 ? 1440 : workEndMin;
+    if (slotStart + timing.serviceDurationMinutes > completionLimit) {
       continue;
     }
 
@@ -777,8 +790,9 @@ export async function assertSlotAvailability(params: {
   const workStartMin = timeStringToMinutes(settings.workingHoursStart);
   const workEndMin = timeStringToMinutes(settings.workingHoursEnd);
 
-  // 2. Working Hours & Day Boundary Check
-  if (slotStartMin < workStartMin || (slotStartMin + timing.serviceDurationMinutes) > workEndMin) {
+  // 2. Working Hours & Day Boundary Check (allow 1440 for 23:59 end-of-day)
+  const completionLimit = workEndMin === 1439 ? 1440 : workEndMin;
+  if (slotStartMin < workStartMin || (slotStartMin + timing.serviceDurationMinutes) > completionLimit) {
     throw new Error('الوقت المحدد يقع خارج ساعات العمل الرسمية لسيارات الخدمة');
   }
 
@@ -801,7 +815,11 @@ export async function assertSlotAvailability(params: {
     const currentCairoMin = timeStringToMinutes(getCurrentCairoTimeString());
     const minAllowed = currentCairoMin + (settings.minNoticeHours || 0) * 60;
     if (slotStartMin < minAllowed) {
-      throw new Error('لا يمكن حجز موعد في وقت قد مضى');
+      throw new Error(
+        settings.minNoticeHours > 0
+          ? `لا يمكن الحجز قبل مضي الحد الأدنى للإشعار المسبق (${settings.minNoticeHours} ساعة)`
+          : 'لا يمكن حجز موعد في وقت قد مضى'
+      );
     }
   }
 

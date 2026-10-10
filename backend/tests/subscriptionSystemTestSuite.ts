@@ -101,31 +101,28 @@ async function runTestSuite() {
     console.log('\n--- 2. Testing 12-Hour and 6-Hour Notice Policy Logic ---');
     const now = new Date();
 
+    const formatLocal = (d: Date) => ({
+      date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+      time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+    });
+
     // 13 hours in future -> should pass 12h check
-    const future13h = new Date(now.getTime() + 13 * 3600 * 1000);
-    const date13hStr = future13h.toISOString().split('T')[0];
-    const time13hStr = `${String(future13h.getHours()).padStart(2, '0')}:${String(future13h.getMinutes()).padStart(2, '0')}`;
-    assert(isNoticeSufficient(date13hStr, time13hStr, 12).isAllowed === true, '13 hours before appointment passes 12-hour policy');
+    const future13h = formatLocal(new Date(now.getTime() + 13 * 3600 * 1000));
+    assert(isNoticeSufficient(future13h.date, future13h.time, 12).isAllowed === true, '13 hours before appointment passes 12-hour policy');
 
     // Exactly 12 hours in future -> should pass 12h check
-    const future12h = new Date(now.getTime() + 12 * 3600 * 1000);
-    const date12hStr = future12h.toISOString().split('T')[0];
-    const time12hStr = `${String(future12h.getHours()).padStart(2, '0')}:${String(future12h.getMinutes()).padStart(2, '0')}`;
-    assert(isNoticeSufficient(date12hStr, time12hStr, 12).isAllowed === true, 'Exactly 12 hours before appointment passes 12-hour policy');
+    const future12h = formatLocal(new Date(now.getTime() + 12 * 3600 * 1000));
+    assert(isNoticeSufficient(future12h.date, future12h.time, 12).isAllowed === true, 'Exactly 12 hours before appointment passes 12-hour policy');
 
     // 5 hours in future -> should fail 12h check and 6h check
-    const future5h = new Date(now.getTime() + 5 * 3600 * 1000);
-    const date5hStr = future5h.toISOString().split('T')[0];
-    const time5hStr = `${String(future5h.getHours()).padStart(2, '0')}:${String(future5h.getMinutes()).padStart(2, '0')}`;
-    assert(isNoticeSufficient(date5hStr, time5hStr, 12).isAllowed === false, '5 hours before appointment is rejected for 12-hour subscription policy');
-    assert(isNoticeSufficient(date5hStr, time5hStr, 6).isAllowed === false, '5 hours before appointment is rejected for 6-hour normal booking policy');
+    const future5h = formatLocal(new Date(now.getTime() + 5 * 3600 * 1000));
+    assert(isNoticeSufficient(future5h.date, future5h.time, 12).isAllowed === false, '5 hours before appointment is rejected for 12-hour subscription policy');
+    assert(isNoticeSufficient(future5h.date, future5h.time, 6).isAllowed === false, '5 hours before appointment is rejected for 6-hour normal booking policy');
 
     // 7 hours in future -> should pass 6h check but fail 12h check
-    const future7h = new Date(now.getTime() + 7 * 3600 * 1000);
-    const date7hStr = future7h.toISOString().split('T')[0];
-    const time7hStr = `${String(future7h.getHours()).padStart(2, '0')}:${String(future7h.getMinutes()).padStart(2, '0')}`;
-    assert(isNoticeSufficient(date7hStr, time7hStr, 6).isAllowed === true, '7 hours before appointment passes 6-hour normal booking policy');
-    assert(isNoticeSufficient(date7hStr, time7hStr, 12).isAllowed === false, '7 hours before appointment fails 12-hour subscription policy');
+    const future7h = formatLocal(new Date(now.getTime() + 7 * 3600 * 1000));
+    assert(isNoticeSufficient(future7h.date, future7h.time, 6).isAllowed === true, '7 hours before appointment passes 6-hour normal booking policy');
+    assert(isNoticeSufficient(future7h.date, future7h.time, 12).isAllowed === false, '7 hours before appointment fails 12-hour subscription policy');
 
     // ========================================================
     // TEST 3: Atomic Subscription Creation with 4 Visits

@@ -568,14 +568,38 @@ export function getTimeSlotsForDate(
   const breakStartMin = settings?.breakStart ? timeStringToMinutes(settings.breakStart) : null;
   const breakEndMin = settings?.breakEnd ? timeStringToMinutes(settings.breakEnd) : null;
 
-  // Filter today's past times
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = String(today.getMonth() + 1).padStart(2, '0');
-  const d = String(today.getDate()).padStart(2, '0');
-  const todayStr = `${y}-${m}-${d}`;
+  // Filter today's past times in project timezone (Africa/Cairo)
+  let todayStr = '';
+  let currentCairoMinutes = -1;
+  try {
+    const formatterDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Cairo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    todayStr = formatterDate.format(new Date());
+
+    const formatterTime = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Africa/Cairo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const [h, m] = formatterTime.format(new Date()).split(':').map(Number);
+    currentCairoMinutes = h * 60 + m;
+  } catch {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    todayStr = `${y}-${m}-${d}`;
+    currentCairoMinutes = today.getHours() * 60 + today.getMinutes();
+  }
+
   const isToday = dateString === todayStr;
-  const currentMinutes = isToday ? today.getHours() * 60 + today.getMinutes() : -1;
+  const minNoticeHours = typeof settings?.minNoticeHours === 'number' ? settings.minNoticeHours : 0;
+  const earliestAllowedMinutes = isToday ? currentCairoMinutes + minNoticeHours * 60 : 0;
 
   // Normalized target category
   const targetCategory = category ? normalizeCategory(category) : undefined;
@@ -679,6 +703,18 @@ export function getTimeSlotsForDate(
       candidateStarts.add(slotCursor);
       slotCursor += totalOccupancy;
     }
+
+    // For today: if prior sequential slots in this free block have already elapsed,
+    // also generate slots starting from the next approved slot interval after earliestAllowedMinutes
+    if (isToday && earliestAllowedMinutes > block.start && earliestAllowedMinutes < block.end) {
+      const interval = Number(settings?.slotInterval) || 60;
+      const alignedTodayStart = Math.ceil(earliestAllowedMinutes / interval) * interval;
+      let todayCursor = alignedTodayStart;
+      while (todayCursor >= block.start && todayCursor + totalOccupancy <= block.end) {
+        candidateStarts.add(todayCursor);
+        todayCursor += totalOccupancy;
+      }
+    }
   }
 
   // Include starts of occupied booking intervals so they are visible as unavailable slots
@@ -692,8 +728,14 @@ export function getTimeSlotsForDate(
   for (const slotStart of sortedStarts) {
     const slotEnd = slotStart + totalOccupancy;
 
-    // Filter past times for current day
-    if (isToday && slotStart <= currentMinutes) {
+    // Check service completion before end of working hours (allow 1440 for 23:59 end-of-day)
+    const completionLimit = endMin === 1439 ? 1440 : endMin;
+    if (slotStart + durationMin > completionLimit) {
+      continue;
+    }
+
+    // Filter past times and enforce minimum notice for current day
+    if (isToday && slotStart < earliestAllowedMinutes) {
       continue;
     }
 

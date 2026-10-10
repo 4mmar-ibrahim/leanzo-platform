@@ -32,6 +32,7 @@ export default function AdminBookingSettingsPage() {
   const [bufferTime, setBufferTime] = useState('15');
   const [maxBookingsPerSlot, setMaxBookingsPerSlot] = useState('2');
   const [advanceBookingDays, setAdvanceBookingDays] = useState('14');
+  const [minNoticeHours, setMinNoticeHours] = useState('0');
   const [sameDayBooking, setSameDayBooking] = useState(true);
   const [workingDays, setWorkingDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
 
@@ -53,6 +54,7 @@ export default function AdminBookingSettingsPage() {
       setBufferTime((booking.bufferTime !== undefined ? booking.bufferTime : 15).toString());
       setMaxBookingsPerSlot((booking.maxBookingsPerSlot || 2).toString());
       setAdvanceBookingDays((booking.advanceBookingDays || 14).toString());
+      setMinNoticeHours((booking.minNoticeHours !== undefined ? booking.minNoticeHours : 0).toString());
       setSameDayBooking(booking.sameDayBooking ?? true);
       setWorkingDays(booking.workingDays || [0, 1, 2, 3, 4, 5, 6]);
     }
@@ -96,6 +98,7 @@ export default function AdminBookingSettingsPage() {
       bufferTime: Number(bufferTime) || 15,
       maxBookingsPerSlot: Number(maxBookingsPerSlot) || 2,
       advanceBookingDays: Number(advanceBookingDays) || 14,
+      minNoticeHours: Number(minNoticeHours) >= 0 ? Number(minNoticeHours) : 0,
       sameDayBooking,
       workingDays,
       holidays: booking.holidays || [],
@@ -278,7 +281,7 @@ export default function AdminBookingSettingsPage() {
         <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 space-y-4 shadow-xs">
           <h3 className="text-sm font-bold text-slate-900 dark:text-white">السعة والحجز المسبق</h3>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
             <div>
               <label className="block font-semibold mb-1">أقصى حجوزات في نفس الوقت</label>
               <input
@@ -300,6 +303,23 @@ export default function AdminBookingSettingsPage() {
                 onChange={(e) => setAdvanceBookingDays(e.target.value)}
                 className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold"
               />
+            </div>
+            <div>
+              <label className="block font-semibold mb-1">
+                الحد الأدنى للإشعار المسبق (ساعات)
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={48}
+                value={minNoticeHours}
+                onChange={(e) => setMinNoticeHours(e.target.value)}
+                title="0 يعني إتاحة الحجز فوراً بعد الوقت الحالي وفق فواصل المواعيد الرسمية"
+                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-sky-500"
+              />
+              <span className="text-[10px] text-slate-400 mt-1 block">
+                0 = متاح فوراً بعد الوقت الحالي
+              </span>
             </div>
             <div className="flex items-center gap-2 pt-6">
               <input

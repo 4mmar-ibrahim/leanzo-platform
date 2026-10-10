@@ -123,6 +123,8 @@ export async function runDynamicSchedulingTestSuite() {
       booking: {
         workingHoursStart: '13:00',
         workingHoursEnd: '18:00',
+        breakStart: undefined,
+        breakEnd: undefined,
         bufferTime: 10,
         sameDayBooking: true,
         advanceBookingDays: 30,
@@ -134,6 +136,8 @@ export async function runDynamicSchedulingTestSuite() {
       ...(settings.booking || {}),
       workingHoursStart: '13:00',
       workingHoursEnd: '18:00',
+      breakStart: undefined,
+      breakEnd: undefined,
       bufferTime: 10,
       sameDayBooking: true,
       advanceBookingDays: 30,
