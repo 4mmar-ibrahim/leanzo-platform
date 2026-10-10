@@ -117,55 +117,22 @@ export function StepDateTime() {
     if (!selectedDate) return [];
 
     const effectiveCategory = selectedService?.category || selectedServices[0]?.service?.category || category;
-    let baseSlots: BookingSlot[] = [];
     if (liveSlots !== null) {
-      baseSlots = [...liveSlots];
-    } else {
-      baseSlots = getTimeSlotsForDate(
-        selectedDate,
-        bookingSettings,
-        selectedService?.id,
-        selectedService?.title,
-        orders,
-        getTotalDuration() || selectedService?.serviceDurationMinutes || selectedService?.duration,
-        selectedService?.travelTimeMinutes,
-        currentServiceIds,
-        effectiveCategory
-      );
+      return liveSlots;
     }
 
-    // Cross-reference with all active orders in store using category isolation and interval overlap
-    return baseSlots.map((slot) => {
-      const isAlreadyBooked = orders.some((o) => {
-        if (o.status === 'cancelled') return false;
-        if (o.date !== selectedDate) return false;
-
-        // Category-based check: bookings in another category do not block
-        const oCat = getOrderCategory(o);
-        if (effectiveCategory && oCat && !isSameCategory(oCat, effectiveCategory)) {
-          return false;
-        }
-
-        const slotInterval = getBookingTimeInterval({
-          time: slot.time,
-          scheduledStart: slot.scheduledStart,
-          scheduledEnd: slot.scheduledEnd,
-          totalOccupiedMinutes: slot.totalOccupiedMinutes,
-        });
-        const orderInterval = getBookingTimeInterval(o);
-        return isTimeIntervalOverlapping(slotInterval, orderInterval);
-      });
-
-      if (isAlreadyBooked) {
-        return {
-          ...slot,
-          isAvailable: false,
-          reason: isAr ? 'محجوز بالكامل' : 'Booked',
-        };
-      }
-      return slot;
-    });
-  }, [selectedDate, liveSlots, bookingSettings, selectedService, currentServiceIds, orders, category, isAr, getTotalDuration]);
+    return getTimeSlotsForDate(
+      selectedDate,
+      bookingSettings,
+      selectedService?.id,
+      selectedService?.title,
+      orders,
+      getTotalDuration() || selectedService?.serviceDurationMinutes || selectedService?.duration,
+      selectedService?.travelTimeMinutes,
+      currentServiceIds,
+      effectiveCategory
+    );
+  }, [selectedDate, liveSlots, bookingSettings, selectedService, currentServiceIds, orders, category, getTotalDuration]);
 
   // Auto-select first available slot if current slot is invalid, or invalidate clearly if none available
   useEffect(() => {

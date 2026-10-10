@@ -87,7 +87,7 @@ export function getBookingTimeInterval(b?: {
     if (sMin > 0 && eMin > sMin) {
       return {
         startMin: sMin,
-        endMin: Math.max(eMin, sMin + fullDuration),
+        endMin: eMin,
         display: timeStr || `${b.scheduledStart} – ${b.scheduledEnd}`,
       };
     }
@@ -103,7 +103,7 @@ export function getBookingTimeInterval(b?: {
       if (min1 > 0 && min2 > 0) {
         // Robust against both LTR and RTL string ordering:
         const startMin = Math.min(min1, min2);
-        const endMin = Math.max(Math.max(min1, min2), startMin + fullDuration);
+        const endMin = Math.max(min1, min2);
         return {
           startMin,
           endMin,
@@ -684,9 +684,6 @@ export function getTimeSlotsForDate(
   // Include starts of occupied booking intervals so they are visible as unavailable slots
   for (const occ of mergedOccupied) {
     candidateStarts.add(occ.start);
-    for (let t = occ.start + 15; t < occ.end; t += 15) {
-      candidateStarts.add(t);
-    }
   }
 
   const sortedStarts = Array.from(candidateStarts).sort((a, b) => a - b);

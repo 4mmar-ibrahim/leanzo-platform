@@ -309,38 +309,22 @@ export function QuickBookingBottomSheet({
       );
     }
 
-    // Cross-reference with all active orders in store using category isolation and interval overlap
-    return baseSlots.map((slot) => {
-      const isAlreadyBooked = orders.some((o) => {
-        if (o.status === 'cancelled') return false;
-        if (o.date !== selectedDate) return false;
+    if (liveSlots !== null) {
+      return liveSlots;
+    }
 
-        // Category-based check: bookings in another category do not block
-        const oCat = getOrderCategory(o);
-        if (effectiveCategory && oCat && !isSameCategory(oCat, effectiveCategory)) {
-          return false;
-        }
-
-        const slotInterval = getBookingTimeInterval({
-          time: slot.time,
-          scheduledStart: slot.scheduledStart,
-          scheduledEnd: slot.scheduledEnd,
-          totalOccupiedMinutes: slot.totalOccupiedMinutes || serviceDuration,
-        });
-        const orderInterval = getBookingTimeInterval(o);
-        return isTimeIntervalOverlapping(slotInterval, orderInterval);
-      });
-
-      if (isAlreadyBooked) {
-        return {
-          ...slot,
-          isAvailable: false,
-          reason: isAr ? 'محجوز بالكامل' : 'Booked',
-        };
-      }
-      return slot;
-    });
-  }, [selectedDate, liveSlots, bookingSettings, selectedService, orders, serviceDuration, isAr]);
+    return getTimeSlotsForDate(
+      selectedDate,
+      bookingSettings,
+      selectedService?.id,
+      selectedService?.title,
+      orders,
+      serviceDuration,
+      selectedService?.travelTimeMinutes,
+      selectedService?.id ? [selectedService.id] : [],
+      effectiveCategory
+    );
+  }, [selectedDate, liveSlots, bookingSettings, selectedService, orders, serviceDuration]);
 
   const [selectedTime, setSelectedTime] = useState<string>('');
 
