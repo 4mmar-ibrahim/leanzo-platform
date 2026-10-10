@@ -5,9 +5,10 @@
   "scripts": {
     "dev": "next dev",
     "dev:backend": "npm --prefix backend run dev",
-    "build": "npm --prefix backend run build && next build",
+    "build": "next build",
     "build:frontend": "next build",
     "build:backend": "npm --prefix backend run build",
+    "build:all": "npm --prefix backend ci && npm --prefix backend run build && next build",
     "seed": "npm --prefix backend run seed",
     "test": "npm --prefix backend test",
     "start": "next start",
