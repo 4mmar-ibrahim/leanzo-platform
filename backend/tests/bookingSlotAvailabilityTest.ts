@@ -27,18 +27,19 @@ async function run() {
 
   await connectDB();
 
-  // 1. Setup clean test service (45 min service duration, travel time NOT added to slot)
+  // 1. Setup clean test service (30 min service + 15 min travel = 45 min total occupancy)
   const testService45 = await Service.findOneAndUpdate(
     { id: 'srv-bug06-45m' },
     {
       id: 'srv-bug06-45m',
-      title: 'غسيل 45 دقيقة',
-      titleEn: 'Wash 45m',
+      title: 'غسيل 45 دقيقة (30 خدمة + 15 انتقال)',
+      titleEn: 'Wash 45m (30 service + 15 travel)',
       category: 'cars',
       price: 220,
-      duration: 45,
-      serviceDurationMinutes: 45,
-      travelTimeMinutes: 15, // preserved as metadata, NOT added to slot
+      duration: 30,
+      serviceDurationMinutes: 30,
+      travelTimeMinutes: 15,
+      totalOccupiedMinutes: 45,
       image: '/images/car-wash.jpg',
       active: true,
       available: true,
@@ -172,12 +173,12 @@ async function run() {
     assert(s1030 !== undefined, '10:30 slot is present');
     assert(s1030!.available === false, '10:30 slot is marked unavailable');
 
-    // totalOccupiedMinutes should be 20 (service duration only, no travel)
-    assert(res.serviceTiming.totalOccupiedMinutes === 20, `Total occupancy should be 20, got: ${res.serviceTiming.totalOccupiedMinutes}`);
+    // totalOccupiedMinutes should be 30 (20 min service + 10 min travel)
+    assert(res.serviceTiming.totalOccupiedMinutes === 30, `Total occupancy should be 30, got: ${res.serviceTiming.totalOccupiedMinutes}`);
     assert(res.serviceTiming.serviceDurationMinutes === 20, `Service duration should be 20, got: ${res.serviceTiming.serviceDurationMinutes}`);
   });
 
-  await test('Edge Case: Service duration 75 min (no travel time inflation)', async () => {
+  await test('Edge Case: Service duration 60 min + travel 15 min = 75 min total occupancy', async () => {
     const srv75 = await Service.findOneAndUpdate(
       { id: 'srv-bug06-75m' },
       {
@@ -186,9 +187,10 @@ async function run() {
         titleEn: 'Service 75m',
         category: 'cars',
         price: 350,
-        serviceDurationMinutes: 75,
+        serviceDurationMinutes: 60,
         travelTimeMinutes: 15,
-        duration: 75,
+        totalOccupiedMinutes: 75,
+        duration: 60,
         image: '/images/car-wash.jpg',
         active: true,
         available: true,
@@ -201,9 +203,9 @@ async function run() {
 
     const res = await getAvailableSlots(date75, srv75.id);
     assert(res.slots.length > 0, '75m slots generated');
-    // totalOccupiedMinutes = serviceDurationMinutes = 75 (NOT 90)
-    assert(res.serviceTiming.totalOccupiedMinutes === 75, `Total occupancy should be 75 (not 90), got: ${res.serviceTiming.totalOccupiedMinutes}`);
-    assert(res.serviceTiming.serviceDurationMinutes === 75, `Service duration should be 75, got: ${res.serviceTiming.serviceDurationMinutes}`);
+    // totalOccupiedMinutes = 60 + 15 = 75
+    assert(res.serviceTiming.totalOccupiedMinutes === 75, `Total occupancy should be 75, got: ${res.serviceTiming.totalOccupiedMinutes}`);
+    assert(res.serviceTiming.serviceDurationMinutes === 60, `Service duration should be 60, got: ${res.serviceTiming.serviceDurationMinutes}`);
   });
 
   await test('Edge Case: Business breaks retain slot as unavailable with reason (استراحة عمل)', async () => {

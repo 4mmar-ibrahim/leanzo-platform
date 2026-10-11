@@ -714,27 +714,20 @@ export function getTimeSlotsForDate(
   // Generate sequential slots within each free block (snapped to 15-min grid)
   const candidateStarts = new Set<number>();
 
+  // Continuous sequential slot generation within each free block:
+  // Slots start at block.start and step sequentially by totalOccupancy
+  // Example for 45 min: 09:00 -> 09:45 -> 10:30 -> 11:15...
   for (const block of freeBlocks) {
-    // 1. Sequential continuous slots starting from the free block start
     let slotCursor = snapTo15Minutes(block.start);
+    // If today and prior slots elapsed, skip to the next upcoming sequential slot
+    if (isToday && earliestAllowedMinutes > slotCursor) {
+      while (slotCursor < earliestAllowedMinutes && slotCursor + totalOccupancy <= block.end) {
+        slotCursor += totalOccupancy;
+      }
+    }
     while (slotCursor + totalOccupancy <= block.end) {
       candidateStarts.add(slotCursor);
-      const rawNext = slotCursor + totalOccupancy;
-      slotCursor = snapTo15Minutes(rawNext);
-    }
-
-    // 2. Candidate start times on 15-minute grid within this free block
-    const blockStartSnap = snapTo15Minutes(block.start);
-    for (let t = blockStartSnap; t + totalOccupancy <= block.end; t += 15) {
-      candidateStarts.add(t);
-    }
-
-    // 3. For today: if prior sequential slots have elapsed, start from next clean boundary
-    if (isToday && earliestAllowedMinutes > block.start && earliestAllowedMinutes < block.end) {
-      const alignedTodayStart = snapTo15Minutes(earliestAllowedMinutes);
-      for (let t = alignedTodayStart; t + totalOccupancy <= block.end; t += 15) {
-        candidateStarts.add(t);
-      }
+      slotCursor += totalOccupancy;
     }
   }
 

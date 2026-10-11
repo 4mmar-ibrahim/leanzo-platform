@@ -486,6 +486,13 @@ export function createPrismaRepository(prismaDelegateName: keyof typeof prisma) 
       }
 
       if (modelName === 'service') {
+        const srvDur = Number(cleanData.serviceDurationMinutes ?? cleanData.duration) || 30;
+        const travelDur = Number(cleanData.travelTimeMinutes ?? 0);
+        cleanData.serviceDurationMinutes = srvDur;
+        cleanData.travelTimeMinutes = travelDur;
+        cleanData.totalOccupiedMinutes = srvDur + travelDur;
+        cleanData.duration = srvDur;
+
         const allowed = new Set([
           'id', 'category', 'subCategory', 'title', 'titleEn',
           'shortDescription', 'shortDescriptionEn', 'description', 'descriptionEn',
@@ -567,6 +574,17 @@ export function createPrismaRepository(prismaDelegateName: keyof typeof prisma) 
         }
       }
 
+      if (modelName === 'service') {
+        if (data.serviceDurationMinutes !== undefined || data.travelTimeMinutes !== undefined || data.duration !== undefined) {
+          const srvDur = Number(data.serviceDurationMinutes ?? data.duration ?? 30);
+          const travelDur = Number(data.travelTimeMinutes ?? 0);
+          data.serviceDurationMinutes = srvDur;
+          data.travelTimeMinutes = travelDur;
+          data.totalOccupiedMinutes = srvDur + travelDur;
+          data.duration = srvDur;
+        }
+      }
+
       return delegate.updateMany({
         where,
         data,
@@ -636,6 +654,15 @@ export function createPrismaRepository(prismaDelegateName: keyof typeof prisma) 
       }
 
       if (modelName === 'service') {
+        if (data.serviceDurationMinutes !== undefined || data.travelTimeMinutes !== undefined || data.duration !== undefined) {
+          const srvDur = Number(data.serviceDurationMinutes ?? data.duration ?? 30);
+          const travelDur = Number(data.travelTimeMinutes ?? 0);
+          data.serviceDurationMinutes = srvDur;
+          data.travelTimeMinutes = travelDur;
+          data.totalOccupiedMinutes = srvDur + travelDur;
+          data.duration = srvDur;
+        }
+
         const allowed = new Set([
           'id', 'category', 'subCategory', 'title', 'titleEn',
           'shortDescription', 'shortDescriptionEn', 'description', 'descriptionEn',

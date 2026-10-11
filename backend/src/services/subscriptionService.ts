@@ -1094,6 +1094,7 @@ export async function getSubscriptionAnalytics(params?: {
       activeSubscriptionValue,
       upcomingSubscriptionVisits: upcomingVisitsCount,
       completedSubscriptionVisits: completedVisitsCount,
+      completedVisits: completedVisitsCount,
       cancelledVisits: cancelledVisitsCount,
       rescheduledVisits: rescheduledVisitsCount,
       renewalRate,

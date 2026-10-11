@@ -456,7 +456,9 @@ export const useBookingStore = create<BookingState>()(
           const travelDur = Number(s.travelTimeMinutes || 0);
           const baseDur = pkg
             ? Number(pkg.durationMinutes) || 45
-            : Number(s.serviceDurationMinutes || s.duration) || 45;
+            : s.serviceDurationMinutes !== undefined && s.serviceDurationMinutes !== null
+              ? Number(s.serviceDurationMinutes)
+              : (s.totalOccupiedMinutes ? Math.max(1, Number(s.totalOccupiedMinutes) - travelDur) : Number(s.duration) || 30);
 
           return {
             serviceId: s.id,

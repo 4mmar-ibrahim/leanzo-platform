@@ -217,17 +217,19 @@ export async function resolveServiceTiming(
   if (serviceId) {
     const service = await Service.findOne({ id: serviceId });
     if (service) {
-      const baseServiceDuration = service.serviceDurationMinutes || service.duration || 45;
+      const srvDur = Number(service.serviceDurationMinutes) || Number(service.duration) || 30;
+      const srvTravel = Number(service.travelTimeMinutes) || 0;
+      const totalOccupied = service.totalOccupiedMinutes || (srvDur + srvTravel);
 
-      const serviceDurationMinutes =
+      const effectiveOccupied =
         customDuration !== undefined && customDuration !== null && customDuration > 0
           ? customDuration
-          : baseServiceDuration;
+          : totalOccupied;
 
       return {
-        serviceDurationMinutes,
-        travelTimeMinutes: 0,
-        totalOccupiedMinutes: serviceDurationMinutes,
+        serviceDurationMinutes: srvDur,
+        travelTimeMinutes: srvTravel,
+        totalOccupiedMinutes: effectiveOccupied,
       };
     }
   }
@@ -683,31 +685,23 @@ export async function getAvailableSlots(
   // - Each free block is partitioned sequentially by timing.totalOccupiedMinutes,
   //   but each next slot snaps to the nearest 15-min boundary at or after the previous slot's end.
   // - Bookings or breaks (occupied intervals) are included and marked unavailable.
-  const requiredDuration = timing.serviceDurationMinutes;
+  const requiredDuration = timing.totalOccupiedMinutes;
   const candidateStarts = new Set<number>();
 
-  // A. Generate candidate slots within each free block (snapped to 15-min grid)
+  // A. Generate sequential continuous slots within each free block
+  // Slots start at block.start and step sequentially by requiredDuration
+  // Example for 45 min: 09:00 -> 09:45 -> 10:30 -> 11:15...
   for (const block of freeBlocks) {
-    // 1. Sequential continuous slots starting from the free block start
     let slotCursor = snapTo15Minutes(block.start);
+    // If today and prior slots elapsed, skip to the next upcoming sequential slot
+    if (isToday && earliestAllowedMinutes > slotCursor) {
+      while (slotCursor < earliestAllowedMinutes && slotCursor + requiredDuration <= block.end) {
+        slotCursor += requiredDuration;
+      }
+    }
     while (slotCursor + requiredDuration <= block.end) {
       candidateStarts.add(slotCursor);
-      const rawNext = slotCursor + requiredDuration;
-      slotCursor = snapTo15Minutes(rawNext);
-    }
-
-    // 2. Also offer candidate start times on clean 15-minute grid within this free block
-    const blockStartSnap = snapTo15Minutes(block.start);
-    for (let t = blockStartSnap; t + requiredDuration <= block.end; t += 15) {
-      candidateStarts.add(t);
-    }
-
-    // 3. For today: if prior slots have already elapsed, ensure slots start from clean boundary after earliest notice
-    if (isToday && earliestAllowedMinutes > block.start && earliestAllowedMinutes < block.end) {
-      const alignedTodayStart = snapTo15Minutes(earliestAllowedMinutes);
-      for (let t = alignedTodayStart; t + requiredDuration <= block.end; t += 15) {
-        candidateStarts.add(t);
-      }
+      slotCursor += requiredDuration;
     }
   }
 
@@ -731,7 +725,7 @@ export async function getAvailableSlots(
 
     // Check service completion before end of working hours (allow 1440 for 23:59 end-of-day)
     const completionLimit = workEndMin === 1439 ? 1440 : workEndMin;
-    if (slotStart + timing.serviceDurationMinutes > completionLimit) {
+    if (slotStart + timing.totalOccupiedMinutes > completionLimit) {
       continue;
     }
 
@@ -862,14 +856,14 @@ export async function assertSlotAvailability(params: {
   // Snap the requested time to the nearest clean 15-minute boundary
   const rawStartMin = timeStringToMinutes(timeStr);
   const slotStartMin = snapTo15Minutes(rawStartMin);
-  const slotEndMin = slotStartMin + timing.serviceDurationMinutes;
+  const slotEndMin = slotStartMin + timing.totalOccupiedMinutes;
 
   const workStartMin = timeStringToMinutes(settings.workingHoursStart);
   const workEndMin = timeStringToMinutes(settings.workingHoursEnd);
 
   // 2. Working Hours & Day Boundary Check (allow 1440 for 23:59 end-of-day)
   const completionLimit = workEndMin === 1439 ? 1440 : workEndMin;
-  if (slotStartMin < workStartMin || (slotStartMin + timing.serviceDurationMinutes) > completionLimit) {
+  if (slotStartMin < workStartMin || (slotStartMin + timing.totalOccupiedMinutes) > completionLimit) {
     throw new Error('الوقت المحدد يقع خارج ساعات العمل الرسمية لسيارات الخدمة');
   }
 
@@ -955,7 +949,7 @@ export async function assertSlotAvailability(params: {
     }
 
     const bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
-    const bDuration = b.serviceDurationMinutes || b.duration || 45;
+    const bDuration = b.totalOccupiedMinutes || b.serviceDurationMinutes || b.duration || 45;
     const bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + bDuration;
 
     let isOccupied = false;

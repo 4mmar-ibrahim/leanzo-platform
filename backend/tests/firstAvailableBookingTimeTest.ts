@@ -190,13 +190,13 @@ async function runBookingTimeVerificationSuite() {
     // TEST 4 & 5: Addon increases duration -> recalculates slots; removing addon recalculates back
     // -------------------------------------------------------------------------
     console.log('\n--- TEST 4 & 5: Addon increases duration to 90 min, then reverts to 60 min ---');
-    // With 90 min duration, starting at 19:00 ends at 20:30
+    // With 90 min duration, sequential slots step by 90m: 18:00 -> 19:30, 19:30 -> 21:00
     const resAddon = await getAvailableSlots(today, testCar.id, 90, [testCar.id], undefined, 'car');
-    const slot1900Addon = resAddon.slots.find((s) => s.start === '19:00');
-    assert(Boolean(slot1900Addon && slot1900Addon.end === '20:30'), '19:00 slot with 90m addon ends at 20:30');
-    assert(Boolean(slot1900Addon && slot1900Addon.available === true), '19:00 slot for 90m is available');
+    const slot1800Addon = resAddon.slots.find((s) => s.start === '18:00');
+    assert(Boolean(slot1800Addon && slot1800Addon.end === '19:30'), '18:00 slot with 90m addon ends at 19:30');
+    assert(Boolean(slot1800Addon && slot1800Addon.available === true), '18:00 slot for 90m is available');
 
-    // Slot at 21:00 cannot fit 90m (21:00 + 90m = 22:30 > 22:00)
+    // Slot starting at 21:00 cannot fit 90m (21:00 + 90m = 22:30 > 22:00)
     const slot2100Addon = resAddon.slots.find((s) => s.start === '21:00');
     assert(slot2100Addon === undefined, '21:00 slot is NOT offered for 90m service (would exceed 22:00 closing)');
 

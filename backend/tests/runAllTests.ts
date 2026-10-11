@@ -83,20 +83,18 @@ async function runTests() {
 
   await connectDB();
 
-  // Clean test collections
-  await Promise.all([
-    User.deleteMany({}),
-    AdminUser.deleteMany({}),
-    Service.deleteMany({}),
-    Booking.deleteMany({}),
-    Offer.deleteMany({}),
-    ZoPageConfig.deleteMany({}),
-    Role.deleteMany({}),
-    Technician.deleteMany({}),
-    LocationGovernorate.deleteMany({}),
-    Coupon.deleteMany({}),
-    CouponUsage.deleteMany({}),
-  ]);
+  // Clean test collections in foreign-key dependency order sequentially to prevent PostgreSQL deadlocks
+  await CouponUsage.deleteMany({});
+  await Coupon.deleteMany({});
+  await Booking.deleteMany({});
+  await Offer.deleteMany({});
+  await ZoPageConfig.deleteMany({});
+  await Technician.deleteMany({});
+  await Service.deleteMany({});
+  await LocationGovernorate.deleteMany({});
+  await AdminUser.deleteMany({});
+  await Role.deleteMany({});
+  await User.deleteMany({});
 
   // Seed baseline active test governorate
   await LocationGovernorate.create({

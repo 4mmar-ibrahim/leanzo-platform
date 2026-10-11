@@ -69,15 +69,14 @@ const ServiceSchema = new Schema<IService>(
   { timestamps: true }
 );
 
-// Synchronize durations before save
+// Synchronize durations before save: totalOccupiedMinutes = serviceDurationMinutes + travelTimeMinutes
 ServiceSchema.pre('save', function (next) {
-  if (this.serviceDurationMinutes === undefined || this.serviceDurationMinutes === null) {
-    this.serviceDurationMinutes = this.duration || 45;
-  }
-  this.travelTimeMinutes = 0;
-  this.duration = this.serviceDurationMinutes;
-  // totalOccupiedMinutes = serviceDurationMinutes ONLY (no travel time inflation)
-  this.totalOccupiedMinutes = this.serviceDurationMinutes;
+  const serviceDur = Number(this.serviceDurationMinutes ?? this.duration) || 30;
+  const travelDur = Number(this.travelTimeMinutes ?? 0);
+  this.serviceDurationMinutes = serviceDur;
+  this.travelTimeMinutes = travelDur;
+  this.totalOccupiedMinutes = serviceDur + travelDur;
+  this.duration = serviceDur;
   next();
 });
 
