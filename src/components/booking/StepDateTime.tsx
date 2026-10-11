@@ -5,7 +5,15 @@ import { Calendar, Clock, ChevronDown, Check, AlertCircle, CheckCircle2 } from '
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useBookingStore } from '@/store/useBookingStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
-import { getUpcomingBookingDates, BookingDateOption } from '@/lib/bookingEngine';
+import { useOrderStore } from '@/store/useOrderStore';
+import {
+  getUpcomingBookingDates,
+  BookingDateOption,
+  getBookingTimeInterval,
+  isTimeIntervalOverlapping,
+  isSameCategory,
+  getOrderCategory,
+} from '@/lib/bookingEngine';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { cn } from '@/lib/utils';
 
@@ -139,6 +147,9 @@ export function StepDateTime() {
   }, [selectedDate, dateOptions, setDate]);
 
   // Fetch available slots from backend with real-time accuracy
+  const storeOrders = useOrderStore((state) => state.orders);
+
+  // Fetch available slots from backend with real-time accuracy and zero-conflict filtering
   const fetchAvailableSlots = useCallback(async () => {
     if (!selectedDate) {
       setSlots([]);
@@ -158,10 +169,34 @@ export function StepDateTime() {
       );
 
       if (res && Array.isArray(res.slots)) {
-        // Customer view: only available slots
+        // Customer view: strictly available slots only
         const availableOnly = res.slots.filter((s: any) => Boolean(s.available ?? s.isAvailable));
 
-        const parsedSlots: SlotItem[] = availableOnly.map((s: any) => {
+        // Interlock with all active orders in useOrderStore for the same category on selectedDate
+        const existingOrders = useOrderStore.getState().orders || [];
+
+        const nonConflictingSlots = availableOnly.filter((s: any) => {
+          const rawStart = s.start || s.time24 || (s.time ? s.time.split(/[-–—]/)[0].trim() : '09:00');
+          const rawEnd = s.end || (s.time ? s.time.split(/[-–—]/)[1]?.trim() : '');
+          const slotTime = s.time || `${rawStart} – ${rawEnd}`;
+
+          const requestedInterval = getBookingTimeInterval({
+            time: slotTime,
+            totalOccupiedMinutes: totalDuration,
+          });
+
+          const isConflict = existingOrders.some((o) => {
+            if (o.status === 'cancelled') return false;
+            if (o.date !== selectedDate) return false;
+            if (!isSameCategory(getOrderCategory(o), effectiveCategory)) return false;
+            const oInterval = getBookingTimeInterval(o);
+            return isTimeIntervalOverlapping(requestedInterval, oInterval);
+          });
+
+          return !isConflict;
+        });
+
+        const parsedSlots: SlotItem[] = nonConflictingSlots.map((s: any) => {
           const rawStart = s.start || s.time24 || (s.time ? s.time.split(/[-–—]/)[0].trim() : '09:00');
           const rawEnd = s.end || (s.time ? s.time.split(/[-–—]/)[1]?.trim() : '');
           const rawTime = s.time || `${rawStart} – ${rawEnd}`;
@@ -198,7 +233,7 @@ export function StepDateTime() {
     } finally {
       setIsLoadingSlots(false);
     }
-  }, [selectedDate, selectedService?.id, totalDuration, currentServiceIds, effectiveCategory, selectedTime, setTime]);
+  }, [selectedDate, selectedService?.id, totalDuration, currentServiceIds, effectiveCategory, selectedTime, setTime, storeOrders]);
 
   // Refetch when date changes
   useEffect(() => {

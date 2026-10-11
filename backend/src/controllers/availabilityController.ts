@@ -21,17 +21,19 @@ export async function checkDateAvailability(req: Request, res: Response): Promis
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
 
+    const isIncludeUnavailable = includeUnavailable === 'true';
     const result = await getAvailableSlots(
       date,
       serviceId as string,
       durationNum,
       parsedServiceIds,
       excludeBookingId as string | undefined,
-      category as string | undefined
+      category as string | undefined,
+      isIncludeUnavailable
     );
 
-    // If availableOnly=true is requested (e.g. from customer booking flow), filter out unavailable slots
-    if (req.query.availableOnly === 'true') {
+    // Ensure unavailable slots are stripped out unless specifically requested
+    if (!isIncludeUnavailable || req.query.availableOnly === 'true') {
       result.slots = result.slots.filter((s) => s.available);
     }
 

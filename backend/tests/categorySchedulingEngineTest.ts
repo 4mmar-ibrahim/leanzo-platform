@@ -181,8 +181,13 @@ async function runCategorySchedulingEngineTests() {
     const slot0900 = tireWashSlots.slots.find((s) => s.start === '09:00');
     const slot0945 = tireWashSlots.slots.find((s) => s.start === '09:45');
 
-    assert(slot0900 !== undefined && slot0900.available === false, 'Tire Wash at 09:00 is BLOCKED because Car Wash is booked 09:00-09:45');
+    assert(slot0900 === undefined, 'Tire Wash at 09:00 is COMPLETELY EXCLUDED for customers because Car Wash is booked 09:00-09:45');
     assert(slot0945 !== undefined && slot0945.available === true, 'Tire Wash at 09:45 is AVAILABLE immediately following Car Wash 09:00-09:45 finish boundary');
+
+    // Admin view with includeUnavailable=true retains the slot marked unavailable
+    const adminSlots = await getAvailableSlots(testDate, tireWash.id, 30, [tireWash.id], undefined, 'car', true);
+    const admin0900 = adminSlots.slots.find((s) => s.start === '09:00');
+    assert(admin0900 !== undefined && admin0900.available === false, 'Admin view with includeUnavailable=true retains 09:00 as blocked');
 
     // Verify Backend assertion also enforces 409 conflict
     let conflictThrown = false;

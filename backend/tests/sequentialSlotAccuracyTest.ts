@@ -125,7 +125,7 @@ async function runSequentialAccuracyTests() {
     const carSlot0945 = carWashSlots.slots.find((s) => s.start === '09:45');
     const carSlot1030 = carWashSlots.slots.find((s) => s.start === '10:30');
 
-    assert(carSlot0900 !== undefined && carSlot0900.available === false, '09:00 slot is marked UNAVAILABLE (Booked)');
+    assert(carSlot0900 === undefined, '09:00 slot is COMPLETELY EXCLUDED for customers (Booked)');
     assert(carSlot0945 !== undefined && carSlot0945.available === true, '09:45 slot is IMMEDIATELY AVAILABLE (45m service starts at 09:45)');
     assert(carSlot1030 !== undefined && carSlot1030.available === true, '10:30 slot is AVAILABLE (No 2-hour blocking!)');
 
@@ -135,7 +135,7 @@ async function runSequentialAccuracyTests() {
     const tireSlot0945 = tireWashSlots.slots.find((s) => s.start === '09:45');
     const tireSlot1015 = tireWashSlots.slots.find((s) => s.start === '10:15');
 
-    assert(tireSlot0900 !== undefined && tireSlot0900.available === false, 'Tire Wash at 09:00 is UNAVAILABLE because of 09:00-09:45 Car Wash');
+    assert(tireSlot0900 === undefined, 'Tire Wash at 09:00 is COMPLETELY EXCLUDED because of 09:00-09:45 Car Wash');
     assert(tireSlot0945 !== undefined && tireSlot0945.available === true, 'Tire Wash at 09:45 is IMMEDIATELY AVAILABLE (30m service starts at 09:45)');
     assert(tireSlot1015 !== undefined && tireSlot1015.available === true, 'Tire Wash at 10:15 is AVAILABLE (Consecutive 30m slot)');
 
@@ -172,8 +172,8 @@ async function runSequentialAccuracyTests() {
     const slot1015Both = slotsAfterBoth.slots.find((s) => s.start === '10:15');
     const slot1100Both = slotsAfterBoth.slots.find((s) => s.start === '11:00');
 
-    assert(slot0900Both !== undefined && slot0900Both.available === false, '09:00 is UNAVAILABLE');
-    assert(!slot0945Both || slot0945Both.available === false, '09:45 is NOT available (Booked by Tire Wash 09:45-10:15)');
+    assert(slot0900Both === undefined, '09:00 is COMPLETELY EXCLUDED for customers');
+    assert(slot0945Both === undefined, '09:45 is COMPLETELY EXCLUDED for customers (Booked by Tire Wash 09:45-10:15)');
     assert(slot1015Both !== undefined && slot1015Both.available === true, '10:15 is IMMEDIATELY AVAILABLE (Next slot starts right at 10:15!)');
     assert(Boolean(slot1015Both && slot1015Both.end === '11:00'), '10:15 slot for 45m ends exactly at 11:00');
     assert(slot1100Both !== undefined && slot1100Both.available === true, '11:00 is AVAILABLE (No slots blocked after 10:15!)');

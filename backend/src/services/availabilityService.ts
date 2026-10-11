@@ -411,7 +411,8 @@ export async function getAvailableSlots(
   customDuration?: number,
   serviceIds?: string[],
   excludeBookingId?: string,
-  category?: string
+  category?: string,
+  includeUnavailable: boolean = false
 ): Promise<{
   date: string;
   isDayAvailable: boolean;
@@ -746,10 +747,12 @@ export async function getAvailableSlots(
     }
   }
 
-  // B. Include active booking and break intervals so they are retained and marked unavailable
-  for (const occ of mergedOccupied) {
-    if (occ.type === 'booking' || occ.type === 'break') {
-      candidateStarts.add(snapTo15Minutes(occ.start));
+  // B. Include active booking and break intervals ONLY if includeUnavailable is true (e.g. for admin inspection)
+  if (includeUnavailable) {
+    for (const occ of mergedOccupied) {
+      if (occ.type === 'booking' || occ.type === 'break') {
+        candidateStarts.add(snapTo15Minutes(occ.start));
+      }
     }
   }
 
@@ -793,6 +796,11 @@ export async function getAvailableSlots(
 
     const isAvailable = !isBreakConflict && !collidingOcc;
     const reason = isBreakConflict ? breakReason : collidingOcc ? (collidingOcc.reason || 'محجوز بالكامل') : undefined;
+
+    // Strict customer availability rule: Booked / colliding slots must NOT appear at all!
+    if (!isAvailable && !includeUnavailable) {
+      continue;
+    }
 
     const { time24: start24 } = minutesToDisplayTime(slotStart);
     const { time24: end24 } = minutesToDisplayTime(Math.min(workEndMin, slotEnd));
