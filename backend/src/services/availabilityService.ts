@@ -548,10 +548,30 @@ export async function getAvailableSlots(
       }
     }
 
-    const bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
-    // Pure service duration without arbitrary travel buffer inflation
-    const bDuration = b.serviceDurationMinutes || b.duration || 45;
-    const bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + bDuration;
+    let bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart);
+    let bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : 0;
+
+    const rawTimeStr = String(b.time || '').trim();
+    if ((!bStart || !bEnd) && (rawTimeStr.includes('–') || rawTimeStr.includes('-') || rawTimeStr.includes('—'))) {
+      const parts = rawTimeStr.split(/[-–—]/).map((p) => p.trim());
+      if (parts.length >= 2) {
+        const min1 = timeStringToMinutes(parts[0]);
+        const min2 = timeStringToMinutes(parts[1]);
+        if (min1 > 0 && min2 > 0) {
+          if (!bStart) bStart = Math.min(min1, min2);
+          if (!bEnd) bEnd = Math.max(min1, min2);
+        }
+      }
+    }
+
+    if (!bStart) {
+      bStart = timeStringToMinutes(b.time);
+    }
+
+    const bDuration = b.totalOccupiedMinutes || (b.serviceDurationMinutes ? b.serviceDurationMinutes + (b.travelTimeMinutes || 0) : b.duration) || 45;
+    if (!bEnd || bEnd <= bStart) {
+      bEnd = bStart + bDuration;
+    }
 
     if (b.status !== 'cancelled') {
       // Active booking: occupies [bStart, bEnd]
@@ -600,9 +620,30 @@ export async function getAvailableSlots(
       }
     }
 
-    const vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart || v.time);
-    const vDuration = v.serviceDurationMinutes || v.duration || 45;
-    const vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + vDuration;
+    let vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart);
+    let vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : 0;
+
+    const rawVTimeStr = String(v.time || '').trim();
+    if ((!vStart || !vEnd) && (rawVTimeStr.includes('–') || rawVTimeStr.includes('-') || rawVTimeStr.includes('—'))) {
+      const parts = rawVTimeStr.split(/[-–—]/).map((p) => p.trim());
+      if (parts.length >= 2) {
+        const min1 = timeStringToMinutes(parts[0]);
+        const min2 = timeStringToMinutes(parts[1]);
+        if (min1 > 0 && min2 > 0) {
+          if (!vStart) vStart = Math.min(min1, min2);
+          if (!vEnd) vEnd = Math.max(min1, min2);
+        }
+      }
+    }
+
+    if (!vStart) {
+      vStart = timeStringToMinutes(v.time);
+    }
+
+    const vDuration = v.totalOccupiedMinutes || (v.serviceDurationMinutes ? v.serviceDurationMinutes + (v.travelTimeMinutes || 0) : v.duration) || 45;
+    if (!vEnd || vEnd <= vStart) {
+      vEnd = vStart + vDuration;
+    }
 
     if (v.status !== 'cancelled') {
       occupiedIntervals.push({ start: vStart, end: vEnd, type: 'booking', reason: 'محجوز بالكامل' });
@@ -948,9 +989,30 @@ export async function assertSlotAvailability(params: {
       }
     }
 
-    const bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
-    const bDuration = b.totalOccupiedMinutes || b.serviceDurationMinutes || b.duration || 45;
-    const bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + bDuration;
+    let bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart);
+    let bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : 0;
+
+    const rawTimeStr = String(b.time || '').trim();
+    if ((!bStart || !bEnd) && (rawTimeStr.includes('–') || rawTimeStr.includes('-') || rawTimeStr.includes('—'))) {
+      const parts = rawTimeStr.split(/[-–—]/).map((p) => p.trim());
+      if (parts.length >= 2) {
+        const min1 = timeStringToMinutes(parts[0]);
+        const min2 = timeStringToMinutes(parts[1]);
+        if (min1 > 0 && min2 > 0) {
+          if (!bStart) bStart = Math.min(min1, min2);
+          if (!bEnd) bEnd = Math.max(min1, min2);
+        }
+      }
+    }
+
+    if (!bStart) {
+      bStart = timeStringToMinutes(b.time);
+    }
+
+    const bDuration = b.totalOccupiedMinutes || (b.serviceDurationMinutes ? b.serviceDurationMinutes + (b.travelTimeMinutes || 0) : b.duration) || 45;
+    if (!bEnd || bEnd <= bStart) {
+      bEnd = bStart + bDuration;
+    }
 
     let isOccupied = false;
     let occStart = bStart;

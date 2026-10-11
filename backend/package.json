@@ -28,6 +28,8 @@
     "mongoose": "^8.10.1",
     "morgan": "^1.10.0",
     "multer": "^2.4.0",
+    "prisma": "6.4.1",
+    "typescript": "^5.7.3",
     "zod": "^3.24.2"
   },
   "devDependencies": {
@@ -39,8 +41,6 @@
     "@types/morgan": "^1.9.9",
     "@types/multer": "^2.2.0",
     "@types/node": "^22.13.4",
-    "tsx": "^4.19.3",
-    "typescript": "^5.7.3",
-    "prisma": "6.4.1"
+    "tsx": "^4.19.3"
   }
 }

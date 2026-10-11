@@ -94,8 +94,8 @@ export function getBookingTimeInterval(b?: {
 
   const timeStr = String(b.time || '').trim();
   const fullDuration =
-    b.serviceDurationMinutes ||
-    b.duration ||
+    b.totalOccupiedMinutes ||
+    (b.serviceDurationMinutes ? b.serviceDurationMinutes + (b.travelTimeMinutes || 0) : b.duration) ||
     b.service?.duration ||
     b.serviceSnapshot?.duration ||
     60;
