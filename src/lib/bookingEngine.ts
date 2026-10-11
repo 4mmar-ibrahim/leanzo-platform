@@ -751,7 +751,7 @@ export function getTimeSlotsForDate(
 
     // Check service completion before end of working hours (allow 1440 for 23:59 end-of-day)
     const completionLimit = endMin === 1439 ? 1440 : endMin;
-    if (slotStart + durationMin > completionLimit) {
+    if (slotStart + totalOccupancy > completionLimit) {
       continue;
     }
 

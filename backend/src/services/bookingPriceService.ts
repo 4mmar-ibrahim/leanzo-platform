@@ -97,7 +97,9 @@ export async function calculateBookingPrice(
     throw new Error('الخدمة المطلوبة غير موجودة');
   }
 
-  let totalServiceDuration = Number(service.serviceDurationMinutes || service.duration) || 45;
+  const srvDur = Number(service.serviceDurationMinutes || service.duration) || 30;
+  const travelDur = Number(service.travelTimeMinutes) || 0;
+  let totalServiceDuration = service.totalOccupiedMinutes || (srvDur + travelDur);
   let packageSnapshot: PriceCalculationResult['packageSnapshot'] = undefined;
   let resolvedPackageId: string | undefined = undefined;
   let selectedPackageForCalc: any = null;
@@ -117,7 +119,7 @@ export async function calculateBookingPrice(
       throw new Error('الباقة المحددة غير متاحة حالياً');
     }
 
-    totalServiceDuration = Number(pkg.durationMinutes) || 45;
+    totalServiceDuration = (Number(pkg.durationMinutes) || 45) + travelDur;
     resolvedPackageId = pkg.id;
     selectedPackageForCalc = {
       id: pkg.id,
