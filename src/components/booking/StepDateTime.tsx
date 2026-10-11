@@ -249,10 +249,12 @@ export function StepDateTime() {
   // Display label for selected date button
   const dateButtonLabel = useMemo(() => {
     if (!selectedDateObj) return isAr ? 'اختر اليوم المناسب' : 'Select Date';
-    const dayLabel = isAr ? selectedDateObj.dayNameAr : selectedDateObj.dayNameEn;
     const dateLabel = isAr ? selectedDateObj.formattedDateAr : selectedDateObj.formattedDateEn;
-    const prefix = selectedDateObj.isToday ? (isAr ? 'اليوم · ' : 'Today · ') : '';
-    return `${prefix}${dayLabel} (${dateLabel})`;
+    if (selectedDateObj.isToday) {
+      return isAr ? `اليوم (${dateLabel})` : `Today (${dateLabel})`;
+    }
+    const dayLabel = isAr ? selectedDateObj.dayNameAr : selectedDateObj.dayNameEn;
+    return `${dayLabel} (${dateLabel})`;
   }, [selectedDateObj, isAr]);
 
   // Display label for selected time button
@@ -267,9 +269,9 @@ export function StepDateTime() {
   }, [selectedSlotObj, slots.length, isLoadingSlots, isAr]);
 
   return (
-    <div className="space-y-6 sm:space-y-8 animate-in fade-in-50 duration-300 max-w-2xl mx-auto">
+    <div className="space-y-6 sm:space-y-8 animate-in fade-in-50 duration-300 max-w-3xl mx-auto">
       {/* Header Info */}
-      <div className="bg-white dark:bg-[#071E34] p-4 sm:p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="bg-white dark:bg-[#071E34] p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -277,7 +279,7 @@ export function StepDateTime() {
               {isAr ? 'تحديث حي ومباشر' : 'Live Real-Time Availability'}
             </span>
           </div>
-          <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+          <h2 className="text-base sm:text-lg font-black text-slate-900 dark:white">
             {isAr ? 'اختر تاريخ وتوقيت الحجز' : 'Select Booking Date & Time'}
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -296,176 +298,178 @@ export function StepDateTime() {
         </div>
       </div>
 
-      {/* Dropdown Section: Date & Time */}
-      <div className="bg-white dark:bg-[#071E34] p-5 sm:p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-5">
-        {/* 1. Date Dropdown */}
-        <div className="space-y-2 relative" ref={dateDropdownRef}>
-          <label className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-[#0866C6]" />
-            <span>{isAr ? 'تاريخ الحجز (اليوم)' : 'Booking Date'}</span>
-          </label>
+      {/* Dropdown Section: Date & Time side-by-side */}
+      <div className="bg-white dark:bg-[#071E34] p-4 sm:p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+          {/* 1. Date Dropdown */}
+          <div className={cn('space-y-2 relative', isDateOpen ? 'z-30' : 'z-20')} ref={dateDropdownRef}>
+            <label className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-[#0866C6]" />
+              <span>{isAr ? 'تاريخ الحجز (اليوم)' : 'Booking Date'}</span>
+            </label>
 
-          <button
-            type="button"
-            onClick={() => {
-              setIsDateOpen((prev) => !prev);
-              setIsTimeOpen(false);
-            }}
-            className={cn(
-              'w-full h-12 px-4 rounded-xl border flex items-center justify-between transition-all bg-white dark:bg-[#071E34] text-slate-900 dark:text-white font-medium text-xs sm:text-sm cursor-pointer',
-              isDateOpen
-                ? 'border-[#0866C6] ring-2 ring-[#0866C6]/20 shadow-xs'
-                : 'border-slate-200 dark:border-slate-800 hover:border-[#0866C6]/50'
-            )}
-          >
-            <div className="flex items-center gap-2.5 truncate">
-              <Calendar className="w-4 h-4 text-[#0866C6] shrink-0" />
-              <span className="truncate font-bold">{dateButtonLabel}</span>
-            </div>
-            <ChevronDown
+            <button
+              type="button"
+              onClick={() => {
+                setIsDateOpen((prev) => !prev);
+                setIsTimeOpen(false);
+              }}
               className={cn(
-                'w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0',
-                isDateOpen && 'rotate-180 text-[#0866C6]'
+                'w-full h-12 px-3.5 sm:px-4 rounded-xl border flex items-center justify-between transition-all bg-white dark:bg-[#071E34] text-slate-900 dark:text-white font-medium text-xs sm:text-sm cursor-pointer',
+                isDateOpen
+                  ? 'border-[#0866C6] ring-2 ring-[#0866C6]/20 shadow-xs'
+                  : 'border-slate-200 dark:border-slate-800 hover:border-[#0866C6]/50'
               )}
-            />
-          </button>
+            >
+              <div className="flex items-center gap-2 truncate">
+                <Calendar className="w-4 h-4 text-[#0866C6] shrink-0" />
+                <span className="truncate font-bold">{dateButtonLabel}</span>
+              </div>
+              <ChevronDown
+                className={cn(
+                  'w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0',
+                  isDateOpen && 'rotate-180 text-[#0866C6]'
+                )}
+              />
+            </button>
 
-          {/* Date Dropdown List */}
-          {isDateOpen && (
-            <div className="absolute z-50 mt-1.5 w-full bg-white dark:bg-[#071E34] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl max-h-64 overflow-y-auto p-1.5 space-y-1">
-              {dateOptions.map((opt) => {
-                const isSelected = selectedDate === opt.dateString;
-                const isAvailable = opt.isAvailable;
-
-                return (
-                  <button
-                    key={opt.dateString}
-                    type="button"
-                    disabled={!isAvailable}
-                    onClick={() => {
-                      if (isAvailable) {
-                        setDate(opt.dateString);
-                        setIsDateOpen(false);
-                      }
-                    }}
-                    className={cn(
-                      'w-full px-3.5 py-2.5 rounded-lg flex items-center justify-between text-xs sm:text-sm transition-colors text-start cursor-pointer',
-                      !isAvailable
-                        ? 'opacity-40 cursor-not-allowed text-slate-400 dark:text-slate-500'
-                        : isSelected
-                        ? 'bg-[#0866C6] text-white font-bold'
-                        : 'hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-200'
-                    )}
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <span className="font-bold">{isAr ? opt.dayNameAr : opt.dayNameEn}</span>
-                      <span className={isSelected ? 'text-blue-100' : 'text-slate-400'}>·</span>
-                      <span>{isAr ? opt.formattedDateAr : opt.formattedDateEn}</span>
-                      {opt.isToday && (
-                        <span
-                          className={cn(
-                            'text-[10px] font-bold px-2 py-0.5 rounded-full',
-                            isSelected
-                              ? 'bg-white/20 text-white'
-                              : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300'
-                          )}
-                        >
-                          {isAr ? 'اليوم' : 'Today'}
-                        </span>
-                      )}
-                    </div>
-                    {isSelected ? (
-                      <Check className="w-4 h-4 text-white shrink-0" />
-                    ) : !isAvailable && opt.reason ? (
-                      <span className="text-[10px] text-red-500 font-semibold">{opt.reason}</span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* 2. Time Dropdown */}
-        <div className="space-y-2 relative" ref={timeDropdownRef}>
-          <label className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-[#0866C6]" />
-              <span>{isAr ? 'توقيت الحجز (الموعد)' : 'Booking Time'}</span>
-            </span>
-            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-              {slots.length} {isAr ? 'موعد متاح' : 'available'}
-            </span>
-          </label>
-
-          <button
-            type="button"
-            disabled={isLoadingSlots || slots.length === 0}
-            onClick={() => {
-              setIsTimeOpen((prev) => !prev);
-              setIsDateOpen(false);
-            }}
-            className={cn(
-              'w-full h-12 px-4 rounded-xl border flex items-center justify-between transition-all bg-white dark:bg-[#071E34] text-slate-900 dark:text-white font-medium text-xs sm:text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed',
-              isTimeOpen
-                ? 'border-[#0866C6] ring-2 ring-[#0866C6]/20 shadow-xs'
-                : 'border-slate-200 dark:border-slate-800 hover:border-[#0866C6]/50'
-            )}
-          >
-            <div className="flex items-center gap-2.5 truncate">
-              <Clock className="w-4 h-4 text-[#0866C6] shrink-0" />
-              <span className="truncate font-bold font-mono" dir="ltr">
-                {timeButtonLabel}
-              </span>
-            </div>
-            <ChevronDown
-              className={cn(
-                'w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0',
-                isTimeOpen && 'rotate-180 text-[#0866C6]'
-              )}
-            />
-          </button>
-
-          {/* Time Dropdown List */}
-          {isTimeOpen && (
-            <div className="absolute z-50 mt-1.5 w-full bg-white dark:bg-[#071E34] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl max-h-64 overflow-y-auto p-1.5 space-y-1">
-              {slots.length === 0 ? (
-                <div className="p-4 text-center text-xs text-slate-500 dark:text-slate-400 font-medium">
-                  {isAr ? 'لا توجد مواعيد متاحة لهذا اليوم' : 'No available slots for this date'}
-                </div>
-              ) : (
-                slots.map((slot) => {
-                  const isSelected =
-                    selectedTime === slot.time ||
-                    selectedTime === slot.displayAr ||
-                    selectedTime === slot.displayEn;
-                  const label = isAr ? slot.displayAr : slot.displayEn;
+            {/* Date Dropdown List */}
+            {isDateOpen && (
+              <div className="absolute z-50 mt-1.5 w-full bg-white dark:bg-[#071E34] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl max-h-64 overflow-y-auto p-1.5 space-y-1">
+                {dateOptions.map((opt) => {
+                  const isSelected = selectedDate === opt.dateString;
+                  const isAvailable = opt.isAvailable;
 
                   return (
                     <button
-                      key={slot.time}
+                      key={opt.dateString}
                       type="button"
+                      disabled={!isAvailable}
                       onClick={() => {
-                        setTime(slot.time);
-                        setIsTimeOpen(false);
+                        if (isAvailable) {
+                          setDate(opt.dateString);
+                          setIsDateOpen(false);
+                        }
                       }}
                       className={cn(
-                        'w-full px-3.5 py-2.5 rounded-lg flex items-center justify-between text-xs sm:text-sm transition-colors text-start cursor-pointer',
-                        isSelected
+                        'w-full px-3 py-2.5 rounded-lg flex items-center justify-between text-xs sm:text-sm transition-colors text-start cursor-pointer',
+                        !isAvailable
+                          ? 'opacity-40 cursor-not-allowed text-slate-400 dark:text-slate-500'
+                          : isSelected
                           ? 'bg-[#0866C6] text-white font-bold'
-                          : 'hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-800 dark:text-slate-200'
+                          : 'hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-200'
                       )}
                     >
-                      <span className="font-mono font-bold tracking-tight" dir="ltr">
-                        {label}
-                      </span>
-                      {isSelected ? <Check className="w-4 h-4 text-white shrink-0" /> : null}
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="font-bold">{isAr ? opt.dayNameAr : opt.dayNameEn}</span>
+                        <span className={isSelected ? 'text-blue-100' : 'text-slate-400'}>·</span>
+                        <span>{isAr ? opt.formattedDateAr : opt.formattedDateEn}</span>
+                        {opt.isToday && opt.dayNameAr !== 'اليوم' && (
+                          <span
+                            className={cn(
+                              'text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+                              isSelected
+                                ? 'bg-white/20 text-white'
+                                : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300'
+                            )}
+                          >
+                            {isAr ? 'اليوم' : 'Today'}
+                          </span>
+                        )}
+                      </div>
+                      {isSelected ? (
+                        <Check className="w-4 h-4 text-white shrink-0" />
+                      ) : !isAvailable && opt.reason ? (
+                        <span className="text-[10px] text-red-500 font-semibold">{opt.reason}</span>
+                      ) : null}
                     </button>
                   );
-                })
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* 2. Time Dropdown */}
+          <div className={cn('space-y-2 relative', isTimeOpen ? 'z-30' : 'z-10')} ref={timeDropdownRef}>
+            <label className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-[#0866C6]" />
+                <span>{isAr ? 'توقيت الحجز (الموعد)' : 'Booking Time'}</span>
+              </span>
+              <span className="text-[11px] font-bold text-[#0866C6] dark:text-[#38BDF8]">
+                {slots.length} {isAr ? 'موعد متاح' : 'available'}
+              </span>
+            </label>
+
+            <button
+              type="button"
+              disabled={isLoadingSlots || slots.length === 0}
+              onClick={() => {
+                setIsTimeOpen((prev) => !prev);
+                setIsDateOpen(false);
+              }}
+              className={cn(
+                'w-full h-12 px-3.5 sm:px-4 rounded-xl border flex items-center justify-between transition-all bg-white dark:bg-[#071E34] text-slate-900 dark:text-white font-medium text-xs sm:text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed',
+                isTimeOpen
+                  ? 'border-[#0866C6] ring-2 ring-[#0866C6]/20 shadow-xs'
+                  : 'border-slate-200 dark:border-slate-800 hover:border-[#0866C6]/50'
               )}
-            </div>
-          )}
+            >
+              <div className="flex items-center gap-2 truncate">
+                <Clock className="w-4 h-4 text-[#0866C6] shrink-0" />
+                <span className="truncate font-bold font-mono" dir="ltr">
+                  {timeButtonLabel}
+                </span>
+              </div>
+              <ChevronDown
+                className={cn(
+                  'w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0',
+                  isTimeOpen && 'rotate-180 text-[#0866C6]'
+                )}
+              />
+            </button>
+
+            {/* Time Dropdown List */}
+            {isTimeOpen && (
+              <div className="absolute z-50 mt-1.5 w-full bg-white dark:bg-[#071E34] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl max-h-64 overflow-y-auto p-1.5 space-y-1">
+                {slots.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-slate-500 dark:text-slate-400 font-medium">
+                    {isAr ? 'لا توجد مواعيد متاحة لهذا اليوم' : 'No available slots for this date'}
+                  </div>
+                ) : (
+                  slots.map((slot) => {
+                    const isSelected =
+                      selectedTime === slot.time ||
+                      selectedTime === slot.displayAr ||
+                      selectedTime === slot.displayEn;
+                    const label = isAr ? slot.displayAr : slot.displayEn;
+
+                    return (
+                      <button
+                        key={slot.time}
+                        type="button"
+                        onClick={() => {
+                          setTime(slot.time);
+                          setIsTimeOpen(false);
+                        }}
+                        className={cn(
+                          'w-full px-3 py-2.5 rounded-lg flex items-center justify-between text-xs sm:text-sm transition-colors text-start cursor-pointer',
+                          isSelected
+                            ? 'bg-[#0866C6] text-white font-bold'
+                            : 'hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-800 dark:text-slate-200'
+                        )}
+                      >
+                        <span className="font-mono font-bold tracking-tight" dir="ltr">
+                          {label}
+                        </span>
+                        {isSelected ? <Check className="w-4 h-4 text-white shrink-0" /> : null}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
