@@ -9,8 +9,14 @@ import { LocationGovernorate } from '../models/Location.js';
 import { Technician } from '../models/Technician.js';
 import { Notification } from '../models/Notification.js';
 import { AuditLog } from '../models/AuditLog.js';
-import { auditService } from '../services/auditService.js';
-import { assertSlotAvailability, compressScheduleAfterCancellation, getCurrentCairoTimeString, withBookingLock } from '../services/availabilityService.js';
+import {
+  assertSlotAvailability,
+  compressScheduleAfterCancellation,
+  getCurrentCairoTimeString,
+  withBookingLock,
+  mapCategoryCanonical,
+  resolveTargetCategory,
+} from '../services/availabilityService.js';
 import { calculateBookingPrice, calculateMultiServiceBookingPrice } from '../services/bookingPriceService.js';
 import { redeemCouponAtomically, rollbackCouponRedemption } from '../services/couponService.js';
 import { generateOrderNumber } from '../utils/orderNumber.js';
@@ -496,8 +502,9 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
       : [service.id];
 
     // 4. Concurrency-Safe Authoritative Category-Based Slot Assertion & Booking Creation
-    const targetCategory = bookingCategory || service.category || 'general';
-    const lockKey = `${date}_${targetCategory}`;
+    // The service record from DB is the absolute source of truth (never trust spoofed client category)
+    const authoritativeCategory = (service?.category ? await mapCategoryCanonical(service.category) : await resolveTargetCategory(bookingCategory, service.id, targetServiceIds)) || 'car';
+    const lockKey = `${date}_${authoritativeCategory}`;
     let bookingResult: { isDuplicate: boolean; booking: any };
     try {
       bookingResult = await withBookingLock(lockKey, async () => {
@@ -507,7 +514,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
           timeStr: time,
           serviceId: service.id,
           serviceIds: targetServiceIds,
-          category: targetCategory,
+          category: authoritativeCategory,
           customDuration: pricing.totalServiceDuration,
         });
 
@@ -573,7 +580,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
               id: service.id,
               title: isMulti ? pricing.items.map((i: any) => i.title).join(' + ') : service.title,
               titleEn: isMulti ? pricing.items.map((i: any) => i.titleEn).join(' + ') : service.titleEn,
-              category: service.category,
+              category: authoritativeCategory,
               image: service.image,
               price: pricing.finalPrice,
               duration: pricing.totalServiceDuration,
@@ -582,7 +589,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
             packageId: pricing.packageId || null,
             packageSnapshot: pricing.packageSnapshot || null,
             addons: pricing.addons || [],
-            category: service.category,
+            category: authoritativeCategory,
             date,
             time,
             timeSlotStart: time,
@@ -1995,8 +2002,15 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       ])
     ).filter(Boolean);
 
-    const targetCategory = booking.category || 'general';
-    const lockKey = `booking_reschedule_${booking.id}_${targetCategory}`;
+    let reschedCategory = booking.category || 'general';
+    if (booking.serviceId) {
+      const s = await Service.findOne({ id: booking.serviceId });
+      if (s?.category) {
+        reschedCategory = await mapCategoryCanonical(s.category);
+      }
+    }
+    const authoritativeCategory = reschedCategory ? await mapCategoryCanonical(reschedCategory) : 'car';
+    const lockKey = `${newDate}_${authoritativeCategory}`;
 
     await withBookingLock(lockKey, async () => {
       // 1. Validate new appointment slot BEFORE releasing old reservation (category-based aware)
@@ -2005,7 +2019,7 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
         timeStr: newTime,
         serviceId: booking.serviceId,
         serviceIds: targetServiceIds.length > 0 ? targetServiceIds : [booking.serviceId],
-        category: targetCategory,
+        category: authoritativeCategory,
         customDuration: booking.totalOccupiedMinutes || booking.duration,
         excludeBookingId: booking.id,
       });
@@ -2013,6 +2027,7 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       const previousTime = `${booking.date} (${booking.time})`;
       const newTimeLabel = `${slotTiming.scheduledStart} – ${slotTiming.scheduledEnd}`;
 
+      booking.category = authoritativeCategory;
       booking.date = newDate;
       booking.time = newTimeLabel;
       booking.timeSlotStart = slotTiming.scheduledStart;

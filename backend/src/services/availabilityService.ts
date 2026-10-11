@@ -531,13 +531,9 @@ export async function getAvailableSlots(
     // All services within targetCategory share the same schedule.
     // Services in other categories have an independent schedule and do NOT block this category.
     if (targetCategory) {
-      let bCat = b.category ? await mapCategoryCanonical(b.category) : undefined;
-      if ((!bCat || bCat === 'all' || bCat === 'general') && b.serviceId && serviceToCatMap.has(b.serviceId)) {
-        bCat = serviceToCatMap.get(b.serviceId);
-      }
-      if (!bCat && b.serviceSnapshot?.category) {
-        bCat = await mapCategoryCanonical(b.serviceSnapshot.category);
-      }
+      let bCat = (b.serviceId && serviceToCatMap.get(b.serviceId))
+        || (b.category ? await mapCategoryCanonical(b.category) : undefined)
+        || (b.serviceSnapshot?.category ? await mapCategoryCanonical(b.serviceSnapshot.category) : undefined);
       if (!bCat || bCat !== targetCategory) {
         continue; // Different or non-matching category -> independent schedule, DO NOT BLOCK!
       }
@@ -603,13 +599,9 @@ export async function getAvailableSlots(
 
   for (const v of allVisits) {
     if (targetCategory) {
-      let vCat = v.category ? await mapCategoryCanonical(v.category) : undefined;
-      if ((!vCat || vCat === 'all' || vCat === 'general') && v.serviceId && serviceToCatMap.has(v.serviceId)) {
-        vCat = serviceToCatMap.get(v.serviceId);
-      }
-      if (!vCat && v.serviceSnapshot?.category) {
-        vCat = await mapCategoryCanonical(v.serviceSnapshot.category);
-      }
+      let vCat = (v.serviceId && serviceToCatMap.get(v.serviceId))
+        || (v.category ? await mapCategoryCanonical(v.category) : undefined)
+        || (v.serviceSnapshot?.category ? await mapCategoryCanonical(v.serviceSnapshot.category) : undefined);
       if (!vCat || vCat !== targetCategory) {
         continue;
       }
@@ -978,13 +970,9 @@ export async function assertSlotAvailability(params: {
       // Category-Based Collision Check:
       // Only bookings belonging to the same category block this appointment.
       if (targetCategory) {
-        let bCat = b.category ? await mapCategoryCanonical(b.category) : undefined;
-        if ((!bCat || bCat === 'all' || bCat === 'general') && b.serviceId && assertServiceCatMap.has(b.serviceId)) {
-          bCat = assertServiceCatMap.get(b.serviceId);
-        }
-        if (!bCat && b.serviceSnapshot?.category) {
-          bCat = await mapCategoryCanonical(b.serviceSnapshot.category);
-        }
+        let bCat = (b.serviceId && assertServiceCatMap.get(b.serviceId))
+          || (b.category ? await mapCategoryCanonical(b.category) : undefined)
+          || (b.serviceSnapshot?.category ? await mapCategoryCanonical(b.serviceSnapshot.category) : undefined);
         if (!bCat || bCat !== targetCategory) {
           continue; // Different category -> independent schedule!
         }
@@ -1070,13 +1058,9 @@ export async function assertSlotAvailability(params: {
 
     if (!isSameTechnician) {
       if (targetCategory) {
-        let vCat = v.category ? await mapCategoryCanonical(v.category) : undefined;
-        if ((!vCat || vCat === 'all' || vCat === 'general') && v.serviceId && assertServiceCatMap.has(v.serviceId)) {
-          vCat = assertServiceCatMap.get(v.serviceId);
-        }
-        if (!vCat && v.serviceSnapshot?.category) {
-          vCat = await mapCategoryCanonical(v.serviceSnapshot.category);
-        }
+        let vCat = (v.serviceId && assertServiceCatMap.get(v.serviceId))
+          || (v.category ? await mapCategoryCanonical(v.category) : undefined)
+          || (v.serviceSnapshot?.category ? await mapCategoryCanonical(v.serviceSnapshot.category) : undefined);
         if (!vCat || vCat !== targetCategory) {
           continue;
         }

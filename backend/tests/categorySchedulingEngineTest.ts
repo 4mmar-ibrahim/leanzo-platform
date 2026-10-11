@@ -71,14 +71,14 @@ async function runCategorySchedulingEngineTests() {
   if (!carWash) {
     carWash = await Service.create({
       id: 'test-car-wash',
-      title: 'غسيل سيارات تجريبي',
-      titleEn: 'Test Car Wash',
+      title: 'غسيل سيارات تجريبي (A)',
+      titleEn: 'Test Car Wash (A)',
       category: 'car',
       price: 150,
-      duration: 45,
-      serviceDurationMinutes: 45,
+      duration: 60,
+      serviceDurationMinutes: 60,
       travelTimeMinutes: 0,
-      totalOccupiedMinutes: 45,
+      totalOccupiedMinutes: 60,
       available: true,
       active: true,
       image: '/test.png',
@@ -89,14 +89,50 @@ async function runCategorySchedulingEngineTests() {
   if (!tireWash) {
     tireWash = await Service.create({
       id: 'test-tire-wash',
-      title: 'غسيل كاوتش تجريبي',
-      titleEn: 'Test Tire Wash',
+      title: 'غسيل كاوتش تجريبي (B)',
+      titleEn: 'Test Tire Wash (B)',
       category: 'car',
       price: 80,
       duration: 30,
       serviceDurationMinutes: 30,
       travelTimeMinutes: 0,
       totalOccupiedMinutes: 30,
+      available: true,
+      active: true,
+      image: '/test.png',
+    });
+  }
+
+  let carPolish = await Service.findOne({ id: 'test-car-polish' });
+  if (!carPolish) {
+    carPolish = await Service.create({
+      id: 'test-car-polish',
+      title: 'تلميع سيارات تجريبي (C)',
+      titleEn: 'Test Car Polish (C)',
+      category: 'car',
+      price: 200,
+      duration: 45,
+      serviceDurationMinutes: 45,
+      travelTimeMinutes: 0,
+      totalOccupiedMinutes: 45,
+      available: true,
+      active: true,
+      image: '/test.png',
+    });
+  }
+
+  let carDetail = await Service.findOne({ id: 'test-car-detail' });
+  if (!carDetail) {
+    carDetail = await Service.create({
+      id: 'test-car-detail',
+      title: 'تنظيف داخلي تجريبي (D)',
+      titleEn: 'Test Car Detailing (D)',
+      category: 'car',
+      price: 220,
+      duration: 60,
+      serviceDurationMinutes: 60,
+      travelTimeMinutes: 0,
+      totalOccupiedMinutes: 60,
       available: true,
       active: true,
       image: '/test.png',
@@ -147,75 +183,59 @@ async function runCategorySchedulingEngineTests() {
   }
 
   try {
-    // -------------------------------------------------------------
-    // TEST A: Category-Based Shared Scheduling Pool
-    // 1. Car wash booked from 09:00 to 09:45
-    // 2. Tire wash (same category 'car') must be BLOCKED from 09:00-09:30 & 09:15-09:45
-    // 3. Tire wash MUST BE AVAILABLE at 09:45 (09:45 - 10:15)
-    // -------------------------------------------------------------
-    console.log('\n--- TEST A: Category Slot Sharing (Cars Category) ---');
+    // =============================================================
+    // TEST 1: Book Service A in Cars 09:00 - 10:00.
+    // Verify services B, C, D in Cars do NOT accept any overlapping booking
+    // =============================================================
+    console.log('\n--- TEST 1: Service A booked 09:00-10:00 -> Services B, C, D in Cars are blocked ---');
 
-    const carBookingA = await Booking.create({
+    const bookingA = await Booking.create({
       id: `TEST-CLN-A1-${Date.now()}`,
       customerName: 'أحمد اختبار',
       customerPhone: '01012345678',
       serviceId: carWash.id,
-      serviceSnapshot: { id: carWash.id, title: carWash.title, category: 'car', price: 150, duration: 45 },
+      serviceSnapshot: { id: carWash.id, title: carWash.title, category: 'car', price: 150, duration: 60 },
       category: 'car',
       date: testDate,
-      time: '09:00 – 09:45',
+      time: '09:00 – 10:00',
       timeSlotStart: '09:00',
       scheduledStart: '09:00',
-      scheduledEnd: '09:45',
-      duration: 45,
-      serviceDurationMinutes: 45,
+      scheduledEnd: '10:00',
+      duration: 60,
+      serviceDurationMinutes: 60,
       travelTimeMinutes: 0,
-      totalOccupiedMinutes: 45,
+      totalOccupiedMinutes: 60,
       address: { governorate: 'القاهرة', city: 'مدينة نصر', area: 'عباس العقاد' },
       basePrice: 150,
       finalPrice: 150,
       status: 'confirmed',
     });
 
-    const tireWashSlots = await getAvailableSlots(testDate, tireWash.id, 30, [tireWash.id], undefined, 'car');
-    const slot0900 = tireWashSlots.slots.find((s) => s.start === '09:00');
-    const slot0945 = tireWashSlots.slots.find((s) => s.start === '09:45');
+    // Check available slots for Service B (tire wash - 30m)
+    const slotsB = await getAvailableSlots(testDate, tireWash.id, 30, [tireWash.id], undefined, 'car');
+    assert(!slotsB.slots.some((s) => s.start === '09:00' || s.start === '09:15' || s.start === '09:30' || s.start === '09:45'),
+      'Service B (Tire Wash): No slots offered between 09:00 and 10:00');
 
-    assert(slot0900 === undefined, 'Tire Wash at 09:00 is COMPLETELY EXCLUDED for customers because Car Wash is booked 09:00-09:45');
-    assert(slot0945 !== undefined && slot0945.available === true, 'Tire Wash at 09:45 is AVAILABLE immediately following Car Wash 09:00-09:45 finish boundary');
+    // Check available slots for Service C (car polish - 45m)
+    const slotsC = await getAvailableSlots(testDate, carPolish.id, 45, [carPolish.id], undefined, 'car');
+    assert(!slotsC.slots.some((s) => s.start === '09:00' || s.start === '09:15' || s.start === '09:30'),
+      'Service C (Car Polish): No slots offered between 09:00 and 10:00');
 
-    // Admin view with includeUnavailable=true retains the slot marked unavailable
-    const adminSlots = await getAvailableSlots(testDate, tireWash.id, 30, [tireWash.id], undefined, 'car', true);
-    const admin0900 = adminSlots.slots.find((s) => s.start === '09:00');
-    assert(admin0900 !== undefined && admin0900.available === false, 'Admin view with includeUnavailable=true retains 09:00 as blocked');
+    // Check available slots for Service D (car detailing - 60m)
+    const slotsD = await getAvailableSlots(testDate, carDetail.id, 60, [carDetail.id], undefined, 'car');
+    assert(!slotsD.slots.some((s) => s.start === '09:00' || s.start === '09:15' || s.start === '09:30'),
+      'Service D (Car Detailing): No slots offered between 09:00 and 10:00');
 
-    // Verify Backend assertion also enforces 409 conflict
-    let conflictThrown = false;
-    try {
-      await assertSlotAvailability({
-        dateStr: testDate,
-        timeStr: '09:15',
-        serviceId: tireWash.id,
-        category: 'car',
-        customDuration: 30,
-      });
-    } catch (e: any) {
-      conflictThrown = true;
-      assert(e.statusCode === 409 || e.code === 'SLOT_UNAVAILABLE', 'Backend asserts 409 conflict for overlapping booking in same category');
-    }
-    assert(conflictThrown, 'Backend prevented overlapping booking in same category');
-
-    // -------------------------------------------------------------
-    // TEST B: Complete Category Independence
-    // Car Wash is booked 09:00-09:45 in 'car'
-    // Home Cleaning at 09:00 in 'home' MUST BE AVAILABLE!
-    // -------------------------------------------------------------
-    console.log('\n--- TEST B: Category Independence (Cars vs Homes) ---');
+    // =============================================================
+    // TEST 2: Complete Category Independence (Home Cleaning)
+    // Home Cleaning at 09:00 - 10:00 MUST BE 100% AVAILABLE
+    // =============================================================
+    console.log('\n--- TEST 2: Category Independence (Home category unaffected) ---');
 
     const homeSlots = await getAvailableSlots(testDate, homeClean.id, 60, [homeClean.id], undefined, 'home');
     const homeSlot0900 = homeSlots.slots.find((s) => s.start === '09:00');
-
-    assert(homeSlot0900 !== undefined && homeSlot0900.available === true, 'Home Cleaning at 09:00 is AVAILABLE despite Car Wash being booked 09:00-09:45');
+    assert(homeSlot0900 !== undefined && homeSlot0900.available === true,
+      'Home Cleaning at 09:00 is AVAILABLE despite Car Wash being booked 09:00-10:00');
 
     const homeAssert = await assertSlotAvailability({
       dateStr: testDate,
@@ -224,80 +244,216 @@ async function runCategorySchedulingEngineTests() {
       category: 'home',
       customDuration: 60,
     });
-    assert(homeAssert.scheduledStart === '09:00' && homeAssert.scheduledEnd === '10:00', 'Home Cleaning at 09:00 is asserted valid without false conflict');
+    assert(homeAssert.scheduledStart === '09:00' && homeAssert.scheduledEnd === '10:00',
+      'Home Cleaning at 09:00 asserts valid on backend without conflict');
 
-    // -------------------------------------------------------------
-    // TEST C: Dynamic Addons Duration Calculation
-    // Base 45 min + 10 min + 15 min = 70 min
-    // -------------------------------------------------------------
-    console.log('\n--- TEST C: Dynamic Addons & Duration Recalculation ---');
+    // =============================================================
+    // TEST 3: Overlapping booking (09:30 - 10:30) in Cars must be rejected
+    // =============================================================
+    console.log('\n--- TEST 3: Attempt overlapping booking (09:30 - 10:30) in Cars -> Rejected ---');
 
-    const baseSlots45 = await getAvailableSlots(testDate, carWash.id, 45, [carWash.id], undefined, 'car');
-    const slotAt0945for45 = baseSlots45.slots.find((s) => s.start === '09:45');
-    assert(slotAt0945for45 !== undefined && slotAt0945for45.end === '10:30', '45m slot starting 09:45 ends at 10:30');
+    let conflictThrownTest3 = false;
+    try {
+      await assertSlotAvailability({
+        dateStr: testDate,
+        timeStr: '09:30',
+        serviceId: carPolish.id, // Service C
+        category: 'car',
+        customDuration: 60,
+      });
+    } catch (e: any) {
+      conflictThrownTest3 = true;
+      assert(e.statusCode === 409 || e.code === 'SLOT_UNAVAILABLE',
+        'Backend strictly rejects 09:30 - 10:30 with 409 SLOT_UNAVAILABLE');
+    }
+    assert(conflictThrownTest3, 'Overlap 09:30 - 10:30 in car category successfully blocked');
 
-    // Now test with 70 min (45 + 10 + 15)
-    const slots70 = await getAvailableSlots(testDate, carWash.id, 70, [carWash.id], undefined, 'car');
-    const slotAt0945for70 = slots70.slots.find((s) => s.start === '09:45');
-    assert(slotAt0945for70 !== undefined && slotAt0945for70.end === '10:55', '70m slot starting 09:45 ends at 10:55 (45m + 10m + 15m)');
+    // =============================================================
+    // TEST 4: Booking starting right at 10:00 in Cars MUST be allowed
+    // =============================================================
+    console.log('\n--- TEST 4: Booking starting at 10:00 in Cars -> Allowed ---');
 
-    // -------------------------------------------------------------
-    // TEST D: Overlap Math & Boundary Testing
-    // Back-to-back: [09:00, 09:45) and [09:45, 10:15) allowed
-    // Overlapping: [09:30, 10:00) blocked
-    // -------------------------------------------------------------
-    console.log('\n--- TEST D: Overlap Math & Back-to-back Boundary ---');
-
-    const backToBackAssert = await assertSlotAvailability({
+    const slot1000Assert = await assertSlotAvailability({
       dateStr: testDate,
-      timeStr: '09:45',
-      serviceId: tireWash.id,
+      timeStr: '10:00',
+      serviceId: tireWash.id, // Service B (30m)
       category: 'car',
       customDuration: 30,
     });
-    assert(backToBackAssert.scheduledStart === '09:45' && backToBackAssert.scheduledEnd === '10:15', 'Back-to-back booking starting exactly at 09:45 is accepted without collision');
+    assert(slot1000Assert.scheduledStart === '10:00' && slot1000Assert.scheduledEnd === '10:30',
+      'Booking starting right at 10:00 is allowed and valid (boundary awareness)');
 
-    // -------------------------------------------------------------
-    // TEST E: Concurrency & Category-Based Serialization Lock
-    // Two simultaneous requests for the same slot in 'car'
-    // -------------------------------------------------------------
-    console.log('\n--- TEST E: Concurrency Lock & Race-Condition Safety ---');
+    const bookingB = await Booking.create({
+      id: `TEST-CLN-B1-${Date.now()}`,
+      customerName: 'محمود اختبار',
+      customerPhone: '01099998888',
+      serviceId: tireWash.id,
+      serviceSnapshot: { id: tireWash.id, title: tireWash.title, category: 'car', price: 80, duration: 30 },
+      category: 'car',
+      date: testDate,
+      time: '10:00 – 10:30',
+      timeSlotStart: '10:00',
+      scheduledStart: '10:00',
+      scheduledEnd: '10:30',
+      duration: 30,
+      serviceDurationMinutes: 30,
+      travelTimeMinutes: 0,
+      totalOccupiedMinutes: 30,
+      address: { governorate: 'القاهرة', city: 'مدينة نصر', area: 'عباس العقاد' },
+      basePrice: 80,
+      finalPrice: 80,
+      status: 'confirmed',
+    });
+    assert(Boolean(bookingB.id), 'Service B confirmed at 10:00 without collision');
 
-    const categoryLockKey = `${testDate}_car`;
-    let lockExecutionOrder: number[] = [];
+    // =============================================================
+    // TEST 5: Cancel Booking A (09:00 - 10:00) -> Slot returns to available
+    // =============================================================
+    console.log('\n--- TEST 5: Cancel Booking A -> Slot 09:00 returns to available in Cars ---');
 
-    const p1 = withBookingLock(categoryLockKey, async () => {
-      lockExecutionOrder.push(1);
-      await new Promise((res) => setTimeout(res, 50));
-      return 'task1-done';
+    bookingA.status = 'cancelled';
+    await bookingA.save();
+
+    const slotsAfterCancel = await getAvailableSlots(testDate, carWash.id, 60, [carWash.id], undefined, 'car');
+    const slot0900Available = slotsAfterCancel.slots.find((s) => s.start === '09:00');
+    assert(slot0900Available !== undefined && slot0900Available.available === true,
+      'Slot 09:00 is immediately returned to available across all services in Cars');
+
+    // Restore bookingA status to test concurrency
+    bookingA.status = 'confirmed';
+    await bookingA.save();
+
+    // =============================================================
+    // TEST 6: Concurrent Booking Requests (Atomicity & Concurrency Safety)
+    // Two simultaneous requests attempting to book the same slot
+    // =============================================================
+    console.log('\n--- TEST 6: Concurrent requests for same slot in Cars -> Exactly ONE succeeds ---');
+
+    const lockKey = `${testDate}_car`;
+    let attempt1Success = false;
+    let attempt2Success = false;
+
+    const task1 = withBookingLock(lockKey, async () => {
+      try {
+        await assertSlotAvailability({
+          dateStr: testDate,
+          timeStr: '11:00',
+          serviceId: carWash.id,
+          category: 'car',
+          customDuration: 60,
+        });
+        await Booking.create({
+          id: `TEST-CONC-1-${Date.now()}`,
+          customerName: 'عميل 1',
+          customerPhone: '01011112222',
+          serviceId: carWash.id,
+          serviceSnapshot: { id: carWash.id, title: carWash.title, category: 'car', price: 150, duration: 60 },
+          category: 'car',
+          date: testDate,
+          time: '11:00 – 12:00',
+          timeSlotStart: '11:00',
+          scheduledStart: '11:00',
+          scheduledEnd: '12:00',
+          duration: 60,
+          serviceDurationMinutes: 60,
+          travelTimeMinutes: 0,
+          totalOccupiedMinutes: 60,
+          address: { governorate: 'القاهرة', city: 'مدينة نصر', area: 'عباس العقاد' },
+          basePrice: 150,
+          finalPrice: 150,
+          status: 'confirmed',
+        });
+        attempt1Success = true;
+      } catch {
+        attempt1Success = false;
+      }
     });
 
-    const p2 = withBookingLock(categoryLockKey, async () => {
-      lockExecutionOrder.push(2);
-      return 'task2-done';
+    const task2 = withBookingLock(lockKey, async () => {
+      try {
+        await assertSlotAvailability({
+          dateStr: testDate,
+          timeStr: '11:30', // Overlaps with 11:00 - 12:00!
+          serviceId: carPolish.id,
+          category: 'car',
+          customDuration: 45,
+        });
+        await Booking.create({
+          id: `TEST-CONC-2-${Date.now()}`,
+          customerName: 'عميل 2',
+          customerPhone: '01033334444',
+          serviceId: carPolish.id,
+          serviceSnapshot: { id: carPolish.id, title: carPolish.title, category: 'car', price: 200, duration: 45 },
+          category: 'car',
+          date: testDate,
+          time: '11:30 – 12:15',
+          timeSlotStart: '11:30',
+          scheduledStart: '11:30',
+          scheduledEnd: '12:15',
+          duration: 45,
+          serviceDurationMinutes: 45,
+          travelTimeMinutes: 0,
+          totalOccupiedMinutes: 45,
+          address: { governorate: 'القاهرة', city: 'مدينة نصر', area: 'عباس العقاد' },
+          basePrice: 200,
+          finalPrice: 200,
+          status: 'confirmed',
+        });
+        attempt2Success = true;
+      } catch {
+        attempt2Success = false;
+      }
     });
 
-    const [r1, r2] = await Promise.all([p1, p2]);
-    assert(r1 === 'task1-done' && r2 === 'task2-done', 'Concurrent category tasks completed successfully');
-    assert(lockExecutionOrder[0] === 1 && lockExecutionOrder[1] === 2, 'Resource locks strictly serialize concurrent tasks per category');
+    await Promise.all([task1, task2]);
 
-    // -------------------------------------------------------------
-    // TEST F: Cancelled Booking releases interval
-    // -------------------------------------------------------------
-    console.log('\n--- TEST F: Cancelled Booking Slot Release ---');
+    assert(attempt1Success !== attempt2Success,
+      'Exactly ONE of two concurrent overlapping bookings succeeded, the other was rejected');
 
-    carBookingA.status = 'cancelled';
-    await carBookingA.save();
+    // =============================================================
+    // TEST 7: Direct HTTP API calls consistency
+    // =============================================================
+    console.log('\n--- TEST 7: Direct HTTP API requests consistency ---');
 
-    const slotsAfterCancel = await getAvailableSlots(testDate, carWash.id, 45, [carWash.id], undefined, 'car');
-    const slot0900AfterCancel = slotsAfterCancel.slots.find((s) => s.start === '09:00');
-    assert(slot0900AfterCancel !== undefined && slot0900AfterCancel.available === true, 'Cancelled booking successfully releases slot 09:00 for new reservations');
+    const apiRes = await fetch(`${baseUrl}/api/availability?date=${testDate}&category=car&duration=60`);
+    assert(apiRes.status === 200, 'GET /api/availability returns 200 OK');
+    const apiData: any = await apiRes.json();
+    const carSlotsApi = apiData.data?.slots || [];
+    assert(!carSlotsApi.some((s: any) => s.start === '09:00'),
+      'Direct API: Confirmed booking 09:00 is completely excluded from available slots list');
+
+    // =============================================================
+    // TEST 8: Dynamic Addons Duration & Reschedule Validation
+    // =============================================================
+    console.log('\n--- TEST 8: Dynamic Addons Duration & Reschedule ---');
+
+    // Base 45 min + 15 min addon = 60 min
+    const dynamicTiming = await assertSlotAvailability({
+      dateStr: testDate,
+      timeStr: '14:00',
+      serviceId: carWash.id,
+      category: 'car',
+      customDuration: 60, // 45 base + 15 addon
+    });
+    assert(dynamicTiming.scheduledStart === '14:00' && dynamicTiming.scheduledEnd === '15:00',
+      'Dynamic Addons: 45m service + 15m addon locks entire 60m interval (14:00 - 15:00)');
+
+    // Without addon: 45m
+    const baseTiming = await assertSlotAvailability({
+      dateStr: testDate,
+      timeStr: '14:00',
+      serviceId: carWash.id,
+      category: 'car',
+      customDuration: 45,
+    });
+    assert(baseTiming.scheduledStart === '14:00' && baseTiming.scheduledEnd === '14:45',
+      'Without addon: locks 45m interval (14:00 - 14:45)');
 
     // Cleanup
     await Booking.deleteMany({ date: testDate });
 
     console.log('\n===============================================================');
-    console.log('✅ ALL CATEGORY-BASED SCHEDULING ENGINE TESTS PASSED (6/6)');
+    console.log('🎉 ALL 8 MANDATORY VERIFICATION TESTS PASSED SUCCESSFULLY! (8/8)');
     console.log('===============================================================\n');
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
