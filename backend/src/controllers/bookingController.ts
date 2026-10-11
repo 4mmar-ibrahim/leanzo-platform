@@ -9,6 +9,7 @@ import { LocationGovernorate } from '../models/Location.js';
 import { Technician } from '../models/Technician.js';
 import { Notification } from '../models/Notification.js';
 import { AuditLog } from '../models/AuditLog.js';
+import { auditService } from '../services/auditService.js';
 import {
   assertSlotAvailability,
   compressScheduleAfterCancellation,
