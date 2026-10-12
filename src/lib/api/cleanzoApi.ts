@@ -258,6 +258,7 @@ export const cleanzoApi = {
       guestName?: string;
       guestPhone?: string;
       saveAddress?: boolean;
+      totalOccupiedMinutes?: number;
     }) =>
       apiRequest<Order>('/bookings', {
         method: 'POST',

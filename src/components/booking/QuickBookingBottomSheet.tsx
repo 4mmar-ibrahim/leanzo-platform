@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
-import Link from 'next/link';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X,
   Car,
@@ -13,14 +12,13 @@ import {
   User,
   CheckCircle2,
   Sparkles,
-  ChevronRight,
   ChevronDown,
   Check,
   ArrowRight,
   ArrowLeft,
-  ShieldCheck,
   MessageCircle,
   Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { useServiceStore } from '@/store/useServiceStore';
 import { useOrderStore } from '@/store/useOrderStore';
@@ -31,16 +29,108 @@ import { useLocationStore } from '@/store/useLocationStore';
 import { useCustomerStore } from '@/store/useCustomerStore';
 import { useAddressStore, isSameAddress } from '@/store/useAddressStore';
 import { useBookingStore } from '@/store/useBookingStore';
-import { getUpcomingBookingDates, getTimeSlotsForDate, BookingSlot, isSameService, isSameTime, getBookingTimeInterval, isTimeIntervalOverlapping, minutesTo24H, getOrderCategory } from '@/lib/bookingEngine';
+import { getUpcomingBookingDates, getTimeSlotsForDate, BookingSlot, isSameTime } from '@/lib/bookingEngine';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { formatTimeTo12Hour } from '@/lib/timeUtils';
-import { Service, ServiceCategory, Order, Address, ServicePackage, ServiceAddon } from '@/types';
+import { Service, ServiceCategory, Address, ServicePackage, ServiceAddon } from '@/types';
 import { Button } from '@/components/ui/Button';
-import { cn } from '@/lib/utils';
+import { cn, formatDuration, getServiceTotalMinutes } from '@/lib/utils';
 import { toast } from 'sonner';
-import { validateCustomerName } from '@/lib/validation/nameValidation';
+import { validateCustomerName, sanitizeNameString } from '@/lib/validation/nameValidation';
+import { validateEgyptianPhone, normalizePhoneInput } from '@/lib/validation/phoneValidation';
 import { calculateItemizedPricing } from '@/lib/pricing';
-import { resolveCategoryInfo, normalizeCategory, isSameCategory } from '@/lib/services/categoryUtils';
+import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
+
+/**
+ * Format a time range with a single AM/PM (ص/م) suffix when both start and end fall in the same period
+ * Example:
+ * 09:00 to 09:45 -> "9:00 – 9:45 ص"
+ * 11:15 to 12:00 -> "11:15 ص – 12:00 م"
+ * Single time: 09:00 -> "9:00 ص"
+ */
+function formatCleanInterval(startStr: string, endStr: string, isAr: boolean): string {
+  if (!startStr) return '';
+  const parseHM = (str: string) => {
+    const raw = String(str).trim();
+    if (raw.includes(':')) {
+      const parts = raw.replace(/[^0-9:]/g, '').split(':');
+      let h = parseInt(parts[0] || '0', 10);
+      const m = parseInt(parts[1] || '0', 10);
+      const upper = raw.toUpperCase();
+      const isPM = upper.includes('PM') || upper.includes('مساء') || upper.includes('م');
+      const isAM = upper.includes('AM') || upper.includes('صباح') || upper.includes('ص');
+      if (isPM && h < 12) h += 12;
+      if (isAM && h === 12) h = 0;
+      return { h, m };
+    }
+    return null;
+  };
+
+  const startHM = parseHM(startStr);
+  const endHM = endStr ? parseHM(endStr) : null;
+
+  if (!startHM) {
+    return formatTimeTo12Hour(startStr, { locale: isAr ? 'ar' : 'en' });
+  }
+
+  const sH = startHM.h;
+  const sM = startHM.m;
+  const sPeriod = sH >= 12 ? (isAr ? 'م' : 'PM') : (isAr ? 'ص' : 'AM');
+  const sH12 = sH % 12 === 0 ? 12 : sH % 12;
+  const sMinFormatted = sM.toString().padStart(2, '0');
+
+  // If no end time, or end is the same as start, return single formatted time
+  if (!endHM || (startHM.h === endHM.h && startHM.m === endHM.m)) {
+    return `${sH12}:${sMinFormatted} ${sPeriod}`;
+  }
+
+  const eH = endHM.h;
+  const eM = endHM.m;
+  const ePeriod = eH >= 12 ? (isAr ? 'م' : 'PM') : (isAr ? 'ص' : 'AM');
+  const eH12 = eH % 12 === 0 ? 12 : eH % 12;
+  const eMinFormatted = eM.toString().padStart(2, '0');
+
+  if (sPeriod === ePeriod) {
+    return `${sH12}:${sMinFormatted} – ${eH12}:${eMinFormatted} ${ePeriod}`;
+  } else {
+    return `${sH12}:${sMinFormatted} ${sPeriod} – ${eH12}:${eMinFormatted} ${ePeriod}`;
+  }
+}
+
+/**
+ * Unified slot formatter for consistent API availability handling
+ */
+function parseLiveSlots(slots: any[], duration: number): BookingSlot[] {
+  return (slots || [])
+    .filter((slot: any) => Boolean(slot.available ?? slot.isAvailable))
+    .map((slot: any) => {
+      const rawStart = slot.start || slot.scheduledStart || slot.time24 || (slot.time ? slot.time.split(/[-–—]/)[0].trim() : '09:00');
+      const rawEnd = slot.end || slot.scheduledEnd || (slot.time ? slot.time.split(/[-–—]/)[1]?.trim() : '');
+      const rawTime = slot.time || (rawEnd ? `${rawStart} – ${rawEnd}` : rawStart);
+      const labelAr = formatCleanInterval(rawStart, rawEnd, true);
+      const labelEn = formatCleanInterval(rawStart, rawEnd, false);
+      return {
+        time: rawTime,
+        label: labelAr,
+        labelEn: labelEn,
+        isAvailable: true,
+        reason: undefined,
+        scheduledStart: rawStart,
+        scheduledEnd: rawEnd,
+        totalOccupiedMinutes: slot.totalOccupiedMinutes || duration,
+        serviceDurationMinutes: slot.serviceDurationMinutes || duration,
+      };
+    });
+}
+
+function getSlotDisplayLabel(slot: BookingSlot, isAr: boolean): string {
+  const rawStart = slot.scheduledStart || (slot as any).start || (slot.time ? slot.time.split(/[-–—]/)[0].trim() : '');
+  const rawEnd = slot.scheduledEnd || (slot as any).end || (slot.time ? slot.time.split(/[-–—]/)[1]?.trim() : '');
+  if (rawStart && rawEnd) {
+    return formatCleanInterval(rawStart, rawEnd, isAr);
+  }
+  return formatTimeTo12Hour(isAr ? (slot.label || slot.time) : (slot.labelEn || slot.time), { locale: isAr ? 'ar' : 'en' });
+}
 
 interface QuickBookingBottomSheetProps {
   isOpen: boolean;
@@ -84,7 +174,7 @@ export function QuickBookingBottomSheet({
 
   const addOrder = useOrderStore((s) => s.addOrder);
   const orders = useOrderStore((s) => s.orders) || [];
-  const { isAuthenticated, user } = useAuthStore();
+  const { user } = useAuthStore();
 
   // Booking Flow Steps: 1: Service, 2: Date & Time, 3: Address & Phone, 4: Success
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -96,24 +186,58 @@ export function QuickBookingBottomSheet({
   const [selectedAddonsList, setSelectedAddonsList] = useState<ServiceAddon[]>([]);
 
   // Address & Contact info
+  const prevIsOpenRef = useRef(false);
+  const socialSettings = useSettingsStore((s) => s.settings.social);
   const [governorateId, setGovernorateId] = useState<string>('');
   const [cityId, setCityId] = useState<string>('');
-  const [area, setArea] = useState(user?.addresses?.[0]?.area || 'الحي الرابع، شارع النخيل');
+  const [area, setArea] = useState(user?.addresses?.[0]?.area || '');
   const [customerName, setCustomerName] = useState(user?.name || '');
   const [customerPhone, setCustomerPhone] = useState(user?.phone || '');
   const [notes, setNotes] = useState('');
   const [confirmedOrderId, setConfirmedOrderId] = useState<string>('');
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [nameTouched, setNameTouched] = useState<boolean>(false);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [phoneTouched, setPhoneTouched] = useState<boolean>(false);
+
+  // Date and Time selection states
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [selectedTime, setSelectedTime] = useState<string>('');
+  const [isDateOpen, setIsDateOpen] = useState(false);
+  const [isTimeOpen, setIsTimeOpen] = useState(false);
+  const dateDropdownRef = useRef<HTMLDivElement>(null);
+  const timeDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isOpen) {
+    // Only initialize and reset form when the bottom sheet transitions from closed to open
+    if (isOpen && !prevIsOpenRef.current) {
       if (initialCategory) {
         setCategory(initialCategory);
       } else if (activeCategories.length > 0) {
         setCategory((activeCategories[0].slug || activeCategories[0].id) as ServiceCategory);
       }
-      setSelectedService(null);
+
+      if (initialServiceId && availableServices.length > 0) {
+        const found = availableServices.find((s) => s.id === initialServiceId);
+        if (found) {
+          setSelectedService(found);
+          setCategory(found.category);
+        } else {
+          setSelectedService(null);
+        }
+      } else {
+        setSelectedService(null);
+      }
+
       setSelectedPkg(null);
       setSelectedAddonsList([]);
+      setSelectedTime('');
+      setIsDateOpen(false);
+      setIsTimeOpen(false);
+      setNameError(null);
+      setNameTouched(false);
+      setPhoneError(null);
+      setPhoneTouched(false);
       setStep(1);
 
       // Pre-fill customer details and saved address if available
@@ -124,7 +248,7 @@ export function QuickBookingBottomSheet({
       const existingArea = savedDefaultAddr?.area || user?.addresses?.[0]?.area || '';
 
       if (existingName) setCustomerName(existingName);
-      if (existingPhone) setCustomerPhone(existingPhone);
+      if (existingPhone) setCustomerPhone(normalizePhoneInput(existingPhone));
       if (existingArea) setArea(existingArea);
       if (savedDefaultAddr?.governorateId) {
         setGovernorateId(savedDefaultAddr.governorateId);
@@ -133,24 +257,90 @@ export function QuickBookingBottomSheet({
         }
       }
     }
-  }, [isOpen, initialCategory, activeCategories, user]);
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen, initialCategory, initialServiceId, activeCategories, availableServices, user]);
 
   useEffect(() => {
-    if (initialServiceId && availableServices.length > 0) {
+    if (isOpen && initialServiceId && !selectedService && availableServices.length > 0) {
       const found = availableServices.find((s) => s.id === initialServiceId);
       if (found) {
         setSelectedService(found);
         setCategory(found.category);
       }
     }
-  }, [availableServices, initialServiceId]);
-
-
+  }, [isOpen, availableServices, initialServiceId, selectedService]);
 
   useEffect(() => {
     setSelectedPkg(null);
     setSelectedAddonsList([]);
   }, [selectedService]);
+
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawVal = e.target.value;
+    setCustomerName(rawVal);
+
+    const clean = sanitizeNameString(rawVal);
+    if (!clean) {
+      if (nameTouched) {
+        setNameError(isAr ? 'يرجى إدخال اسم العميل.' : 'Please enter customer name.');
+      } else {
+        setNameError(null);
+      }
+      return;
+    }
+
+    const res = validateCustomerName(rawVal, isAr);
+    if (!res.isValid) {
+      setNameError(res.message || null);
+    } else {
+      setNameError(null);
+    }
+  };
+
+  const handleNameBlur = () => {
+    setNameTouched(true);
+    const clean = sanitizeNameString(customerName);
+    if (!clean) {
+      setNameError(isAr ? 'يرجى إدخال اسم العميل.' : 'Please enter customer name.');
+      return;
+    }
+    const res = validateCustomerName(customerName, isAr);
+    setNameError(res.isValid ? null : res.message || null);
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const normalized = normalizePhoneInput(e.target.value);
+    setCustomerPhone(normalized);
+
+    if (!normalized) {
+      if (phoneTouched) {
+        setPhoneError(isAr ? 'يرجى إدخال رقم الهاتف للتواصل.' : 'Please enter contact phone number.');
+      } else {
+        setPhoneError(null);
+      }
+      return;
+    }
+
+    const val = validateEgyptianPhone(normalized);
+    if (!val.isValid && normalized.length === 11) {
+      setPhoneError(val.message || (isAr ? 'رقم الهاتف غير صحيح.' : 'Invalid phone number.'));
+    } else if (!val.isValid && phoneTouched && normalized.length > 0) {
+      setPhoneError(val.message || null);
+    } else {
+      setPhoneError(null);
+    }
+  };
+
+  const handlePhoneBlur = () => {
+    setPhoneTouched(true);
+    const cleanPhone = customerPhone.trim();
+    if (!cleanPhone) {
+      setPhoneError(isAr ? 'يرجى إدخال رقم الهاتف للتواصل.' : 'Please enter contact phone number.');
+      return;
+    }
+    const val = validateEgyptianPhone(cleanPhone);
+    setPhoneError(val.isValid ? null : val.message || (isAr ? 'رقم الهاتف غير صحيح.' : 'Invalid phone number.'));
+  };
 
   const quickPricing = useMemo(() => {
     if (!selectedService) {
@@ -201,14 +391,13 @@ export function QuickBookingBottomSheet({
     return getUpcomingBookingDates(bookingSettings?.advanceBookingDays || 14, bookingSettings);
   }, [bookingSettings]);
 
-  const [selectedDate, setSelectedDate] = useState<string>('');
-  const [isDateOpen, setIsDateOpen] = useState(false);
-  const dateDropdownRef = React.useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dateDropdownRef.current && !dateDropdownRef.current.contains(event.target as Node)) {
         setIsDateOpen(false);
+      }
+      if (timeDropdownRef.current && !timeDropdownRef.current.contains(event.target as Node)) {
+        setIsTimeOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -245,8 +434,17 @@ export function QuickBookingBottomSheet({
   const [liveSlots, setLiveSlots] = useState<BookingSlot[] | null>(null);
 
   const serviceDuration = useMemo(() => {
-    return Number(selectedService?.serviceDurationMinutes || selectedService?.duration) || 45;
-  }, [selectedService]);
+    if (!selectedService) return 45;
+    const baseDur = selectedPkg
+      ? Number(selectedPkg.durationMinutes) || 45
+      : Number(selectedService.serviceDurationMinutes || selectedService.duration) || 45;
+    const addonsDur = selectedAddonsList.reduce(
+      (sum, a) => sum + (Number(a.durationMinutes) || 0),
+      0
+    );
+    const travelDur = Number(selectedService.travelTimeMinutes || 0);
+    return baseDur + addonsDur + travelDur;
+  }, [selectedService, selectedPkg, selectedAddonsList]);
 
   useEffect(() => {
     if (!selectedDate || !selectedService?.id) {
@@ -262,23 +460,7 @@ export function QuickBookingBottomSheet({
         .then((res) => {
           if (!isMounted) return;
           if (res && Array.isArray(res.slots)) {
-            const formattedSlots: BookingSlot[] = res.slots
-              .filter((slot: any) => Boolean(slot.available ?? slot.isAvailable))
-              .map((slot: any) => {
-                const labelAr = formatTimeTo12Hour(slot.label || slot.time, { locale: 'ar' });
-                const labelEn = formatTimeTo12Hour(slot.label || slot.time, { locale: 'en' });
-                return {
-                  time: labelEn,
-                  label: labelAr,
-                  labelEn: labelEn,
-                  isAvailable: true,
-                  reason: undefined,
-                  scheduledStart: slot.start || slot.scheduledStart || slot.time24,
-                  scheduledEnd: slot.end || slot.scheduledEnd,
-                  totalOccupiedMinutes: slot.totalOccupiedMinutes || serviceDuration,
-                  serviceDurationMinutes: slot.serviceDurationMinutes || serviceDuration,
-                };
-              });
+            const formattedSlots = parseLiveSlots(res.slots, serviceDuration);
             setLiveSlots(formattedSlots);
           }
         })
@@ -345,8 +527,6 @@ export function QuickBookingBottomSheet({
     return baseSlots.filter((s) => s.isAvailable);
   }, [selectedDate, liveSlots, bookingSettings, selectedService, orders, serviceDuration]);
 
-  const [selectedTime, setSelectedTime] = useState<string>('');
-
   useEffect(() => {
     if (timeSlots.length > 0) {
       const isCurrentValid = timeSlots.some((s) => (s.time === selectedTime || isSameTime(s.time, selectedTime)) && s.isAvailable);
@@ -354,10 +534,30 @@ export function QuickBookingBottomSheet({
         const firstAvailable = timeSlots.find((s) => s.isAvailable);
         if (firstAvailable) {
           setSelectedTime(firstAvailable.time);
+        } else {
+          setSelectedTime('');
         }
       }
+    } else {
+      setSelectedTime('');
     }
   }, [timeSlots, selectedTime]);
+
+  const selectedSlotObj = useMemo(() => {
+    if (!selectedTime) return null;
+    return timeSlots.find(
+      (s) => s.time === selectedTime || isSameTime(s.time, selectedTime)
+    );
+  }, [timeSlots, selectedTime]);
+
+  const timeButtonLabel = useMemo(() => {
+    if (!selectedSlotObj) {
+      return timeSlots.length === 0
+        ? (isAr ? 'لا توجد مواعيد متاحة لهذا اليوم' : 'No available slots')
+        : (isAr ? 'اختر توقيت الحجز المناسب' : 'Select Time Slot');
+    }
+    return getSlotDisplayLabel(selectedSlotObj, isAr);
+  }, [selectedSlotObj, timeSlots.length, isAr]);
 
   // Locations from store
   const { governorates, fetchLocations } = useLocationStore();
@@ -469,21 +669,7 @@ export function QuickBookingBottomSheet({
       .checkDate(selectedDate, selectedService.id, serviceDuration, [selectedService.id], undefined, effectiveCategory)
       .then((res) => {
         if (res && Array.isArray(res.slots)) {
-          const formattedSlots: BookingSlot[] = res.slots.map((slot: any) => {
-            const labelAr = formatTimeTo12Hour(slot.label || slot.time, { locale: 'ar' });
-            const labelEn = formatTimeTo12Hour(slot.label || slot.time, { locale: 'en' });
-            return {
-              time: labelEn,
-              label: labelAr,
-              labelEn: labelEn,
-              isAvailable: Boolean(slot.available),
-              reason: slot.reason,
-              scheduledStart: slot.start || slot.scheduledStart || slot.time24,
-              scheduledEnd: slot.end || slot.scheduledEnd,
-              totalOccupiedMinutes: slot.totalOccupiedMinutes || serviceDuration,
-              serviceDurationMinutes: slot.serviceDurationMinutes || serviceDuration,
-            };
-          });
+          const formattedSlots = parseLiveSlots(res.slots, serviceDuration);
           setLiveSlots(formattedSlots);
         } else {
           setLiveSlots(null);
@@ -500,20 +686,39 @@ export function QuickBookingBottomSheet({
       toast.error(isAr ? 'يرجى اختيار الخدمة المطابقة للقسم المحدد' : 'Please select a valid service for this category');
       return;
     }
-    if (!customerPhone.trim() || customerPhone.trim().length < 9) {
-      toast.error('يرجى إدخال رقم هاتف صحيح للتواصل');
+
+    const cleanPhone = customerPhone.trim();
+    if (!cleanPhone) {
+      setPhoneError(isAr ? 'يرجى إدخال رقم الهاتف للتواصل.' : 'Please enter contact phone number.');
+      toast.error(isAr ? 'يرجى إدخال رقم الهاتف للتواصل.' : 'Please enter contact phone number.');
       return;
     }
-    const nameVal = validateCustomerName(customerName, isAr);
+    const phoneVal = validateEgyptianPhone(cleanPhone);
+    if (!phoneVal.isValid) {
+      setPhoneError(phoneVal.message || (isAr ? 'يرجى إدخال رقم هاتف مصري صحيح.' : 'Please enter a valid Egyptian phone number.'));
+      toast.error(phoneVal.message || (isAr ? 'يرجى إدخال رقم هاتف مصري صحيح.' : 'Please enter a valid Egyptian phone number.'));
+      return;
+    }
+    setPhoneError(null);
+
+    const cleanCustomerName = sanitizeNameString(customerName);
+    const nameVal = validateCustomerName(cleanCustomerName, isAr);
     if (!nameVal.isValid) {
+      setNameError(nameVal.message || null);
       toast.error(nameVal.message || (isAr ? 'يرجى إدخال اسم العميل للمتابعة' : 'Please enter customer name to proceed'));
+      return;
+    }
+    setNameError(null);
+
+    if (!area.trim()) {
+      toast.error(isAr ? 'يرجى إدخال الحي أو الشارع أو العنوان التفصيلي' : 'Please enter your street or area address');
       return;
     }
 
     // Check if customer account is deactivated by admin
     try {
       const customerStore = useCustomerStore.getState();
-      const matched = customerStore.customers.find((c) => c.phone === customerPhone.trim());
+      const matched = customerStore.customers.find((c) => c.phone === cleanPhone);
       if (matched && (matched.status === 'inactive' || matched.status === 'suspended')) {
         toast.error(
           isAr
@@ -531,14 +736,14 @@ export function QuickBookingBottomSheet({
       label: isAr ? 'موقع الحجز السريع' : 'Quick Booking Address',
       governorate: currentGov?.name || governorateId || 'المنيا',
       city: currentCity?.name || cityId || 'المنيا الجديدة',
-      area: area || currentCity?.name || 'المنيا الجديدة',
+      area: area.trim(),
       details: notes || undefined,
       governorateId: currentGov?.id || (currentGov as any)?._id || governorateId,
       governorateNameSnapshot: isAr ? (currentGov?.name || '') : (currentGov?.nameEn || currentGov?.name || ''),
       cityId: currentCity?.id || (currentCity as any)?._id || cityId,
       cityNameSnapshot: isAr ? (currentCity?.name || '') : (currentCity?.nameEn || currentCity?.name || ''),
-      customerName: customerName.trim(),
-      customerPhone: customerPhone.trim(),
+      customerName: cleanCustomerName,
+      customerPhone: cleanPhone,
     };
 
     setIsSubmitting(true);
@@ -550,13 +755,14 @@ export function QuickBookingBottomSheet({
         services: [{ serviceId: selectedService.id, packageId: selectedPkg?.id, addonIds: selectedAddonsList.map((a) => a.id) }],
         packageId: selectedPkg?.id,
         addonIds: selectedAddonsList.map((a) => a.id),
+        totalOccupiedMinutes: serviceDuration,
         category: selectedService.category,
         date: selectedDate,
         time: selectedTime,
         address: finalAddress,
         notes: notes || undefined,
-        guestName: customerName.trim(),
-        guestPhone: customerPhone.trim(),
+        guestName: cleanCustomerName,
+        guestPhone: cleanPhone,
         saveAddress: true,
       });
 
@@ -572,14 +778,14 @@ export function QuickBookingBottomSheet({
       const matchedAddress = existingAddresses.find((a) => isSameAddress(a, finalAddress));
       const savedAddrPayload: Address = {
         ...(matchedAddress || finalAddress),
-        customerName: customerName.trim(),
-        customerPhone: customerPhone.trim(),
+        customerName: cleanCustomerName,
+        customerPhone: cleanPhone,
         isDefault: true,
       };
       if (!matchedAddress) {
         useAddressStore.getState().addAddress(savedAddrPayload);
       }
-      useBookingStore.getState().setGuestInfo(customerName.trim(), customerPhone.trim());
+      useBookingStore.getState().setGuestInfo(cleanCustomerName, cleanPhone);
       useBookingStore.getState().setAddress(savedAddrPayload);
 
       // Immediately re-fetch live slots so the booked time disappears from the UI without page refresh
@@ -747,7 +953,7 @@ export function QuickBookingBottomSheet({
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-[10px] text-sky-600 dark:text-sky-400 font-semibold flex items-center gap-1">
                               <Clock className="w-3 h-3" />
-                              {svc.duration} دقيقة
+                              {formatDuration(getServiceTotalMinutes(svc), isAr)}
                             </span>
                             {svc.popular && (
                               <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-amber-500 text-white">
@@ -829,7 +1035,15 @@ export function QuickBookingBottomSheet({
                             <div className={cn('w-3.5 h-3.5 rounded-full border flex items-center justify-center', isChosen ? 'border-sky-500 bg-sky-500' : 'border-slate-400')}>
                               {isChosen && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                             </div>
-                            <span>{pkg.name}</span>
+                            <div className="flex flex-col">
+                              <span>{pkg.name}</span>
+                              <span className="text-[10px] text-slate-400 font-normal">
+                                {formatDuration(
+                                  (Number(pkg.durationMinutes) || 45) + Number(selectedService.travelTimeMinutes || 0),
+                                  isAr
+                                )}
+                              </span>
+                            </div>
                           </div>
                           <span className="font-mono">{pkg.price} ج.م</span>
                         </div>
@@ -884,15 +1098,22 @@ export function QuickBookingBottomSheet({
               <div className="p-3 rounded-2xl bg-sky-50 dark:bg-sky-950/40 border border-sky-500/20 flex items-center justify-between">
                 <div>
                   <span className="text-[10px] text-sky-600 dark:text-sky-400 font-bold">الخدمة المختارة:</span>
-                  <p className="text-xs font-bold text-slate-900 dark:text-white">{selectedService?.title}</p>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">
+                    {selectedService?.title}
+                    {selectedPkg && ` (${selectedPkg.name})`}
+                  </p>
+                  <div className="flex items-center gap-1 text-[10px] text-sky-600 dark:text-sky-400 font-semibold mt-0.5">
+                    <Clock className="w-3 h-3" />
+                    <span>{formatDuration(serviceDuration, isAr)}</span>
+                  </div>
                 </div>
                 <span className="text-sm font-black text-sky-600 dark:text-sky-400">
-                  {selectedService?.price} ج.م
+                  {quickTotalPrice} ج.م
                 </span>
               </div>
 
               {/* Date Selection Dropdown */}
-              <div className="relative space-y-1.5" ref={dateDropdownRef}>
+              <div className={cn("relative space-y-1.5", isDateOpen ? "z-30" : "z-20")} ref={dateDropdownRef}>
                 <label className="text-xs font-bold text-slate-900 dark:text-white flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     <Calendar className="w-4 h-4 text-sky-500" />
@@ -905,7 +1126,10 @@ export function QuickBookingBottomSheet({
 
                 <button
                   type="button"
-                  onClick={() => setIsDateOpen((prev) => !prev)}
+                  onClick={() => {
+                    setIsDateOpen((prev) => !prev);
+                    setIsTimeOpen(false);
+                  }}
                   className={cn(
                     "w-full h-11 px-3.5 rounded-xl border flex items-center justify-between transition-all bg-white dark:bg-[#071E34] text-slate-900 dark:text-white font-medium text-xs sm:text-sm cursor-pointer",
                     isDateOpen
@@ -973,40 +1197,83 @@ export function QuickBookingBottomSheet({
                 )}
               </div>
 
-              {/* Time Slots */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-[#0866C6]" />
-                  <span>{isAr ? 'اختر الموعد المناسب' : 'Select Time'}</span>
+              {/* Time Selection Dropdown */}
+              <div className={cn("relative space-y-1.5", isTimeOpen ? "z-30" : "z-10")} ref={timeDropdownRef}>
+                <label className="text-xs font-bold text-slate-900 dark:text-white flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-[#0866C6]" />
+                    <span>{isAr ? 'توقيت الحجز (الموعد)' : 'Booking Time'}</span>
+                  </span>
+                  <span className="text-[11px] font-bold text-[#0866C6] dark:text-[#38BDF8]">
+                    {timeSlots.length} {isAr ? 'موعد متاح' : 'available'}
+                  </span>
                 </label>
-                {timeSlots.length === 0 ? (
-                  <div className="p-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-center space-y-1">
-                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                      {isAr ? 'لا توجد مواعيد متاحة لهذا اليوم' : 'No available slots for this date'}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1">
-                    {timeSlots.map((slot) => {
-                      const isSelected = selectedTime === slot.time || isSameTime(selectedTime, slot.time);
-                      const displayLabel = formatTimeTo12Hour(isAr ? slot.label : slot.labelEn);
 
-                      return (
-                        <button
-                          key={slot.time}
-                          type="button"
-                          onClick={() => setSelectedTime(slot.time)}
-                          className={cn(
-                            'py-2.5 px-2 rounded-xl text-xs font-bold border transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer',
-                            isSelected
-                              ? 'bg-[#0866C6] text-white border-[#0866C6] shadow-md shadow-[#0866C6]/25 font-bold'
-                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-[#0866C6]'
-                          )}
-                        >
-                          <span className="font-mono font-bold" dir="ltr">{displayLabel}</span>
-                        </button>
-                      );
-                    })}
+                <button
+                  type="button"
+                  disabled={timeSlots.length === 0}
+                  onClick={() => {
+                    setIsTimeOpen((prev) => !prev);
+                    setIsDateOpen(false);
+                  }}
+                  className={cn(
+                    "w-full h-11 px-3.5 rounded-xl border flex items-center justify-between transition-all bg-white dark:bg-[#071E34] text-slate-900 dark:text-white font-medium text-xs sm:text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+                    isTimeOpen
+                      ? "border-[#0866C6] ring-2 ring-[#0866C6]/20 dark:ring-[#0866C6]/30 shadow-sm"
+                      : "border-[#DDE7EC] dark:border-[#133B61] hover:border-[#0866C6]/40 dark:hover:border-[#0866C6]/40"
+                  )}
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <Clock className="w-4 h-4 text-[#0866C6] shrink-0" />
+                    <span className="truncate font-bold font-mono" dir="ltr">
+                      {timeButtonLabel}
+                    </span>
+                  </div>
+                  <ChevronDown
+                    className={cn(
+                      "w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0",
+                      isTimeOpen && "rotate-180 text-[#0866C6]"
+                    )}
+                  />
+                </button>
+
+                {isTimeOpen && (
+                  <div className="absolute z-40 mt-1.5 w-full bg-white dark:bg-[#071E34] border border-[#DDE7EC] dark:border-[#133B61] rounded-xl shadow-xl max-h-56 overflow-y-auto p-1.5 space-y-1">
+                    {timeSlots.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-slate-500 dark:text-slate-400 font-medium">
+                        {isAr ? 'لا توجد مواعيد متاحة لهذا اليوم' : 'No available slots for this date'}
+                      </div>
+                    ) : (
+                      timeSlots.map((slot) => {
+                        const isSelected =
+                          selectedTime === slot.time || isSameTime(selectedTime, slot.time);
+                        const label = getSlotDisplayLabel(slot, isAr);
+
+                        return (
+                          <button
+                            key={slot.time}
+                            type="button"
+                            onClick={() => {
+                              setSelectedTime(slot.time);
+                              setIsTimeOpen(false);
+                            }}
+                            className={cn(
+                              "w-full px-3 py-2.5 rounded-lg flex items-center justify-between text-xs sm:text-sm transition-colors text-start cursor-pointer",
+                              isSelected
+                                ? "bg-[#0866C6] text-white font-bold"
+                                : "hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-800 dark:text-slate-200"
+                            )}
+                          >
+                            <span className="font-mono font-bold tracking-tight" dir="ltr">
+                              {label}
+                            </span>
+                            {isSelected ? (
+                              <Check className="w-4 h-4 text-white shrink-0" />
+                            ) : null}
+                          </button>
+                        );
+                      })
+                    )}
                   </div>
                 )}
               </div>
@@ -1017,35 +1284,76 @@ export function QuickBookingBottomSheet({
           {step === 3 && (
             <div className="space-y-4 animate-in fade-in text-xs">
               <div className="space-y-1">
-                <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <Phone className="w-3.5 h-3.5 text-[#0866C6]" />
-                  <span>رقم الهاتف للتواصل *</span>
+                <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-[#0866C6]" />
+                    <span>{isAr ? 'رقم الهاتف للتواصل' : 'Contact Phone'}</span>
+                    <span className="text-[#F0444C] font-bold">*</span>
+                  </span>
+                  {customerPhone.trim().length === 11 && !phoneError && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      {isAr ? 'الرقم صالح' : 'Valid'}
+                    </span>
+                  )}
                 </label>
                 <input
                   type="tel"
                   required
                   value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  onChange={handlePhoneChange}
+                  onBlur={handlePhoneBlur}
                   placeholder="01xxxxxxxxx"
-                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-mono"
+                  className={cn(
+                    "w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border text-slate-900 dark:text-white text-xs font-mono transition-colors",
+                    phoneError
+                      ? "border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500/30"
+                      : "border-slate-200 dark:border-slate-700 focus:border-[#0866C6]"
+                  )}
                   dir="ltr"
                 />
+                {phoneError && (
+                  <p className="text-[11px] font-semibold text-rose-500 flex items-center gap-1 mt-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{phoneError}</span>
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <User className="w-3.5 h-3.5 text-[#0866C6]" />
-                  <span>{isAr ? 'اسم العميل' : 'Customer Name'}</span>
-                  <span className="text-[#F0444C] font-bold">*</span>
+                <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-[#0866C6]" />
+                    <span>{isAr ? 'اسم العميل' : 'Customer Name'}</span>
+                    <span className="text-[#F0444C] font-bold">*</span>
+                  </span>
+                  {customerName.trim().length >= 2 && !nameError && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      {isAr ? 'الاسم صالح' : 'Valid'}
+                    </span>
+                  )}
                 </label>
                 <input
                   type="text"
                   required
                   value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder={isAr ? 'أدخل اسمك الكريم' : 'Enter customer name'}
-                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs"
+                  onChange={handleNameChange}
+                  onBlur={handleNameBlur}
+                  placeholder={isAr ? 'أدخل اسمك الكريم (عربي أو إنجليزي)' : 'Enter customer name (Arabic or English)'}
+                  className={cn(
+                    "w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border text-slate-900 dark:text-white text-xs transition-colors",
+                    nameError
+                      ? "border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500/30"
+                      : "border-slate-200 dark:border-slate-700 focus:border-[#0866C6]"
+                  )}
                 />
+                {nameError && (
+                  <p className="text-[11px] font-semibold text-rose-500 flex items-center gap-1 mt-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{nameError}</span>
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -1102,9 +1410,13 @@ export function QuickBookingBottomSheet({
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-slate-800 dark:text-slate-200">الحي / الشارع / العنوان التفصيلي</label>
+                <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1">
+                  <span>الحي / الشارع / العنوان التفصيلي</span>
+                  <span className="text-[#F0444C] font-bold">*</span>
+                </label>
                 <input
                   type="text"
+                  required
                   value={area}
                   onChange={(e) => setArea(e.target.value)}
                   placeholder="مثال: الحي الرابع، شارع النخيل، عمارة 5"
@@ -1156,7 +1468,9 @@ export function QuickBookingBottomSheet({
                 )}
                 <div className="flex justify-between text-slate-600 dark:text-slate-400">
                   <span>الموعد:</span>
-                  <span className="font-bold text-slate-900 dark:text-white">{selectedDate} — {selectedTime}</span>
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    {selectedDate} — {selectedSlotObj ? (isAr ? selectedSlotObj.label : selectedSlotObj.labelEn) : selectedTime}
+                  </span>
                 </div>
                 <div className="flex justify-between text-slate-600 dark:text-slate-400">
                   <span>رسوم الانتقال والمعدات:</span>
@@ -1188,7 +1502,7 @@ export function QuickBookingBottomSheet({
                   تم استلام طلب الحجز بنجاح!
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
-                  سيتواصل معك فني كلينزو للتأكيد والانطلاق في الموعد المحدد: {selectedDate} ({selectedTime}).
+                  سيتواصل معك فني كلينزو للتأكيد والانطلاق في الموعد المحدد: {selectedDate} ({selectedSlotObj ? (isAr ? selectedSlotObj.label : selectedSlotObj.labelEn) : selectedTime}).
                 </p>
               </div>
 
@@ -1199,24 +1513,49 @@ export function QuickBookingBottomSheet({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">الخدمة:</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200">{selectedService?.title}</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {selectedService?.title}
+                    {selectedPkg && ` (${selectedPkg.name})`}
+                  </span>
                 </div>
+                {selectedAddonsList.length > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">الإضافات:</span>
+                    <span className="font-semibold text-amber-600 dark:text-amber-400">
+                      {selectedAddonsList.map((a) => a.name).join(' + ')}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-slate-400">المبلغ المطلوب:</span>
-                  <span className="font-bold text-emerald-600">{selectedService?.price} ج.م</span>
+                  <span className="font-bold text-emerald-600 font-mono">{quickTotalPrice} ج.م</span>
                 </div>
               </div>
 
               <div className="flex flex-col gap-2.5 w-full pt-2">
-                <a
-                  href={`https://wa.me/201012345678?text=${encodeURIComponent(`مرحباً كلينزو، أود متابعة طلبي رقم #${confirmedOrderId} لخدمة ${selectedService?.title}`)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  <span>تأكيد عبر واتساب مع الدعم</span>
-                </a>
+                {(() => {
+                  const rawWa =
+                    socialSettings?.whatsapp ||
+                    socialSettings?.items?.find((i) => i.platform === 'whatsapp')?.url ||
+                    '201012345678';
+                  const cleanWa = rawWa.replace(/[^0-9]/g, '') || '201012345678';
+                  const timeText = selectedSlotObj ? (isAr ? selectedSlotObj.label : selectedSlotObj.labelEn) : selectedTime;
+                  const pkgText = selectedPkg ? ` (${selectedPkg.name})` : '';
+                  const waText = encodeURIComponent(
+                    `مرحباً كلينزو، أود متابعة طلبي رقم #${confirmedOrderId} لخدمة ${selectedService?.title || ''}${pkgText} في موعد ${selectedDate} (${timeText}).`
+                  );
+                  return (
+                    <a
+                      href={`https://wa.me/${cleanWa}?text=${waText}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      <span>تأكيد عبر واتساب مع الدعم</span>
+                    </a>
+                  );
+                })()}
 
                 <button
                   onClick={onClose}
@@ -1242,7 +1581,7 @@ export function QuickBookingBottomSheet({
               </button>
             ) : (
               <span className="text-xs font-extrabold text-sky-600 dark:text-sky-400">
-                {selectedService?.price} ج.م
+                {selectedService ? `${quickTotalPrice} ج.م` : ''}
               </span>
             )}
 
@@ -1273,10 +1612,21 @@ export function QuickBookingBottomSheet({
               <Button
                 variant="primary"
                 size="md"
-                onClick={() => setStep(3)}
-                className="flex-1 justify-center rounded-xl text-xs font-bold"
+                disabled={!selectedDate || !selectedTime || timeSlots.length === 0}
+                onClick={() => {
+                  if (!selectedDate || !selectedTime || timeSlots.length === 0) {
+                    toast.error(isAr ? 'يرجى اختيار تاريخ ووقت الحجز للمتابعة' : 'Please select date and time to continue');
+                    return;
+                  }
+                  setStep(3);
+                }}
+                className={cn(
+                  'flex-1 justify-center rounded-xl text-xs font-bold transition-all',
+                  (!selectedDate || !selectedTime || timeSlots.length === 0) &&
+                    'opacity-40 cursor-not-allowed bg-slate-300 dark:bg-slate-700 text-slate-500'
+                )}
               >
-                <span>متابعة: بيانات الموقع</span>
+                <span>{isAr ? 'متابعة: بيانات الموقع' : 'Continue: Location details'}</span>
                 <ArrowIcon className="w-4 h-4" />
               </Button>
             )}

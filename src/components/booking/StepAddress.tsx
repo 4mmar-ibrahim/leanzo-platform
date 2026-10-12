@@ -11,7 +11,6 @@ import {
   Edit2,
   Star,
   Loader2,
-  AlertCircle,
   Building,
   User,
   Phone,
@@ -32,7 +31,7 @@ import {
   validateEgyptianPhone,
   VALID_EGYPTIAN_PREFIXES,
 } from '@/lib/validation/phoneValidation';
-import { validateCustomerName } from '@/lib/validation/nameValidation';
+import { validateCustomerName, sanitizeNameString } from '@/lib/validation/nameValidation';
 import { autoTranslate } from '@/lib/i18n/autoTranslate';
 
 export interface StepAddressProps {
@@ -67,7 +66,6 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
-  const [saveToProfile, setSaveToProfile] = useState(true);
   const [isEditingExisting, setIsEditingExisting] = useState(false);
 
   // Form State
@@ -118,16 +116,19 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
     setGuestNameInput(val);
     setGuestInfo(val, guestPhoneInput);
 
-    // Immediate feedback if symbols or digits are entered
-    if (/[^\u0600-\u06FF\u0750-\u077F\u08A0-\u08FFa-zA-Z\s\-']/.test(val)) {
-      setNameError(
-        isAr
-          ? 'اسم العميل يجب أن يحتوي على أحرف فقط دون أرقام أو رموز خاصة.'
-          : 'Customer name must only contain letters without numbers or special symbols.'
-      );
-    } else if (nameTouched) {
-      const res = validateCustomerName(val, isAr);
-      setNameError(res.isValid ? null : res.message || null);
+    const clean = sanitizeNameString(val);
+    if (!clean) {
+      if (nameTouched) {
+        setNameError(isAr ? 'يرجى إدخال اسم العميل.' : 'Please enter customer name.');
+      } else {
+        setNameError(null);
+      }
+      return;
+    }
+
+    const res = validateCustomerName(val, isAr);
+    if (!res.isValid) {
+      setNameError(res.message || null);
     } else {
       setNameError(null);
     }
@@ -414,7 +415,6 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
     setNotes('');
     setNameError(null);
     setNameTouched(false);
-    setSaveToProfile(true);
   };
 
   // Open Edit Modal
@@ -646,7 +646,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
 
             {(selectedAddress.landmark || selectedAddress.notes || selectedAddress.details) && (
               <p className="text-xs text-slate-500 dark:text-slate-400 italic bg-white dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
-                "{selectedAddress.landmark || selectedAddress.notes || selectedAddress.details}"
+                &ldquo;{selectedAddress.landmark || selectedAddress.notes || selectedAddress.details}&rdquo;
               </p>
             )}
           </div>
@@ -972,7 +972,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
 
               {(addr.landmark || addr.notes || addr.details) && (
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 italic bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg">
-                  "{addr.landmark || addr.notes || addr.details}"
+                  &ldquo;{addr.landmark || addr.notes || addr.details}&rdquo;
                 </p>
               )}
 

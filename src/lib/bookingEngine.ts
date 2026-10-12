@@ -94,10 +94,12 @@ export function getBookingTimeInterval(b?: {
 
   const timeStr = String(b.time || '').trim();
   const fullDuration =
+    (b.serviceDurationMinutes || b.duration
+      ? Number(b.serviceDurationMinutes || b.duration) + Number(b.travelTimeMinutes || 0)
+      : 0) ||
     b.totalOccupiedMinutes ||
-    (b.serviceDurationMinutes ? b.serviceDurationMinutes + (b.travelTimeMinutes || 0) : b.duration) ||
-    b.service?.duration ||
-    b.serviceSnapshot?.duration ||
+    (b.service?.duration ? Number(b.service.duration) + Number(b.travelTimeMinutes || 0) : 0) ||
+    (b.serviceSnapshot?.duration ? Number(b.serviceSnapshot.duration) + Number(b.travelTimeMinutes || 0) : 0) ||
     60;
 
   // 1. Explicit scheduledStart & scheduledEnd

@@ -20,12 +20,15 @@ export function getServiceTotalMinutes(service?: {
   totalOccupiedMinutes?: number;
 } | null): number {
   if (!service) return 0;
+  const serviceDur = Number(service.serviceDurationMinutes || service.duration || 0);
+  const travel = Number(service.travelTimeMinutes || 0);
+  if (serviceDur > 0) {
+    return serviceDur + travel;
+  }
   if (service.totalOccupiedMinutes && Number(service.totalOccupiedMinutes) > 0) {
     return Number(service.totalOccupiedMinutes);
   }
-  const serviceDur = Number(service.serviceDurationMinutes || service.duration || 0);
-  const travel = Number(service.travelTimeMinutes || 0);
-  return serviceDur + travel;
+  return travel;
 }
 
 export function formatDuration(minutes: number, isArabic: boolean = true): string {
