@@ -35,6 +35,9 @@ export default function AdminBookingSettingsPage() {
   const [minNoticeHours, setMinNoticeHours] = useState('0');
   const [sameDayBooking, setSameDayBooking] = useState(true);
   const [workingDays, setWorkingDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
+  const [enableBreak, setEnableBreak] = useState(false);
+  const [breakStart, setBreakStart] = useState('14:00');
+  const [breakEnd, setBreakEnd] = useState('15:00');
 
   const [newHolidayDate, setNewHolidayDate] = useState('');
   const [newHolidayName, setNewHolidayName] = useState('');
@@ -57,6 +60,10 @@ export default function AdminBookingSettingsPage() {
       setMinNoticeHours((booking.minNoticeHours !== undefined ? booking.minNoticeHours : 0).toString());
       setSameDayBooking(booking.sameDayBooking ?? true);
       setWorkingDays(booking.workingDays || [0, 1, 2, 3, 4, 5, 6]);
+      const hasBreak = Boolean(booking.breakStart && booking.breakEnd && !(booking.breakStart === '14:00' && booking.breakEnd === '15:00'));
+      setEnableBreak(hasBreak);
+      setBreakStart(booking.breakStart || '14:00');
+      setBreakEnd(booking.breakEnd || '15:00');
     }
   }, [booking]);
 
@@ -101,6 +108,8 @@ export default function AdminBookingSettingsPage() {
       minNoticeHours: Number(minNoticeHours) >= 0 ? Number(minNoticeHours) : 0,
       sameDayBooking,
       workingDays,
+      breakStart: enableBreak ? normalizeTimeString(breakStart) : undefined,
+      breakEnd: enableBreak ? normalizeTimeString(breakEnd) : undefined,
       holidays: booking.holidays || [],
       blockedDates: booking.blockedDates || [],
     };
@@ -249,6 +258,52 @@ export default function AdminBookingSettingsPage() {
                 className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-sky-500"
               />
             </div>
+          </div>
+
+          {/* Break Hours Settings */}
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">استراحة العمل اليومية (اختياري)</span>
+                <p className="text-[11px] text-slate-400">عند تفعيلها، يتم حجب المواعيد في فترة الاستراحة. اتركها معطلة لتظل كافة المواعيد (بما فيها من 2 إلى 3) متاحة.</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enableBreak}
+                  onChange={(e) => setEnableBreak(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-500"></div>
+              </label>
+            </div>
+
+            {enableBreak && (
+              <div className="grid grid-cols-2 gap-3 text-xs mt-3 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-700/60 animate-in fade-in-50 duration-200">
+                <div>
+                  <label className="block font-semibold mb-1">بداية الاستراحة</label>
+                  <input
+                    type="text"
+                    value={breakStart}
+                    onChange={(e) => setBreakStart(e.target.value)}
+                    onBlur={() => setBreakStart(normalizeTimeString(breakStart))}
+                    placeholder="14:00"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">نهاية الاستراحة</label>
+                  <input
+                    type="text"
+                    value={breakEnd}
+                    onChange={(e) => setBreakEnd(e.target.value)}
+                    onBlur={() => setBreakEnd(normalizeTimeString(breakEnd))}
+                    placeholder="15:00"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Working Days Checkboxes */}

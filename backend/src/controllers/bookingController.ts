@@ -791,7 +791,10 @@ export async function getCustomerBookings(req: AuthenticatedRequest, res: Respon
 export async function getBookingById(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    let booking = await Booking.findById(id);
+    let booking: any = null;
+    if (mongoose.isValidObjectId(id)) {
+      booking = await Booking.findById(id);
+    }
     if (!booking) {
       booking = await Booking.findOne({ $or: [{ id }, { bookingNumber: id }] });
     }
@@ -1808,7 +1811,10 @@ export async function cancelBookingCustomer(req: AuthenticatedRequest, res: Resp
     const { id } = req.params;
     const { reason, customerPhone } = req.body || {};
 
-    let booking = await Booking.findById(id);
+    let booking: any = null;
+    if (mongoose.isValidObjectId(id)) {
+      booking = await Booking.findById(id);
+    }
     if (!booking) {
       booking = await Booking.findOne({ $or: [{ id }, { bookingNumber: id }] });
     }

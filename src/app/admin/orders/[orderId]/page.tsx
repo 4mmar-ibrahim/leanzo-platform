@@ -113,8 +113,10 @@ export default function AdminOrderDetailPage() {
   };
 
   // Fetch live order from backend
-  const fetchOrder = async () => {
-    setIsLoading(true);
+  const fetchOrder = async (silent = false) => {
+    if (!silent) {
+      setIsLoading(true);
+    }
     try {
       const liveOrder = await cleanzoApi.admin.getOrderById(orderId);
       if (liveOrder) {
@@ -136,25 +138,26 @@ export default function AdminOrderDetailPage() {
         setNotesText(local.notes || '');
       }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     if (orderId) {
-      fetchOrder();
+      fetchOrder(false);
     }
     // Pre-fetch technicians and orders on mount
     fetchTechnicians();
     fetchAdminOrders();
 
     const handleBookingChanged = () => {
-      fetchOrder();
+      fetchOrder(true);
       fetchAdminOrders();
     };
 
     window.addEventListener('cleanzo:booking-changed', handleBookingChanged);
-    window.addEventListener('focus', handleBookingChanged);
 
     let bc: BroadcastChannel | null = null;
     try {
@@ -170,7 +173,6 @@ export default function AdminOrderDetailPage() {
 
     return () => {
       window.removeEventListener('cleanzo:booking-changed', handleBookingChanged);
-      window.removeEventListener('focus', handleBookingChanged);
       if (bc) {
         try {
           bc.close();
@@ -275,7 +277,11 @@ export default function AdminOrderDetailPage() {
 
     setAssigningTechId(tech.id);
     try {
-      await cleanzoApi.admin.assignTechnician(order.id, tech.id);
+      const updatedOrder = await cleanzoApi.admin.assignTechnician(order.id, tech.id);
+      if (updatedOrder && updatedOrder.id) {
+        setOrder(updatedOrder);
+        useOrderStore.getState().addOrder(updatedOrder);
+      }
       assignTechnician(order.id, {
         id: tech.id,
         name: tech.name,
@@ -293,9 +299,10 @@ export default function AdminOrderDetailPage() {
         details: `تم تعيين: ${tech.name}`,
       });
       toast.success(`تم إسناد الطلب للفني ${tech.name} بنجاح!`);
-      await fetchOrder();
-      await fetchAdminOrders();
       setAssignModalOpen(false);
+      // Silent background refreshes without tearing down the UI
+      fetchOrder(true);
+      fetchAdminOrders();
     } catch (err: any) {
       toast.error(err?.message || 'فشل إسناد الفني على الخادم');
     } finally {
@@ -350,7 +357,7 @@ export default function AdminOrderDetailPage() {
             <span>طباعة الفاتورة الرسمية</span>
           </button>
           <button
-            onClick={fetchOrder}
+            onClick={() => fetchOrder(false)}
             disabled={isLoading || isUpdating}
             className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-sky-500 transition-colors cursor-pointer"
             title="تحديث بيانات الطلب"

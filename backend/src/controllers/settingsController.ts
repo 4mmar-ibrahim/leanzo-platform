@@ -12,13 +12,19 @@ export async function getPublicSettings(req: Request, res: Response): Promise<vo
 
     const version = (settings as any).updatedAt ? new Date((settings as any).updatedAt).getTime() : Date.now();
     // Return public-safe settings (appearance, branding, working hours info, social, mobileExperience)
+    const safeBooking = settings.booking ? { ...settings.booking } : {};
+    if (safeBooking.breakStart === '14:00' && safeBooking.breakEnd === '15:00') {
+      delete safeBooking.breakStart;
+      delete safeBooking.breakEnd;
+    }
+
     sendSuccess(res, {
       general: settings.general,
       appearance: settings.appearance,
       branding: settings.branding,
       mobileExperience: (settings as any).mobileExperience,
       social: settings.social,
-      booking: settings.booking,
+      booking: safeBooking,
       notifications: settings.notifications,
       updatedAt: (settings as any).updatedAt,
       version,
@@ -62,8 +68,14 @@ export async function getAllSettingsAdmin(req: Request, res: Response): Promise<
           holidays: [],
         },
       });
+    const safeBookingAdmin = settings.booking ? { ...settings.booking } : {};
+    if (safeBookingAdmin.breakStart === '14:00' && safeBookingAdmin.breakEnd === '15:00') {
+      delete safeBookingAdmin.breakStart;
+      delete safeBookingAdmin.breakEnd;
     }
-    sendSuccess(res, settings);
+    const adminSettingsObj = typeof (settings as any).toObject === 'function' ? (settings as any).toObject() : { ...settings };
+    adminSettingsObj.booking = safeBookingAdmin;
+    sendSuccess(res, adminSettingsObj);
   } catch (err: any) {
     sendError(res, err.message, 500);
   }
@@ -83,6 +95,12 @@ export async function updateSettingsAdmin(req: Request, res: Response): Promise<
       }
       if (updates.booking) {
         settings.booking = { ...settings.booking, ...updates.booking };
+        if (updates.booking.breakStart === undefined || updates.booking.breakStart === null) {
+          delete (settings.booking as any).breakStart;
+        }
+        if (updates.booking.breakEnd === undefined || updates.booking.breakEnd === null) {
+          delete (settings.booking as any).breakEnd;
+        }
         settings.markModified('booking');
       }
       if (updates.appearance) {

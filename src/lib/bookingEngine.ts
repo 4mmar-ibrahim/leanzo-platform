@@ -584,8 +584,11 @@ export function getTimeSlotsForDate(
     return [];
   }
 
-  const breakStartMin = settings?.breakStart ? timeStringToMinutes(settings.breakStart) : null;
-  const breakEndMin = settings?.breakEnd ? timeStringToMinutes(settings.breakEnd) : null;
+  const hasLegacyBreak = settings?.breakStart === '14:00' && settings?.breakEnd === '15:00';
+  const effectiveBreakStart = hasLegacyBreak ? undefined : settings?.breakStart;
+  const effectiveBreakEnd = hasLegacyBreak ? undefined : settings?.breakEnd;
+  const breakStartMin = effectiveBreakStart ? timeStringToMinutes(effectiveBreakStart) : null;
+  const breakEndMin = effectiveBreakEnd ? timeStringToMinutes(effectiveBreakEnd) : null;
 
   // Filter today's past times in project timezone (Africa/Cairo)
   let todayStr = '';

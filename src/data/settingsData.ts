@@ -31,8 +31,8 @@ export const initialSystemSettings: SystemSettings = {
     workingDays: [0, 1, 2, 3, 4, 5, 6], // All days
     workingHoursStart: '09:00',
     workingHoursEnd: '22:00',
-    breakStart: '14:00',
-    breakEnd: '15:00',
+    breakStart: undefined,
+    breakEnd: undefined,
     slotDuration: 60,
     slotInterval: 30,
     bufferTime: 15,

@@ -32,6 +32,14 @@ interface SettingsState {
   createBackupRecord: (notes?: string) => string;
 }
 
+function cleanBookingBreak(booking: any) {
+  if (!booking) return booking;
+  if (booking.breakStart === '14:00' && booking.breakEnd === '15:00') {
+    return { ...booking, breakStart: undefined, breakEnd: undefined };
+  }
+  return booking;
+}
+
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
@@ -55,7 +63,7 @@ export const useSettingsStore = create<SettingsState>()(
             branding: res.branding ? { ...state.settings.branding, ...res.branding } : state.settings.branding,
             mobileExperience: res.mobileExperience ? { ...state.settings.mobileExperience, ...res.mobileExperience } : state.settings.mobileExperience,
             social: res.social ? { ...state.settings.social, ...res.social } : state.settings.social,
-            booking: res.booking ? { ...state.settings.booking, ...res.booking } : state.settings.booking,
+            booking: res.booking ? cleanBookingBreak({ ...state.settings.booking, ...res.booking }) : state.settings.booking,
             notifications: res.notifications ? { ...state.settings.notifications, ...res.notifications } : state.settings.notifications,
           },
           isLoaded: true,
@@ -77,7 +85,7 @@ export const useSettingsStore = create<SettingsState>()(
               settings: {
                 ...state.settings,
                 general: res.general ? { ...state.settings.general, ...res.general } : state.settings.general,
-                booking: res.booking ? { ...state.settings.booking, ...res.booking } : state.settings.booking,
+                booking: res.booking ? cleanBookingBreak({ ...state.settings.booking, ...res.booking }) : state.settings.booking,
                 appearance: res.appearance ? { ...state.settings.appearance, ...res.appearance } : state.settings.appearance,
                 branding: res.branding ? { ...state.settings.branding, ...res.branding } : state.settings.branding,
                 mobileExperience: res.mobileExperience ? { ...state.settings.mobileExperience, ...res.mobileExperience } : state.settings.mobileExperience,
@@ -306,6 +314,12 @@ export const useSettingsStore = create<SettingsState>()(
         settings: state.settings,
         backupHistory: state.backupHistory,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state?.settings?.booking?.breakStart === '14:00' && state?.settings?.booking?.breakEnd === '15:00') {
+          state.settings.booking.breakStart = undefined;
+          state.settings.booking.breakEnd = undefined;
+        }
+      },
     }
   )
 );
