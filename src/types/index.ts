@@ -757,6 +757,7 @@ export interface BookingSettings {
   workingHoursEnd: string; // e.g. "22:00"
   breakStart?: string;
   breakEnd?: string;
+  enableBreak?: boolean;
   slotDuration: number; // in minutes
   slotInterval: number; // in minutes
   bufferTime: number; // in minutes

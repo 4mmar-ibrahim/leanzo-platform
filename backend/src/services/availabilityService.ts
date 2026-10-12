@@ -188,8 +188,8 @@ export async function getEffectiveBookingSettings() {
     workingDays: Array.isArray(b.workingDays) && b.workingDays.length > 0 ? b.workingDays : [0, 1, 2, 3, 4, 5, 6],
     workingHoursStart: b.workingHoursStart || '09:00',
     workingHoursEnd: b.workingHoursEnd || '22:00',
-    breakStart: b.breakStart === '14:00' && b.breakEnd === '15:00' && !b.enableBreak ? undefined : b.breakStart,
-    breakEnd: b.breakStart === '14:00' && b.breakEnd === '15:00' && !b.enableBreak ? undefined : b.breakEnd,
+    breakStart: b.enableBreak === true && b.breakStart && !(b.breakStart === '14:00' && b.breakEnd === '15:00') ? b.breakStart : undefined,
+    breakEnd: b.enableBreak === true && b.breakEnd && !(b.breakStart === '14:00' && b.breakEnd === '15:00') ? b.breakEnd : undefined,
     slotInterval: Number(b.slotInterval) || 60,
     slotDuration: Number(b.slotDuration) || 60,
     defaultTravelTime: b.bufferTime !== undefined ? Number(b.bufferTime) : 0,
@@ -658,7 +658,7 @@ export async function getAvailableSlots(
   }
 
   // Add working break time as occupied interval if configured
-  if (settings.breakStart && settings.breakEnd) {
+  if (settings.breakStart && settings.breakEnd && !(settings.breakStart === '14:00' && settings.breakEnd === '15:00')) {
     const breakStart = timeStringToMinutes(settings.breakStart);
     const breakEnd = timeStringToMinutes(settings.breakEnd);
     if (breakEnd > breakStart) {
@@ -773,7 +773,7 @@ export async function getAvailableSlots(
     // Check break time overlap
     let isBreakConflict = false;
     let breakReason: string | undefined;
-    if (settings.breakStart && settings.breakEnd) {
+    if (settings.breakStart && settings.breakEnd && !(settings.breakStart === '14:00' && settings.breakEnd === '15:00')) {
       const bStart = timeStringToMinutes(settings.breakStart);
       const bEnd = timeStringToMinutes(settings.breakEnd);
       if (doIntervalsOverlap(slotStart, slotEnd, bStart, bEnd)) {
@@ -909,7 +909,7 @@ export async function assertSlotAvailability(params: {
   }
 
   // 3. Break time check
-  if (settings.breakStart && settings.breakEnd) {
+  if (settings.breakStart && settings.breakEnd && !(settings.breakStart === '14:00' && settings.breakEnd === '15:00')) {
     const breakStart = timeStringToMinutes(settings.breakStart);
     const breakEnd = timeStringToMinutes(settings.breakEnd);
     if (doIntervalsOverlap(slotStartMin, slotEndMin, breakStart, breakEnd)) {

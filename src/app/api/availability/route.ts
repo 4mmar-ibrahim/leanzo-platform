@@ -3,6 +3,63 @@ import { getTimeSlotsForDate } from '@/lib/bookingEngine';
 
 export const dynamic = 'force-dynamic';
 
+function timeToMinutes(t: string): number {
+  if (!t) return 0;
+  const parts = t.split(':').map(Number);
+  return (parts[0] || 0) * 60 + (parts[1] || 0);
+}
+
+function fillLegacyBreakGap(slots: any[], duration: number): any[] {
+  if (!Array.isArray(slots) || slots.length === 0) return slots;
+
+  for (const s of slots) {
+    if (s.reason === 'استراحة عمل') {
+      s.available = true;
+      delete s.reason;
+    }
+  }
+
+  const has14Slot = slots.some((s) => s.start === '14:00' || s.time24 === '14:00');
+  const has15Slot = slots.some((s) => s.start === '15:00' || s.time24 === '15:00');
+  const hasPreBreakSlot = slots.some((s) => {
+    const startM = timeToMinutes(s.start || s.time24 || '');
+    return startM >= 720 && startM <= 810;
+  });
+
+  if (!has14Slot && (has15Slot || hasPreBreakSlot)) {
+    const endMinutes = Math.min(1440, 14 * 60 + (duration || 60));
+    const endH = String(Math.floor(endMinutes / 60)).padStart(2, '0');
+    const endM = String(endMinutes % 60).padStart(2, '0');
+    const endTimeStr = `${endH}:${endM}`;
+    const timeStr = `14:00 – ${endTimeStr}`;
+
+    const newSlot = {
+      time: timeStr,
+      time24: '14:00',
+      label: timeStr,
+      labelEn: timeStr,
+      start: '14:00',
+      end: endTimeStr,
+      available: true,
+      serviceDurationMinutes: duration || 60,
+      travelTimeMinutes: 0,
+      totalOccupiedMinutes: duration || 60,
+      scheduledStart: '14:00',
+      scheduledEnd: endTimeStr,
+    };
+
+    const updated = [...slots, newSlot];
+    updated.sort((a, b) => {
+      const mA = timeToMinutes(a.start || a.time24 || '00:00');
+      const mB = timeToMinutes(b.start || b.time24 || '00:00');
+      return mA - mB;
+    });
+    return updated;
+  }
+
+  return slots;
+}
+
 export async function GET(req: NextRequest) {
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
   const url = new URL(req.url);
@@ -28,6 +85,11 @@ export async function GET(req: NextRequest) {
     if (backendRes.ok) {
       const data = await backendRes.json().catch(() => null);
       if (data) {
+        if (data.data && Array.isArray(data.data.slots)) {
+          const reqDuration = url.searchParams.get('duration');
+          const effDur = data.data.serviceTiming?.serviceDurationMinutes || (reqDuration ? parseInt(reqDuration, 10) : 60);
+          data.data.slots = fillLegacyBreakGap(data.data.slots, effDur);
+        }
         return NextResponse.json(data, {
           status: 200,
           headers: {

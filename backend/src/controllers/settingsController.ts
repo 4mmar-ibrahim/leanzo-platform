@@ -16,6 +16,10 @@ export async function getPublicSettings(req: Request, res: Response): Promise<vo
     if (safeBooking.breakStart === '14:00' && safeBooking.breakEnd === '15:00') {
       delete safeBooking.breakStart;
       delete safeBooking.breakEnd;
+      SystemSettings.updateOne(
+        { key: 'global_settings' },
+        { $unset: { 'booking.breakStart': '', 'booking.breakEnd': '' }, $set: { 'booking.enableBreak': false } }
+      ).catch(() => {});
     }
 
     sendSuccess(res, {
@@ -68,10 +72,17 @@ export async function getAllSettingsAdmin(req: Request, res: Response): Promise<
           holidays: [],
         },
       });
+    }
+
     const safeBookingAdmin = settings.booking ? { ...settings.booking } : {};
     if (safeBookingAdmin.breakStart === '14:00' && safeBookingAdmin.breakEnd === '15:00') {
       delete safeBookingAdmin.breakStart;
       delete safeBookingAdmin.breakEnd;
+      // Proactively clear from MongoDB if still persisted
+      SystemSettings.updateOne(
+        { key: 'global_settings' },
+        { $unset: { 'booking.breakStart': '', 'booking.breakEnd': '' }, $set: { 'booking.enableBreak': false } }
+      ).catch(() => {});
     }
     const adminSettingsObj = typeof (settings as any).toObject === 'function' ? (settings as any).toObject() : { ...settings };
     adminSettingsObj.booking = safeBookingAdmin;
