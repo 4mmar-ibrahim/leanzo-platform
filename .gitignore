@@ -68,3 +68,6 @@ Thumbs.db
 *.sw?
 *.tsbuildinfo
 next-env.d.ts
+
+# 11. AI Agent configs & local rules
+.agents/
