@@ -394,6 +394,17 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
       }
     }
 
+    const isAuthorizedAdmin = Boolean((req as any).isAdmin || (req as any).admin);
+    if (!customerId && !isAuthorizedAdmin) {
+      sendError(
+        res,
+        'يرجى تسجيل الدخول أو إنشاء حساب عميل أولاً لإتمام الحجز ومتابعة طلبك',
+        401,
+        'CUSTOMER_ACCOUNT_REQUIRED'
+      );
+      return;
+    }
+
     // 3. Authoritative Server-Side Price & Duration Calculation (multi-service, packages, add-ons, coupons)
     let pricing: any;
     try {

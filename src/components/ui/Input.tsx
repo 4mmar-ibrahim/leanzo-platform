@@ -3,13 +3,13 @@ import { cn } from '@/lib/utils';
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   error?: string;
-  label?: string;
+  label?: React.ReactNode;
   compact?: boolean;
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, type = 'text', error, label, id, compact = false, ...props }, ref) => {
-    const inputId = id || (label ? label.replace(/\s+/g, '-').toLowerCase() : undefined);
+    const inputId = id || (typeof label === 'string' ? label.replace(/\s+/g, '-').toLowerCase() : undefined);
     const hasAsterisk = typeof label === 'string' && label.includes('*');
 
     return (

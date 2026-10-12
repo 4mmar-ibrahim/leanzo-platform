@@ -14,6 +14,8 @@ import {
   Building,
   User,
   Phone,
+  ShieldCheck,
+  Check,
 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useAddressStore } from '@/store/useAddressStore';
@@ -671,11 +673,31 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
         </div>
 
         <form onSubmit={handleSaveAddress} noValidate className="space-y-3 sm:space-y-4 bg-white dark:bg-slate-900 p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-2xs">
+          {!isAuthenticated && !isAdminContext && (
+            <div className="p-3 rounded-2xl bg-[#0866C6]/5 dark:bg-[#0866C6]/15 border border-[#0866C6]/20 flex items-center gap-2.5 text-[11px] text-[#0866C6] dark:text-sky-300">
+              <ShieldCheck className="w-4 h-4 shrink-0 text-[#0866C6]" />
+              <span className="leading-relaxed">
+                {isAr
+                  ? 'لراحتك وتتبع الفني مباشرة واستلام ضمان الخدمة، سيتم ربط حجزك بحسابك الشخصي في كلينزو عند التأكيد النهائي.'
+                  : 'To track your technician live and receive your warranty, your booking will be confirmed through your Cleanzo account.'}
+              </span>
+            </div>
+          )}
           <div className="space-y-2 sm:space-y-2.5">
             {/* Row 1: اسم العميل و رقم الهاتف */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
               <Input
-                label={isAr ? 'اسم العميل' : 'Customer Name'}
+                label={
+                  <span className="flex items-center justify-between w-full">
+                    <span>{isAr ? 'اسم العميل' : 'Customer Name'}</span>
+                    {guestNameInput.trim().length >= 2 && !nameError && (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        {isAr ? 'الاسم صالح' : 'Valid'}
+                      </span>
+                    )}
+                  </span>
+                }
                 placeholder={isAr ? 'مثال: أحمد عبد الله' : 'e.g. Ahmed Abdallah'}
                 value={guestNameInput}
                 onChange={handleGuestNameChange}
@@ -685,7 +707,17 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
               />
 
               <Input
-                label={isAr ? 'رقم الهاتف' : 'Phone'}
+                label={
+                  <span className="flex items-center justify-between w-full">
+                    <span>{isAr ? 'رقم الهاتف' : 'Phone'}</span>
+                    {guestPhoneInput.trim().length === 11 && !phoneError && (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        {isAr ? 'الرقم صالح' : 'Valid'}
+                      </span>
+                    )}
+                  </span>
+                }
                 type="tel"
                 inputMode="numeric"
                 maxLength={11}
@@ -1042,7 +1074,17 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
           {/* Row 1: اسم العميل و رقم الهاتف */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
             <Input
-              label={isAr ? 'اسم العميل' : 'Customer Name'}
+              label={
+                <span className="flex items-center justify-between w-full">
+                  <span>{isAr ? 'اسم العميل' : 'Customer Name'}</span>
+                  {guestNameInput.trim().length >= 2 && !nameError && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      {isAr ? 'الاسم صالح' : 'Valid'}
+                    </span>
+                  )}
+                </span>
+              }
               placeholder={isAr ? 'مثال: أحمد عبد الله' : 'e.g. Ahmed Abdallah'}
               value={guestNameInput}
               onChange={handleGuestNameChange}
@@ -1052,7 +1094,17 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
             />
 
             <Input
-              label={isAr ? 'رقم الهاتف' : 'Phone'}
+              label={
+                <span className="flex items-center justify-between w-full">
+                  <span>{isAr ? 'رقم الهاتف' : 'Phone'}</span>
+                  {guestPhoneInput.trim().length === 11 && !phoneError && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      {isAr ? 'الرقم صالح' : 'Valid'}
+                    </span>
+                  )}
+                </span>
+              }
               type="tel"
               inputMode="numeric"
               maxLength={11}

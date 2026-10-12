@@ -94,6 +94,14 @@ export async function optionalCustomerAuth(
         req.customer = decoded;
       }
     }
-  } catch {}
+  } catch {
+    try {
+      const adminDecoded = verifyAdminToken(token);
+      if (adminDecoded && adminDecoded.type === 'admin') {
+        (req as any).isAdmin = true;
+        (req as any).admin = adminDecoded;
+      }
+    } catch {}
+  }
   next();
 }

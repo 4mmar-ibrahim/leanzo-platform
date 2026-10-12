@@ -19,6 +19,7 @@ import {
   MessageCircle,
   Loader2,
   AlertCircle,
+  ShieldCheck,
 } from 'lucide-react';
 import { useServiceStore } from '@/store/useServiceStore';
 import { useOrderStore } from '@/store/useOrderStore';
@@ -34,6 +35,7 @@ import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { formatTimeTo12Hour } from '@/lib/timeUtils';
 import { Service, ServiceCategory, Address, ServicePackage, ServiceAddon } from '@/types';
 import { Button } from '@/components/ui/Button';
+import { AuthModalPrompt } from '@/components/booking/AuthModalPrompt';
 import { cn, formatDuration, getServiceTotalMinutes } from '@/lib/utils';
 import { toast } from 'sonner';
 import { validateCustomerName, sanitizeNameString } from '@/lib/validation/nameValidation';
@@ -174,7 +176,8 @@ export function QuickBookingBottomSheet({
 
   const addOrder = useOrderStore((s) => s.addOrder);
   const orders = useOrderStore((s) => s.orders) || [];
-  const { user } = useAuthStore();
+  const { user, isAuthenticated } = useAuthStore();
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Booking Flow Steps: 1: Service, 2: Date & Time, 3: Address & Phone, 4: Success
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -187,10 +190,16 @@ export function QuickBookingBottomSheet({
 
   // Address & Contact info
   const prevIsOpenRef = useRef(false);
+  const pendingBookingRef = useRef<{ address: Address; name: string; phone: string } | null>(null);
   const socialSettings = useSettingsStore((s) => s.settings.social);
   const [governorateId, setGovernorateId] = useState<string>('');
   const [cityId, setCityId] = useState<string>('');
+  const [label, setLabel] = useState<string>(user?.addresses?.[0]?.label || 'المنزل');
   const [area, setArea] = useState(user?.addresses?.[0]?.area || '');
+  const [building, setBuilding] = useState<string>(user?.addresses?.[0]?.building || '');
+  const [floor, setFloor] = useState<string>(user?.addresses?.[0]?.floor || '');
+  const [apartment, setApartment] = useState<string>(user?.addresses?.[0]?.apartment || '');
+  const [landmark, setLandmark] = useState<string>(user?.addresses?.[0]?.landmark || '');
   const [customerName, setCustomerName] = useState(user?.name || '');
   const [customerPhone, setCustomerPhone] = useState(user?.phone || '');
   const [notes, setNotes] = useState('');
@@ -246,10 +255,23 @@ export function QuickBookingBottomSheet({
       const existingName = user?.name || bookingStore.guestName || savedDefaultAddr?.customerName || '';
       const existingPhone = user?.phone || bookingStore.guestPhone || savedDefaultAddr?.customerPhone || '';
       const existingArea = savedDefaultAddr?.area || user?.addresses?.[0]?.area || '';
+      const existingLabel = savedDefaultAddr?.label || user?.addresses?.[0]?.label || 'المنزل';
+      const existingBuilding = savedDefaultAddr?.building || user?.addresses?.[0]?.building || '';
+      const existingFloor = savedDefaultAddr?.floor || user?.addresses?.[0]?.floor || '';
+      const existingApartment = savedDefaultAddr?.apartment || user?.addresses?.[0]?.apartment || '';
+      const existingLandmark = savedDefaultAddr?.landmark || user?.addresses?.[0]?.landmark || '';
+      const existingNotes = savedDefaultAddr?.notes || '';
 
       if (existingName) setCustomerName(existingName);
       if (existingPhone) setCustomerPhone(normalizePhoneInput(existingPhone));
       if (existingArea) setArea(existingArea);
+      setLabel(existingLabel);
+      setBuilding(existingBuilding);
+      setFloor(existingFloor);
+      setApartment(existingApartment);
+      setLandmark(existingLandmark);
+      if (existingNotes) setNotes(existingNotes);
+
       if (savedDefaultAddr?.governorateId) {
         setGovernorateId(savedDefaultAddr.governorateId);
         if (savedDefaultAddr.cityId) {
@@ -680,6 +702,79 @@ export function QuickBookingBottomSheet({
       });
   };
 
+  const submitBookingPayload = async (
+    targetAddress: Address,
+    cleanName: string,
+    cleanPhoneNum: string
+  ) => {
+    if (!selectedService) return;
+    setIsSubmitting(true);
+
+    try {
+      // Send booking to backend API (authoritative server-side validation + category-based slot blocking)
+      const createdBooking = await cleanzoApi.bookings.create({
+        serviceId: selectedService.id,
+        services: [{ serviceId: selectedService.id, packageId: selectedPkg?.id, addonIds: selectedAddonsList.map((a) => a.id) }],
+        packageId: selectedPkg?.id,
+        addonIds: selectedAddonsList.map((a) => a.id),
+        totalOccupiedMinutes: serviceDuration,
+        category: selectedService.category,
+        date: selectedDate,
+        time: selectedTime,
+        address: targetAddress,
+        notes: notes || undefined,
+        guestName: cleanName,
+        guestPhone: cleanPhoneNum,
+        saveAddress: true,
+      });
+
+      if (!createdBooking || !createdBooking.id) {
+        throw new Error(isAr ? 'لم يتم استلام تأكيد الحجز من الخادم' : 'Did not receive booking confirmation from server');
+      }
+
+      // Save authoritative server booking to local store
+      addOrder(createdBooking);
+
+      // Persist address and contact details across subsequent bookings for all services without duplication
+      const existingAddresses = useAddressStore.getState().addresses || [];
+      const matchedAddress = existingAddresses.find((a) => isSameAddress(a, targetAddress));
+      const savedAddrPayload: Address = {
+        ...(matchedAddress || targetAddress),
+        customerName: cleanName,
+        customerPhone: cleanPhoneNum,
+        isDefault: true,
+      };
+      if (!matchedAddress) {
+        useAddressStore.getState().addAddress(savedAddrPayload);
+      }
+      useBookingStore.getState().setGuestInfo(cleanName, cleanPhoneNum);
+      useBookingStore.getState().setAddress(savedAddrPayload);
+
+      // Immediately re-fetch live slots so the booked time disappears from the UI without page refresh
+      refreshLiveSlots();
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('cleanzo:booking-changed', { detail: { date: selectedDate } }));
+        try {
+          const channel = new BroadcastChannel('cleanzo_availability');
+          channel.postMessage({ type: 'BOOKING_CREATED', date: selectedDate, category: selectedService?.category });
+          channel.close();
+        } catch {
+          // ignore BroadcastChannel errors
+        }
+      }
+
+      setConfirmedOrderId(createdBooking.id);
+      setStep(4);
+      toast.success(isAr ? `تم تسجيل طلبك بنجاح برقم #${createdBooking.id}` : `Booking created successfully #${createdBooking.id}`);
+    } catch (err: any) {
+      console.error('[QuickBooking Submit Error]:', err);
+      toast.error(err?.message || (isAr ? 'فشل إتمام الحجز، يرجى المحاولة مجدداً' : 'Failed to complete booking'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleConfirmBooking = async () => {
     if (isSubmitting) return;
     if (!selectedService || !isSelectedServiceValid) {
@@ -733,11 +828,16 @@ export function QuickBookingBottomSheet({
 
     const finalAddress: Address = {
       id: `addr-${Date.now()}`,
-      label: isAr ? 'موقع الحجز السريع' : 'Quick Booking Address',
+      label: label.trim() || (isAr ? 'المنزل' : 'Home'),
       governorate: currentGov?.name || governorateId || 'المنيا',
       city: currentCity?.name || cityId || 'المنيا الجديدة',
       area: area.trim(),
-      details: notes || undefined,
+      building: building.trim(),
+      floor: floor.trim(),
+      apartment: apartment.trim(),
+      landmark: landmark.trim(),
+      notes: notes.trim(),
+      details: notes.trim() || landmark.trim(),
       governorateId: currentGov?.id || (currentGov as any)?._id || governorateId,
       governorateNameSnapshot: isAr ? (currentGov?.name || '') : (currentGov?.nameEn || currentGov?.name || ''),
       cityId: currentCity?.id || (currentCity as any)?._id || cityId,
@@ -746,70 +846,32 @@ export function QuickBookingBottomSheet({
       customerPhone: cleanPhone,
     };
 
-    setIsSubmitting(true);
+    // Stash pending booking context for post-auth execution
+    pendingBookingRef.current = {
+      address: finalAddress,
+      name: cleanCustomerName,
+      phone: cleanPhone,
+    };
 
-    try {
-      // Send booking to backend API (authoritative server-side validation + category-based slot blocking)
-      const createdBooking = await cleanzoApi.bookings.create({
-        serviceId: selectedService.id,
-        services: [{ serviceId: selectedService.id, packageId: selectedPkg?.id, addonIds: selectedAddonsList.map((a) => a.id) }],
-        packageId: selectedPkg?.id,
-        addonIds: selectedAddonsList.map((a) => a.id),
-        totalOccupiedMinutes: serviceDuration,
-        category: selectedService.category,
-        date: selectedDate,
-        time: selectedTime,
-        address: finalAddress,
-        notes: notes || undefined,
-        guestName: cleanCustomerName,
-        guestPhone: cleanPhone,
-        saveAddress: true,
-      });
-
-      if (!createdBooking || !createdBooking.id) {
-        throw new Error(isAr ? 'لم يتم استلام تأكيد الحجز من الخادم' : 'Did not receive booking confirmation from server');
-      }
-
-      // Save authoritative server booking to local store
-      addOrder(createdBooking);
-
-      // Persist address and contact details across subsequent bookings for all services without duplication
-      const existingAddresses = useAddressStore.getState().addresses || [];
-      const matchedAddress = existingAddresses.find((a) => isSameAddress(a, finalAddress));
-      const savedAddrPayload: Address = {
-        ...(matchedAddress || finalAddress),
-        customerName: cleanCustomerName,
-        customerPhone: cleanPhone,
-        isDefault: true,
-      };
-      if (!matchedAddress) {
-        useAddressStore.getState().addAddress(savedAddrPayload);
-      }
+    // Strict Account Requirement: If not logged in, prompt authentication first
+    const isCurrentAuth = useAuthStore.getState().isAuthenticated;
+    if (!isCurrentAuth) {
       useBookingStore.getState().setGuestInfo(cleanCustomerName, cleanPhone);
-      useBookingStore.getState().setAddress(savedAddrPayload);
+      setIsAuthModalOpen(true);
+      return;
+    }
 
-      // Immediately re-fetch live slots so the booked time disappears from the UI without page refresh
-      refreshLiveSlots();
+    await submitBookingPayload(finalAddress, cleanCustomerName, cleanPhone);
+  };
 
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('cleanzo:booking-changed', { detail: { date: selectedDate } }));
-        try {
-          const channel = new BroadcastChannel('cleanzo_availability');
-          channel.postMessage({ type: 'BOOKING_CREATED', date: selectedDate, category: selectedService?.category });
-          channel.close();
-        } catch {
-          // ignore BroadcastChannel errors
-        }
-      }
-
-      setConfirmedOrderId(createdBooking.id);
-      setStep(4);
-      toast.success(isAr ? `تم تسجيل طلبك بنجاح برقم #${createdBooking.id}` : `Booking created successfully #${createdBooking.id}`);
-    } catch (err: any) {
-      console.error('[QuickBooking Submit Error]:', err);
-      toast.error(err?.message || (isAr ? 'فشل إتمام الحجز، يرجى المحاولة مجدداً' : 'Failed to complete booking'));
-    } finally {
-      setIsSubmitting(false);
+  const handleAuthSuccess = () => {
+    setIsAuthModalOpen(false);
+    if (pendingBookingRef.current) {
+      const { address, name, phone } = pendingBookingRef.current;
+      const currentUser = useAuthStore.getState().user;
+      const effectiveName = currentUser?.name || name;
+      const effectivePhone = currentUser?.phone || phone;
+      submitBookingPayload(address, effectiveName, effectivePhone);
     }
   };
 
@@ -1283,6 +1345,16 @@ export function QuickBookingBottomSheet({
           {/* ===================== STEP 3: ADDRESS & CONFIRMATION ===================== */}
           {step === 3 && (
             <div className="space-y-4 animate-in fade-in text-xs">
+              {!isAuthenticated && (
+                <div className="p-3 rounded-2xl bg-[#0866C6]/5 dark:bg-[#0866C6]/15 border border-[#0866C6]/20 flex items-center gap-2.5 text-[11px] text-[#0866C6] dark:text-sky-300">
+                  <ShieldCheck className="w-4 h-4 shrink-0 text-[#0866C6]" />
+                  <span className="leading-relaxed">
+                    {isAr
+                      ? 'لراحتك وتتبع الفني مباشرة واستلام ضمان الخدمة، سيتم تأكيد طلبك عبر حسابك في كلينزو.'
+                      : 'To track your technician live and receive your service warranty, your order will be confirmed through your Cleanzo account.'}
+                  </span>
+                </div>
+              )}
               <div className="space-y-1">
                 <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
@@ -1409,28 +1481,102 @@ export function QuickBookingBottomSheet({
                 </div>
               </div>
 
+              {/* Row: تسمية العنوان و اسم الشارع / الحي */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="sm:col-span-1 space-y-1">
+                  <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1">
+                    <span>{isAr ? 'تسمية العنوان' : 'Address Label'}</span>
+                    <span className="text-[#F0444C] font-bold">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={label}
+                    onChange={(e) => setLabel(e.target.value)}
+                    placeholder={isAr ? 'المنزل' : 'Home'}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs"
+                  />
+                </div>
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1">
+                    <span>{isAr ? 'الشارع / الحي' : 'Street / District'}</span>
+                    <span className="text-[#F0444C] font-bold">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={area}
+                    onChange={(e) => setArea(e.target.value)}
+                    placeholder={isAr ? 'شارع النصر، متفرع من عباس العقاد' : 'Street name, district'}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Row: رقم المبنى و الطابق و الشقة */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 dark:text-slate-200 text-center block">
+                    {isAr ? 'رقم المبنى' : 'Building'}
+                  </label>
+                  <input
+                    type="text"
+                    value={building}
+                    onChange={(e) => setBuilding(e.target.value)}
+                    placeholder="14"
+                    className="w-full px-2.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs text-center"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 dark:text-slate-200 text-center block">
+                    {isAr ? 'الطابق' : 'Floor'}
+                  </label>
+                  <input
+                    type="text"
+                    value={floor}
+                    onChange={(e) => setFloor(e.target.value)}
+                    placeholder="3"
+                    className="w-full px-2.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs text-center"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 dark:text-slate-200 text-center block">
+                    {isAr ? 'رقم الشقة' : 'Apartment'}
+                  </label>
+                  <input
+                    type="text"
+                    value={apartment}
+                    onChange={(e) => setApartment(e.target.value)}
+                    placeholder="7"
+                    className="w-full px-2.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs text-center"
+                  />
+                </div>
+              </div>
+
+              {/* علامة مميزة (اختياري) */}
               <div className="space-y-1">
-                <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1">
-                  <span>الحي / الشارع / العنوان التفصيلي</span>
-                  <span className="text-[#F0444C] font-bold">*</span>
+                <label className="font-bold text-slate-800 dark:text-slate-200">
+                  {isAr ? 'علامة مميزة (اختياري)' : 'Landmark (Optional)'}
                 </label>
                 <input
                   type="text"
-                  required
-                  value={area}
-                  onChange={(e) => setArea(e.target.value)}
-                  placeholder="مثال: الحي الرابع، شارع النخيل، عمارة 5"
+                  value={landmark}
+                  onChange={(e) => setLandmark(e.target.value)}
+                  placeholder={isAr ? 'بجوار صيدلية أو معلم معروف...' : 'Near landmark...'}
                   className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs"
                 />
               </div>
 
+              {/* ملاحظات إضافية */}
               <div className="space-y-1">
-                <label className="font-bold text-slate-800 dark:text-slate-200">ملاحظات إضافية (اختياري)</label>
+                <label className="font-bold text-slate-800 dark:text-slate-200">
+                  {isAr ? 'ملاحظات إضافية (اختياري)' : 'Additional Notes (Optional)'}
+                </label>
                 <input
                   type="text"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="موديل السيارة، أو علامة مميزة للمنزل..."
+                  placeholder={isAr ? 'موديل أو لون السيارة، أو تفاصيل خاصة...' : 'Car model/color, or special instructions...'}
                   className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs"
                 />
               </div>
@@ -1655,6 +1801,13 @@ export function QuickBookingBottomSheet({
           </div>
         )}
       </div>
+
+      {/* Guest Auth Prompt Modal */}
+      <AuthModalPrompt
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={handleAuthSuccess}
+      />
     </div>
   );
 }
