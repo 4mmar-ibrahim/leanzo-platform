@@ -18,6 +18,7 @@ import { usePathname } from 'next/navigation';
 import { normalizeMediaUrl } from '@/lib/utils';
 
 import { DEFAULT_FOOTER_QUICK_LINKS, DEFAULT_FOOTER_CATEGORY_LINKS } from '@/data/settingsData';
+import { SocialBrandIcon, resolveSocialItems } from '@/components/common/SocialBrandIcon';
 
 export function Footer() {
   const { t, locale } = useLocaleStore();
@@ -25,6 +26,11 @@ export function Footer() {
   const pathname = usePathname();
   const contact = useCMSStore((s) => s.contact);
   const social = useCMSStore((s) => s.social);
+  const settingsContact = useSettingsStore((s) => s.settings.contact);
+  const settingsSocial = useSettingsStore((s) => s.settings.social);
+  const activeContact = (contact && (contact.phone || contact.email || contact.address)) ? contact : (settingsContact || contact);
+  const activeSocial = (social && (social.facebook || social.whatsapp || (social.items && social.items.length > 0))) ? social : (settingsSocial || social);
+  const isLoading = useCMSStore((s) => s.isLoading);
   const fetchPublishedContent = useCMSStore((s) => s.fetchPublishedContent);
   const branding = useSettingsStore((s) => s.settings.branding);
   const isSettingsLoaded = useSettingsStore((s) => s.isLoaded);
@@ -45,6 +51,10 @@ export function Footer() {
   React.useEffect(() => {
     fetchPublishedContent();
   }, [fetchPublishedContent]);
+
+  const socialItems = resolveSocialItems(activeSocial).filter(
+    (item) => item.visible !== false && Boolean(item.url?.trim())
+  );
 
   if (pathname?.startsWith('/admin')) {
     return null;
@@ -88,44 +98,38 @@ export function Footer() {
               </span>
             </div>
 
-            {/* Social links */}
-            {(social?.whatsapp || social?.facebook || social?.instagram) && (
-              <div className="flex items-center gap-3 pt-2">
-                {social?.whatsapp && (
-                  <a
-                    href={social.whatsapp.startsWith('http') ? social.whatsapp : `https://wa.me/${social.whatsapp.replace(/[^0-9]/g, '')}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white flex items-center justify-center transition-colors"
-                    aria-label="WhatsApp"
-                  >
-                    <span className="font-bold text-xs">WA</span>
-                  </a>
-                )}
-                {social?.facebook && (
-                  <a
-                    href={social.facebook}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white flex items-center justify-center transition-colors"
-                    aria-label="Facebook"
-                  >
-                    <span className="font-bold text-xs">FB</span>
-                  </a>
-                )}
-                {social?.instagram && (
-                  <a
-                    href={social.instagram}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-pink-600 text-slate-300 hover:text-white flex items-center justify-center transition-colors"
-                    aria-label="Instagram"
-                  >
-                    <span className="font-bold text-xs">IG</span>
-                  </a>
-                )}
+            {/* Official Social Links Bar */}
+            {isLoading && socialItems.length === 0 ? (
+              <div className="flex items-center gap-2.5 pt-2 animate-pulse">
+                <div className="w-9 h-9 rounded-xl bg-slate-800/80" />
+                <div className="w-9 h-9 rounded-xl bg-slate-800/80" />
+                <div className="w-9 h-9 rounded-xl bg-slate-800/80" />
               </div>
-            )}
+            ) : socialItems.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-2.5 pt-2">
+                {socialItems.map((item) => {
+                  const href =
+                    item.platform === 'whatsapp' && !item.url.startsWith('http')
+                      ? `https://wa.me/${item.url.replace(/\D/g, '')}`
+                      : item.url;
+                  const label = isAr ? item.name : (item.nameEn || item.name);
+
+                  return (
+                    <a
+                      key={item.id}
+                      href={href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-[#0866C6] border border-slate-700/60 text-slate-300 hover:text-white flex items-center justify-center transition-all duration-200 hover:scale-105 shadow-xs group"
+                      title={label}
+                      aria-label={label}
+                    >
+                      <SocialBrandIcon platform={item.platform} size="xs" colored={true} />
+                    </a>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
 
           {/* Quick Links */}
@@ -170,42 +174,61 @@ export function Footer() {
                 {locale === 'ar' ? 'تواصل معنا' : 'Contact Us'}
               </h4>
               <ul className="space-y-3 text-sm text-[#DDE7EC]">
-                {contact?.phone && (
-                  <li className="flex items-center gap-3">
-                    <Phone className="w-4 h-4 text-sky-400 shrink-0" />
-                    <a href={`tel:${contact.phone}`} dir="ltr" className="text-[#DDE7EC] hover:text-white transition-colors">
-                      {contact.phone}
-                    </a>
-                  </li>
-                )}
-                {contact?.email && (
-                  <li className="flex items-center gap-3">
-                    <Mail className="w-4 h-4 text-[#83AED0] shrink-0" />
-                    <a href={`mailto:${contact.email}`} className="text-[#DDE7EC] hover:text-white transition-colors">
-                      {contact.email}
-                    </a>
-                  </li>
-                )}
-                {(contact?.address || contact?.addressEn) && (
-                  <li className="flex items-start gap-3">
-                    <MapPin className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                    <span className="text-[#DDE7EC]">
-                      {isAr ? (contact?.address || contact?.addressEn) : (contact?.addressEn || contact?.address)}
-                    </span>
-                  </li>
-                )}
-                {(contact?.workingHours || contact?.workingHoursEn) && (
-                  <li className="flex items-center gap-3">
-                    <Clock className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span className="text-[#DDE7EC]">
-                      {isAr ? (contact?.workingHours || contact?.workingHoursEn) : (contact?.workingHoursEn || contact?.workingHours)}
-                    </span>
-                  </li>
-                )}
-                {!contact?.phone && !contact?.email && !contact?.address && !contact?.workingHours && (
-                  <li className="text-xs text-[#DDE7EC]/80 py-1">
-                    {locale === 'ar' ? 'لم يتم تعيين بيانات تواصل بعد' : 'No contact details configured yet'}
-                  </li>
+                {isLoading && !activeContact?.phone && !activeContact?.email ? (
+                  <div className="space-y-3 py-1 animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <div className="w-4 h-4 rounded-md bg-slate-700/60" />
+                      <div className="w-28 h-3.5 rounded-md bg-slate-700/60" />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-4 h-4 rounded-md bg-slate-700/60" />
+                      <div className="w-32 h-3.5 rounded-md bg-slate-700/60" />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-4 h-4 rounded-md bg-slate-700/60" />
+                      <div className="w-40 h-3.5 rounded-md bg-slate-700/60" />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {activeContact?.phone && (
+                      <li className="flex items-center gap-3">
+                        <Phone className="w-4 h-4 text-sky-400 shrink-0" />
+                        <a href={`tel:${activeContact.phone}`} dir="ltr" className="text-[#DDE7EC] hover:text-white transition-colors">
+                          {activeContact.phone}
+                        </a>
+                      </li>
+                    )}
+                    {activeContact?.email && (
+                      <li className="flex items-center gap-3">
+                        <Mail className="w-4 h-4 text-[#83AED0] shrink-0" />
+                        <a href={`mailto:${activeContact.email}`} dir="ltr" className="text-[#DDE7EC] hover:text-white transition-colors">
+                          {activeContact.email}
+                        </a>
+                      </li>
+                    )}
+                    {(activeContact?.address || activeContact?.addressEn) && (
+                      <li className="flex items-start gap-3">
+                        <MapPin className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                        <span className="text-[#DDE7EC]">
+                          {isAr ? (activeContact?.address || activeContact?.addressEn) : (activeContact?.addressEn || activeContact?.address)}
+                        </span>
+                      </li>
+                    )}
+                    {(activeContact?.workingHours || activeContact?.workingHoursEn) && (
+                      <li className="flex items-center gap-3">
+                        <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span className="text-[#DDE7EC]">
+                          {isAr ? (activeContact?.workingHours || activeContact?.workingHoursEn) : (activeContact?.workingHoursEn || activeContact?.workingHours)}
+                        </span>
+                      </li>
+                    )}
+                    {!activeContact?.phone && !activeContact?.email && !activeContact?.address && !activeContact?.workingHours && (
+                      <li className="text-xs text-[#DDE7EC]/80 py-1">
+                        {locale === 'ar' ? 'لم يتم تعيين بيانات تواصل بعد' : 'No contact details configured yet'}
+                      </li>
+                    )}
+                  </>
                 )}
               </ul>
             </div>

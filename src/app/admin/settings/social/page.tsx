@@ -48,7 +48,8 @@ export default function AdminSocialSettingsPage() {
   const currentAdmin = useAdminStore((s) => s.currentAdmin);
   const addLog = useActivityLogStore((s) => s.addLog);
 
-  const [items, setItems] = useState<SocialLinkItem[]>([]);
+  const hasInitializedRef = React.useRef(false);
+  const [items, setItems] = useState<SocialLinkItem[]>(() => resolveSocialItems(initialSocialLinks));
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -68,11 +69,14 @@ export default function AdminSocialSettingsPage() {
   }, [fetchDraftContent]);
 
   useEffect(() => {
-    if (social) {
+    if (social && (!hasInitializedRef.current || !hasChanges)) {
       const resolved = resolveSocialItems(social);
-      setItems(resolved);
+      if (resolved && resolved.length > 0) {
+        setItems(resolved);
+        hasInitializedRef.current = true;
+      }
     }
-  }, [social]);
+  }, [social, hasChanges]);
 
   // When changing platform in add modal, auto-suggest default name
   const handlePlatformChange = (key: SocialPlatformKey) => {

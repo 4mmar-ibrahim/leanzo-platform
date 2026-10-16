@@ -283,9 +283,9 @@ export async function executeCustomerTokenRefresh(): Promise<string | null> {
 
 export async function apiRequest<T = any>(
   endpoint: string,
-  options: RequestInit & { isAdmin?: boolean; _isRetry?: boolean } = {}
+  options: RequestInit & { isAdmin?: boolean; _isRetry?: boolean; timeoutMs?: number } = {}
 ): Promise<T> {
-  const { isAdmin = false, _isRetry = false, headers = {}, ...rest } = options;
+  const { isAdmin = false, _isRetry = false, timeoutMs = 15000, headers = {}, signal, ...rest } = options;
 
   // Explicit or implicit admin endpoint detection
   const isAdminExplicitOrPath =
@@ -335,9 +335,25 @@ export async function apiRequest<T = any>(
 
   const url = `${baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
+  const controller = new AbortController();
+  let timer: NodeJS.Timeout | null = null;
+  let didTimeout = false;
+
+  if (timeoutMs && timeoutMs > 0) {
+    timer = setTimeout(() => {
+      didTimeout = true;
+      controller.abort();
+    }, timeoutMs);
+  }
+
+  if (signal) {
+    signal.addEventListener('abort', () => controller.abort());
+  }
+
   try {
     const response = await fetch(url, {
       ...rest,
+      signal: controller.signal,
       credentials: 'include',
       headers: reqHeaders,
     });
@@ -415,12 +431,21 @@ export async function apiRequest<T = any>(
 
     return data.data;
   } catch (err: any) {
+    if (didTimeout || (err.name === 'AbortError' && didTimeout)) {
+      throw new ApiError(
+        'انتهت مهلة الاتصال بالخادم، يرجى التحقق من اتصال الإنترنت وإعادة المحاولة',
+        408,
+        'REQUEST_TIMEOUT'
+      );
+    }
     if (err instanceof ApiError) throw err;
     throw new ApiError(
       err.message || 'تعذر الاتصال بخادم كلينزو، يرجى التأكد من تشغيل الخادم والاتصال بالإنترنت',
       503,
       'NETWORK_ERROR'
     );
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 

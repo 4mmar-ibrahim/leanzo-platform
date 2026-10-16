@@ -309,7 +309,7 @@ export function OrderTracker({ order, onOpenReview, onOrderUpdate }: OrderTracke
             </p>
             <p className="text-slate-500 flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 text-[#0866C6] shrink-0" />
-              <span>التاريخ: {order.date} — الوقت: {formatTimeTo12Hour(order.time)}</span>
+              <span>التاريخ: {order.date} — الوقت: <bdi dir="ltr" className="inline-block font-mono">{formatTimeTo12Hour(order.time)}</bdi></span>
             </p>
             {order.rescheduledFrom && (
               <div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 p-2 rounded-xl border border-amber-200/80 dark:border-amber-800/80">

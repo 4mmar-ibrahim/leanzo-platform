@@ -193,7 +193,12 @@ export const useOrderStore = create<OrderState>()(
             link: `/admin/orders/${newOrder.id}`,
           });
 
+          const targetUserId = newOrder.userId || (newOrder as any).customerId;
+          const targetPhone = newOrder.customerPhone || (newOrder as any).guestPhone || (newOrder as any).phone;
+
           useCustomerNotificationStore.getState().addNotification({
+            userId: targetUserId,
+            customerPhone: targetPhone,
             title: '⏳ تم استلام طلبك وبانتظار المراجعة',
             titleEn: '⏳ Booking Received & Under Review',
             message: `تم استلام طلبك رقم #${newOrder.id} لخدمة (${serviceTitle}) بنجاح. فريق العمليات يراجع التفاصيل لتأكيد الموعد (${newOrder.date}${newOrder.time ? ` - ${newOrder.time}` : ''}). سنوافيك بالتأكيد قريباً.`,
@@ -277,10 +282,49 @@ export const useOrderStore = create<OrderState>()(
             set((state) => ({
               orders: state.orders.map((o) => (o.id === orderId ? { ...o, ...updated } : o)),
             }));
+
+            // Broadcast status change across tabs/windows immediately
+            try {
+              if (typeof window !== 'undefined') {
+                if ('BroadcastChannel' in window) {
+                  new BroadcastChannel('cleanzo_availability').postMessage({
+                    type: 'BOOKING_CHANGED',
+                    status,
+                    orderId,
+                    date: updated.date,
+                  });
+                }
+                window.dispatchEvent(
+                  new CustomEvent('cleanzo:booking-changed', {
+                    detail: { status, orderId, date: updated.date },
+                  })
+                );
+              }
+            } catch {}
+
             return updated;
           }
           get().updateOrderStatus(orderId, status, note);
-          return get().getOrderById(orderId) as Order;
+          const current = get().getOrderById(orderId) as Order;
+
+          try {
+            if (typeof window !== 'undefined') {
+              if ('BroadcastChannel' in window) {
+                new BroadcastChannel('cleanzo_availability').postMessage({
+                  type: 'BOOKING_CHANGED',
+                  status,
+                  orderId,
+                });
+              }
+              window.dispatchEvent(
+                new CustomEvent('cleanzo:booking-changed', {
+                  detail: { status, orderId },
+                })
+              );
+            }
+          } catch {}
+
+          return current;
         } catch (err) {
           throw err;
         }
@@ -294,18 +338,27 @@ export const useOrderStore = create<OrderState>()(
           orders: state.orders.map((o) => {
             if (o.id !== orderId) return o;
 
-            const updatedTimeline = [
-              ...(o.timeline || []),
-              {
-                status,
-                label: info.ar,
-                labelEn: info.en,
-                timestamp: now,
-                completed: true,
-                description: note || `${info.descAr} (بواسطة ${actor})`,
-                descriptionEn: note || `${info.descEn} (By ${actor})`,
-              },
-            ];
+            const existingTimeline = o.timeline || [];
+            const lastEvent = existingTimeline[existingTimeline.length - 1];
+            const isDuplicate =
+              lastEvent &&
+              lastEvent.status === status &&
+              (lastEvent.label === info.ar || lastEvent.description === (note || `${info.descAr} (بواسطة ${actor})`));
+
+            const updatedTimeline = isDuplicate
+              ? existingTimeline
+              : [
+                  ...existingTimeline,
+                  {
+                    status,
+                    label: info.ar,
+                    labelEn: info.en,
+                    timestamp: now,
+                    completed: true,
+                    description: note || `${info.descAr} (بواسطة ${actor})`,
+                    descriptionEn: note || `${info.descEn} (By ${actor})`,
+                  },
+                ];
 
             return {
               ...o,
@@ -334,7 +387,12 @@ export const useOrderStore = create<OrderState>()(
           const srvTitleEn = (order?.service as any)?.titleEn || srvTitle;
           const addressArea = typeof order?.address === 'object' ? order?.address?.area || order?.address?.city : undefined;
 
+          const targetUserId = order?.userId || (order as any)?.customerId;
+          const targetPhone = order?.customerPhone || (order as any)?.guestPhone || (order as any)?.phone;
+
           useCustomerNotificationStore.getState().addNotification({
+            userId: targetUserId,
+            customerPhone: targetPhone,
             title: notifMeta.titleAr,
             titleEn: notifMeta.titleEn,
             message: notifMeta.getMsgAr(orderId, srvTitle, {
@@ -375,23 +433,34 @@ export const useOrderStore = create<OrderState>()(
           orders: state.orders.map((o) => {
             if (o.id !== orderId) return o;
 
+            const existingTimeline = o.timeline || [];
+            const lastEvent = existingTimeline[existingTimeline.length - 1];
+            const isDuplicate =
+              lastEvent &&
+              lastEvent.status === 'assigned' &&
+              lastEvent.description?.includes(technician.name);
+
+            const updatedTimeline = isDuplicate
+              ? existingTimeline
+              : [
+                  ...existingTimeline,
+                  {
+                    status: 'assigned' as OrderStatus,
+                    label: 'تم تعيين الفني المختص',
+                    labelEn: 'Technician Assigned',
+                    timestamp: now,
+                    completed: true,
+                    description: `تم إسناد الطلب للكابتن ${technician.name} (${technician.specialty})`,
+                    descriptionEn: `Assigned to ${technician.name}`,
+                  },
+                ];
+
             return {
               ...o,
               technician,
               assignedTechnicianId: technician.id,
               status: 'assigned' as OrderStatus,
-              timeline: [
-                ...(o.timeline || []),
-                {
-                  status: 'assigned' as OrderStatus,
-                  label: 'تم تعيين الفني المختص',
-                  labelEn: 'Technician Assigned',
-                  timestamp: now,
-                  completed: true,
-                  description: `تم إسناد الطلب للكابتن ${technician.name} (${technician.specialty})`,
-                  descriptionEn: `Assigned to ${technician.name}`,
-                },
-              ],
+              timeline: updatedTimeline,
             };
           }),
         }));
@@ -407,7 +476,12 @@ export const useOrderStore = create<OrderState>()(
             link: `/admin/orders/${orderId}`,
           });
 
+          const targetUserId = currentOrder?.userId || (currentOrder as any)?.customerId;
+          const targetPhone = currentOrder?.customerPhone || (currentOrder as any)?.guestPhone || (currentOrder as any)?.phone;
+
           useCustomerNotificationStore.getState().addNotification({
+            userId: targetUserId,
+            customerPhone: targetPhone,
             title: '👷‍♂️ تم تعيين الفني المختص لخدمتك',
             titleEn: '👷‍♂️ Specialist Assigned to Your Booking',
             message: `تم إسناد طلبك #${orderId} إلى الكابتن (${technician.name}). تم تجهيز سيارة الخدمة المتنقلة بأحدث معدات ومواد النظافة والتعقيم الفندقية لزيارتك.`,
@@ -441,42 +515,25 @@ export const useOrderStore = create<OrderState>()(
 
       rescheduleOrder: async (orderId, newDate, newTime, reason, customerPhone) => {
         let updated: any = null;
-        try {
-          if (customerPhone) {
-            updated = await cleanzoApi.bookings.reschedule(orderId, {
+        if (customerPhone) {
+          updated = await cleanzoApi.bookings.reschedule(orderId, {
+            newDate,
+            newTime,
+            reason,
+            customerPhone,
+          });
+        } else {
+          updated = await cleanzoApi.admin.rescheduleOrder(orderId, {
+            newDate,
+            newTime,
+            reason,
+          }).catch(() =>
+            cleanzoApi.bookings.reschedule(orderId, {
               newDate,
               newTime,
               reason,
-              customerPhone,
-            });
-          } else {
-            updated = await cleanzoApi.admin.rescheduleOrder(orderId, {
-              newDate,
-              newTime,
-              reason,
-            }).catch(() =>
-              cleanzoApi.bookings.reschedule(orderId, {
-                newDate,
-                newTime,
-                reason,
-              })
-            );
-          }
-        } catch (err: any) {
-          console.warn('[useOrderStore] Reschedule failed on server, applying local state update:', err);
-          const currentOrder = get().orders.find((o) => o.id === orderId);
-          if (currentOrder) {
-            updated = {
-              ...currentOrder,
-              date: newDate,
-              time: newTime,
-              rescheduledDate: newDate,
-              rescheduledTime: newTime,
-              rescheduleReason: reason,
-            };
-          } else {
-            throw err;
-          }
+            })
+          );
         }
 
         const mappedOrder = {

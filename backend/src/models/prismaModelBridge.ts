@@ -383,6 +383,17 @@ export function createPrismaRepository(prismaDelegateName: keyof typeof prisma) 
         }
       }
 
+      if (cleanData.eventId && modelName === 'notification') {
+        try {
+          const existing = await delegate.findFirst({ where: { eventId: cleanData.eventId } });
+          if (existing) {
+            return attachDocHelpers(existing, delegate);
+          }
+        } catch {
+          // Column eventId may not exist in current DB schema
+        }
+      }
+
       if (!cleanData.actorId && cleanData.adminId) cleanData.actorId = cleanData.adminId;
       if (!cleanData.actorName && cleanData.adminName) cleanData.actorName = cleanData.adminName;
       if (!cleanData.actorRole && cleanData.adminRole) cleanData.actorRole = cleanData.adminRole;
@@ -402,6 +413,10 @@ export function createPrismaRepository(prismaDelegateName: keyof typeof prisma) 
 
       if (modelName === 'user' && cleanData.role !== undefined) {
         delete cleanData.role;
+      }
+
+      if (modelName === 'notification' && cleanData.eventId !== undefined) {
+        delete cleanData.eventId;
       }
 
       if (modelName === 'customerAddress' && cleanData.userId !== undefined && cleanData.customerId === undefined) {
@@ -771,6 +786,10 @@ export function createPrismaRepository(prismaDelegateName: keyof typeof prisma) 
       const where = translateFilter(filter, modelName);
       if (modelName === 'user' && where.role !== undefined) delete where.role;
       return delegate.count({ where });
+    },
+
+    async count(filter: any = {}) {
+      return this.countDocuments(filter);
     },
 
     async exists(filter: any) {

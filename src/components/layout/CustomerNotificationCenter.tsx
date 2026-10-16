@@ -19,6 +19,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { useCustomerNotificationStore } from '@/store/useCustomerNotificationStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { cn } from '@/lib/utils';
 
@@ -39,12 +40,22 @@ export function CustomerNotificationCenter({
   const [mounted, setMounted] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const notifications = useCustomerNotificationStore((s) => s.notifications);
+  const user = useAuthStore((s) => s.user);
+  const allNotifications = useCustomerNotificationStore((s) => s.notifications);
+  const getUserNotifications = useCustomerNotificationStore((s) => s.getUserNotifications);
   const markAsRead = useCustomerNotificationStore((s) => s.markAsRead);
   const markAllAsRead = useCustomerNotificationStore((s) => s.markAllAsRead);
 
-  // Directly derive reactive unread counter from notifications array
+  // Directly derive reactive unread counter scoped to the active customer
+  const notifications = React.useMemo(() => {
+    return getUserNotifications(user?.id, user?.phone);
+  }, [allNotifications, getUserNotifications, user?.id, user?.phone]);
+
   const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const handleMarkAllRead = () => {
+    markAllAsRead(user?.id, user?.phone);
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -161,7 +172,7 @@ export function CustomerNotificationCenter({
                   {unreadCount > 0 && (
                     <button
                       type="button"
-                      onClick={markAllAsRead}
+                      onClick={handleMarkAllRead}
                       className="px-2.5 py-1 rounded-lg text-xs font-bold text-[#0866C6] dark:text-[#3894ec] hover:bg-[#0866C6]/10 transition-colors flex items-center gap-1"
                     >
                       <CheckCheck className="w-3.5 h-3.5" />

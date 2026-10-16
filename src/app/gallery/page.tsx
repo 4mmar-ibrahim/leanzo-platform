@@ -13,6 +13,8 @@ import {
   ChevronRight,
   Camera,
   Layers,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useGalleryStore } from '@/store/useGalleryStore';
@@ -23,6 +25,8 @@ import { Dialog } from '@/components/ui/Dialog';
 import { BeforeAfterSlider } from '@/components/gallery/BeforeAfterSlider';
 import { cn } from '@/lib/utils';
 import { CleanzoImage } from '@/components/common/CleanzoImage';
+import { CMSPreviewBanner } from '@/components/common/CMSPreviewBanner';
+import { Button } from '@/components/ui/Button';
 
 export default function GalleryPage() {
   const { locale, direction } = useLocaleStore();
@@ -31,6 +35,8 @@ export default function GalleryPage() {
 
   const storeItems = useGalleryStore((s) => s.items);
   const fetchGallery = useGalleryStore((s) => s.fetchGallery);
+  const isLoading = useGalleryStore((s) => s.isLoading);
+  const error = useGalleryStore((s) => s.error);
   const currentGallery = storeItems || [];
   const speak = useZoStore((s) => s.speak);
   const galleryPlacement = useZoStore((s) => s.settings.pagePlacements?.gallery);
@@ -74,6 +80,7 @@ export default function GalleryPage() {
 
   return (
     <div className="py-10 lg:py-16 bg-[#EAF8FC] dark:bg-[#041728] min-h-screen space-y-14 transition-colors">
+      <CMSPreviewBanner pageName={isAr ? 'معرض الأعمال' : 'Portfolio Gallery'} adminEditUrl="/admin/marketing/gallery" />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
 
         {/* Section Header with Zo Mascot Banner */}
@@ -85,8 +92,50 @@ export default function GalleryPage() {
           />
         </div>
 
+        {/* Loading Skeleton */}
+        {isLoading && (!currentGallery || currentGallery.length === 0) && (
+          <div className="space-y-8 animate-pulse">
+            <div className="flex justify-center gap-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-10 w-28 rounded-2xl bg-slate-200/80 dark:bg-slate-800/80" />
+              ))}
+            </div>
+            <div className="grid grid-cols-12 gap-6">
+              <div className="col-span-12 lg:col-span-7 h-96 rounded-[32px] bg-slate-200/80 dark:bg-slate-800/80" />
+              <div className="col-span-12 lg:col-span-5 flex flex-col gap-6">
+                <div className="h-44 rounded-[28px] bg-slate-200/80 dark:bg-slate-800/80" />
+                <div className="h-44 rounded-[28px] bg-slate-200/80 dark:bg-slate-800/80" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error Retry State */}
+        {error && !isLoading && (!currentGallery || currentGallery.length === 0) && (
+          <div className="py-16 text-center space-y-4 rounded-3xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 max-w-lg mx-auto p-6 shadow-sm">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              {isAr ? 'تعذر تحميل أعمال المعرض' : 'Failed to load portfolio items'}
+            </h3>
+            <p className="text-xs text-slate-500">
+              {isAr ? 'يرجى التحقق من اتصال الشبكة وإعادة المحاولة.' : 'Please check your connection and try again.'}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchGallery()}
+              className="inline-flex items-center gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>{isAr ? 'إعادة المحاولة' : 'Try Again'}</span>
+            </Button>
+          </div>
+        )}
+
         {/* Gallery Content or Empty State */}
-        {filteredItems.length === 0 ? (
+        {!isLoading && !error && filteredItems.length === 0 ? (
           <div className="py-24 text-center space-y-4 rounded-3xl bg-slate-50 dark:bg-slate-900/40 border-2 border-dashed border-slate-200 dark:border-slate-800 my-8">
             <div className="w-16 h-16 rounded-2xl bg-[#0866C6]/10 text-[#0866C6] flex items-center justify-center mx-auto shadow-inner">
               <Camera className="w-8 h-8" />
@@ -102,7 +151,7 @@ export default function GalleryPage() {
               </p>
             </div>
           </div>
-        ) : (
+        ) : !isLoading && !error ? (
           <>
 
 
@@ -361,7 +410,7 @@ export default function GalleryPage() {
           )}
         </div>
       </>
-    )}
+    ) : null}
   </div>
 
       {/* Lightbox Dialog */}

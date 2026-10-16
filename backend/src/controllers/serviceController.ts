@@ -7,12 +7,25 @@ import { ServiceAddon } from '../models/ServiceAddon.js';
 import { Booking } from '../models/Booking.js';
 import { sendSuccess, sendError } from '../utils/responseHandler.js';
 
+function buildCategoryFilter(category?: any): any {
+  if (!category || typeof category !== 'string' || category === 'all') return null;
+  const c = category.trim().toLowerCase();
+  if (c === 'car' || c === 'cat-mv2vgjo7' || c === 'cat-car') {
+    return { $in: ['car', 'cat-mv2vgjo7', 'cat-car'] };
+  }
+  if (c === 'home' || c === 'cat-mv2vh6ty' || c === 'cat-home') {
+    return { $in: ['home', 'cat-mv2vh6ty', 'cat-home'] };
+  }
+  return category.trim();
+}
+
 export async function getPublicServices(req: Request, res: Response): Promise<void> {
   try {
     const { category } = req.query;
     const filter: any = { isArchived: { $ne: true }, available: true, active: { $ne: false } };
-    if (category && typeof category === 'string' && category !== 'all') {
-      filter.category = category.trim();
+    const catFilter = buildCategoryFilter(category);
+    if (catFilter) {
+      filter.category = catFilter;
     }
 
     const services = await Service.find(filter).sort({ order: 1, createdAt: 1 });
@@ -41,8 +54,9 @@ export async function getServiceById(req: Request, res: Response): Promise<void>
     const { id } = req.params;
     const { category } = req.query;
     const filter: any = { id, isArchived: { $ne: true } };
-    if (category && typeof category === 'string' && category !== 'all') {
-      filter.category = category.trim();
+    const catFilter = buildCategoryFilter(category);
+    if (catFilter) {
+      filter.category = catFilter;
     }
 
     const service = await Service.findOne(filter);
@@ -71,8 +85,9 @@ export async function getAllServicesAdmin(req: Request, res: Response): Promise<
     const includeArchived = req.query.includeArchived === 'true';
     const { category } = req.query;
     const filter: any = includeArchived ? {} : { isArchived: { $ne: true } };
-    if (category && typeof category === 'string' && category !== 'all') {
-      filter.category = category.trim();
+    const catFilter = buildCategoryFilter(category);
+    if (catFilter) {
+      filter.category = catFilter;
     }
     const services = await Service.find(filter).sort({ order: 1, createdAt: 1 });
     const serviceIds = services.map((s: any) => s.id);

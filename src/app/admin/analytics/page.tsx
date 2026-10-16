@@ -91,8 +91,15 @@ export default function AdminAnalyticsPage() {
   const subComparisons = comparisons.subscriptions || {};
   const subAnalytics = analyticsData?.subscriptionsAnalytics || {};
 
-  const growthBadge = (growth: number | undefined) => {
-    const val = growth || 0;
+  const growthBadge = (growth: number | null | undefined) => {
+    if (growth === null || growth === undefined) {
+      return (
+        <span className="text-[10px] font-semibold flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          فترة جديدة
+        </span>
+      );
+    }
+    const val = growth;
     const isPositive = val >= 0;
     return (
       <span
@@ -295,11 +302,17 @@ export default function AdminAnalyticsPage() {
                 {growthBadge(comparisons.averageOrderValue?.growthPercent)}
               </div>
               <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
-                {comparisons.averageOrderValue?.current || 0} ج.م
+                {comparisons.averageOrderValue?.current !== null && comparisons.averageOrderValue?.current !== undefined
+                  ? `${Number(comparisons.averageOrderValue.current).toLocaleString()} ج.م`
+                  : 'لا توجد بيانات'}
               </div>
               <div className="text-[11px] text-slate-400 flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
                 <span>الفترة السابقة:</span>
-                <span className="font-bold text-slate-600 dark:text-slate-300 font-mono">{comparisons.averageOrderValue?.previous || 0} ج.م</span>
+                <span className="font-bold text-slate-600 dark:text-slate-300 font-mono">
+                  {comparisons.averageOrderValue?.previous !== null && comparisons.averageOrderValue?.previous !== undefined
+                    ? `${Number(comparisons.averageOrderValue.previous).toLocaleString()} ج.م`
+                    : 'لا توجد بيانات'}
+                </span>
               </div>
             </div>
           </div>

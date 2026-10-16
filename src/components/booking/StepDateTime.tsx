@@ -13,6 +13,7 @@ import {
   isTimeIntervalOverlapping,
   isSameCategory,
   getOrderCategory,
+  getOrderCategoryInterval,
 } from '@/lib/bookingEngine';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { cn } from '@/lib/utils';
@@ -54,10 +55,10 @@ function formatCleanInterval(start24: string, end24: string, isAr: boolean): str
 
   if (sPeriod === ePeriod) {
     // Single period suffix as requested
-    return `${sH12}:${sMinFormatted} – ${eH12}:${eMinFormatted} ${ePeriod}`;
+    return `\u200E${sH12}:${sMinFormatted}\u200E – \u200E${eH12}:${eMinFormatted} ${ePeriod}\u200E`;
   } else {
     // Cross-boundary (e.g. 11:15 AM to 12:00 PM)
-    return `${sH12}:${sMinFormatted} ${sPeriod} – ${eH12}:${eMinFormatted} ${ePeriod}`;
+    return `\u200E${sH12}:${sMinFormatted} ${sPeriod}\u200E – \u200E${eH12}:${eMinFormatted} ${ePeriod}\u200E`;
   }
 }
 
@@ -188,8 +189,8 @@ export function StepDateTime() {
           const isConflict = existingOrders.some((o) => {
             if (o.status === 'cancelled') return false;
             if (o.date !== selectedDate) return false;
-            if (!isSameCategory(getOrderCategory(o), effectiveCategory)) return false;
-            const oInterval = getBookingTimeInterval(o);
+            const oInterval = getOrderCategoryInterval(o, effectiveCategory);
+            if (!oInterval) return false;
             return isTimeIntervalOverlapping(requestedInterval, oInterval);
           });
 

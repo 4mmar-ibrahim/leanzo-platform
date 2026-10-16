@@ -146,7 +146,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
     const rawVal = e.target.value;
 
     if (/[^0-9]/.test(rawVal)) {
-      setPhoneError(isAr ? 'يرجى إدخال أرقام فقط.' : 'Please enter numbers only.');
+      setPhoneError(isAr ? 'يرجى إدخال أرقام فقط دون مسافات أو رموز.' : 'Please enter numbers only without spaces or symbols.');
     } else {
       setPhoneError(null);
     }
@@ -160,8 +160,8 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
       if (!VALID_EGYPTIAN_PREFIXES.includes(prefix as any)) {
         setPhoneError(
           isAr
-            ? 'رقم الهاتف يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015.'
-            : 'Phone number must start with 010, 011, 012, or 015.'
+            ? 'رقم الهاتف يجب أن يبدأ بـ 010 أو 011.'
+            : 'Phone number must start with 010 or 011.'
         );
       } else if (digits.length === 11) {
         setPhoneError(null);

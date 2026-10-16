@@ -288,3 +288,28 @@ export function authorizePermission(permission: string) {
   return authorize(module, action);
 }
 
+/**
+ * Restricts sensitive / catastrophic operations strictly to Platform Owners.
+ * Non-owners will receive HTTP 403 Forbidden.
+ */
+export function requireOwner(
+  req: AuthenticatedAdminRequest,
+  res: Response,
+  next: NextFunction
+): void {
+  if (!req.admin) {
+    sendError(res, 'غير مصرح: يلزم تسجيل دخول المشرف', 401, 'ADMIN_UNAUTHORIZED');
+    return;
+  }
+  if (req.admin.role !== 'owner' && req.admin.role !== 'super_admin') {
+    sendError(
+      res,
+      'تم رفض الوصول: هذه العملية الحساسة محصورة بمالك المنصة (Platform Owner) حصراً',
+      403,
+      'OWNER_ONLY_REQUIRED'
+    );
+    return;
+  }
+  next();
+}
+

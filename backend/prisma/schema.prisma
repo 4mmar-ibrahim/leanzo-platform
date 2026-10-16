@@ -669,6 +669,7 @@ model Notification {
   id        String   @id @default(uuid())
   target    String   // 'all' | 'admin' | 'customer'
   userId    String?
+  eventId   String?  // Idempotent event identifier
   title     String
   titleEn   String?
   message   String
@@ -682,6 +683,7 @@ model Notification {
   @@index([target])
   @@index([userId])
   @@index([read])
+  @@index([eventId])
   @@map("notifications")
 }
 

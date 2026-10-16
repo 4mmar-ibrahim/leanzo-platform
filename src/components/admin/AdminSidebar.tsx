@@ -64,7 +64,7 @@ interface NavSection {
   items: NavItem[];
 }
 
-export function AdminSidebar({
+function AdminSidebarComponent({
   collapsed,
   setCollapsed,
   mobileOpen,
@@ -452,3 +452,6 @@ export function AdminSidebar({
     </>
   );
 }
+
+export const AdminSidebar = React.memo(AdminSidebarComponent);
+

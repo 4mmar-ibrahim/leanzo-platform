@@ -1,14 +1,14 @@
 /**
  * CLEANZO - STRICT EGYPTIAN CUSTOMER PHONE NUMBER VALIDATION
- * Canonical regex: /^(010|011|012|015)[0-9]{8}$/
- * Exactly 11 ASCII digits starting with 010, 011, 012, or 015.
+ * Canonical regex: /^(010|011)[0-9]{8}$/
+ * Exactly 11 ASCII digits starting with 010 or 011.
  */
 
-export const EGYPTIAN_PHONE_REGEX = /^(010|011|012|015)[0-9]{8}$/;
-export const VALID_EGYPTIAN_PREFIXES = ['010', '011', '012', '015'] as const;
+export const EGYPTIAN_PHONE_REGEX = /^(010|011)[0-9]{8}$/;
+export const VALID_EGYPTIAN_PREFIXES = ['010', '011'] as const;
 
 export const CANONICAL_PHONE_ERROR_MESSAGE =
-  'رقم الهاتف يجب أن يتكون من 11 رقمًا ويبدأ بـ 010 أو 011 أو 012 أو 015.';
+  'رقم الهاتف يجب أن يتكون من 11 رقمًا ويبدأ بـ 010 أو 011.';
 export const CANONICAL_PHONE_ERROR_CODE = 'INVALID_PHONE_NUMBER';
 
 export interface PhoneValidationResult {
@@ -46,7 +46,7 @@ export function validateEgyptianPhone(phone: any): PhoneValidationResult {
 
   // Reject non-digits (spaces, hyphens, +, letters, symbols)
   if (/[^0-9]/.test(clean)) {
-    const msg = 'يرجى إدخال أرقام فقط.';
+    const msg = 'يرجى إدخال أرقام فقط دون مسافات أو رموز.';
     return {
       isValid: false,
       message: msg,
@@ -71,7 +71,7 @@ export function validateEgyptianPhone(phone: any): PhoneValidationResult {
   // Reject invalid prefix
   const prefix = clean.substring(0, 3);
   if (!VALID_EGYPTIAN_PREFIXES.includes(prefix as any)) {
-    const msg = 'رقم الهاتف يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015.';
+    const msg = 'رقم الهاتف يجب أن يبدأ بـ 010 أو 011.';
     return {
       isValid: false,
       message: msg,
@@ -121,8 +121,8 @@ export function normalizePhoneInput(value: string): string {
   // 3. Strip non-digits (spaces, dashes, parens, letters)
   clean = clean.replace(/[^0-9]/g, '');
 
-  // 4. Handle 12-digit string starting with 20 followed by Egyptian prefixes (10, 11, 12, 15)
-  if (clean.length === 12 && clean.startsWith('20') && ['10', '11', '12', '15'].includes(clean.substring(2, 4))) {
+  // 4. Handle 12-digit string starting with 20 followed by Egyptian prefixes (10, 11)
+  if (clean.length === 12 && clean.startsWith('20') && ['10', '11'].includes(clean.substring(2, 4))) {
     clean = '0' + clean.slice(2);
   }
 

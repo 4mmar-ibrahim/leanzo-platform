@@ -27,6 +27,7 @@ import {
   UserCheck,
   PlayCircle,
   Car,
+  Loader2,
 } from 'lucide-react';
 import { useOrderStore } from '@/store/useOrderStore';
 import { useTechnicianStore } from '@/store/useTechnicianStore';
@@ -40,7 +41,7 @@ import { findConflictingOrder, formatReservationSchedule } from '@/lib/bookingEn
 import { RescheduleModal } from '@/components/orders/RescheduleModal';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { getCategoryDisplayName } from '@/lib/services/categoryUtils';
+import { getCategoryDisplayName, computeOrderCategory } from '@/lib/services/categoryUtils';
 
 export default function AdminOrderDetailPage() {
   const params = useParams();
@@ -208,14 +209,9 @@ export default function AdminOrderDetailPage() {
   }
 
   // Handle status update to backend
-  const handleStatusChange = async (newStatus: OrderStatus, customNote?: string) => {
+  const executeStatusChange = async (newStatus: OrderStatus, customNote?: string) => {
     if (!canEditOrders) {
       toast.error('ليس لديك صلاحية لتعديل حالة الطلبات');
-      return;
-    }
-
-    if (newStatus === 'cancelled') {
-      setCancelModalOpen(true);
       return;
     }
 
@@ -228,7 +224,12 @@ export default function AdminOrderDetailPage() {
       addLog({
         adminName: currentAdmin?.name || 'Admin',
         adminRole: currentAdmin?.role || 'owner',
-        action: newStatus === 'completed' ? 'إنهاء واكتمال الطلب' : `تحديث حالة الطلب إلى ${newStatus}`,
+        action:
+          newStatus === 'completed'
+            ? 'إنهاء واكتمال الطلب'
+            : newStatus === 'cancelled'
+            ? 'إلغاء الطلب'
+            : `تحديث حالة الطلب إلى ${newStatus}`,
         module: 'orders',
         target: order.id,
         details: customNote,
@@ -244,6 +245,17 @@ export default function AdminOrderDetailPage() {
         cancelled: 'ملغي',
       };
       toast.success(`تم تحديث حالة الطلب إلى: ${statusLabelsAr[newStatus] || newStatus}`);
+      await fetchOrder(true);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('cleanzo:booking-changed', {
+            detail: { status: newStatus, orderId: order.id },
+          })
+        );
+      }
+      try {
+        useOrderStore.getState().fetchAdminOrders();
+      } catch {}
     } catch (err: any) {
       console.error('Update status error:', err);
       toast.error(err?.message || 'فشل تحديث حالة الطلب على الخادم');
@@ -252,9 +264,18 @@ export default function AdminOrderDetailPage() {
     }
   };
 
+  const handleStatusChange = async (newStatus: OrderStatus, customNote?: string) => {
+    if (newStatus === 'cancelled') {
+      setCancelModalOpen(true);
+      return;
+    }
+    await executeStatusChange(newStatus, customNote);
+  };
+
   const handleConfirmCancel = async () => {
+    if (isUpdating) return;
     setCancelModalOpen(false);
-    await handleStatusChange('cancelled', cancelReason ? `سبب الإلغاء: ${cancelReason}` : undefined);
+    await executeStatusChange('cancelled', cancelReason.trim() ? `سبب الإلغاء: ${cancelReason.trim()}` : 'إلغاء بواسطة الإدارة');
     setCancelReason('');
   };
 
@@ -408,26 +429,40 @@ export default function AdminOrderDetailPage() {
                 order.status === 'cancelled' && 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
               )}
             >
-              {order.status}
+              {order.status === 'pending'
+                ? 'قيد المراجعة'
+                : order.status === 'confirmed'
+                ? 'مؤكد'
+                : order.status === 'assigned'
+                ? 'تم تعيين فني'
+                : order.status === 'on_the_way'
+                ? 'الفني في الطريق'
+                : order.status === 'in_progress'
+                ? 'قيد التنفيذ'
+                : order.status === 'completed'
+                ? 'مكتمل'
+                : order.status === 'cancelled'
+                ? 'ملغي'
+                : order.status}
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
             الخدمة: {order.service?.title || (order as any).serviceSnapshot?.title || 'خدمة كلينزو'} (
-            {getCategoryDisplayName(order.category || (order as any).serviceSnapshot?.category, true)})
+            {getCategoryDisplayName(computeOrderCategory(order), true)})
           </p>
         </div>
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Step 1: Pending -> استلام الطلب */}
+          {/* Step 1: Pending -> تأكيد الطلب */}
           {order.status === 'pending' && (
             <button
-              onClick={() => handleStatusChange('confirmed', 'تم استلام الطلب وتأكيد الحجز')}
+              onClick={() => handleStatusChange('confirmed', 'تم تأكيد موعد الطلب وحجز الخدمة')}
               disabled={!canEditOrders || isUpdating}
               className="px-4 py-2 rounded-xl text-xs font-black bg-[#0866C6] hover:bg-[#0759B0] text-white transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>استلام الطلب</span>
+              <span>تأكيد الطلب</span>
             </button>
           )}
 
@@ -891,7 +926,16 @@ export default function AdminOrderDetailPage() {
             </h3>
 
             <div className="relative pr-4 space-y-6 border-r border-slate-200 dark:border-slate-800 mr-2 text-xs">
-              {(order.timeline || []).map((event, idx) => (
+              {(order.timeline || [])
+                .filter((event, idx, arr) => {
+                  if (idx === 0) return true;
+                  const prev = arr[idx - 1];
+                  return !(
+                    prev.status === event.status &&
+                    (prev.description === event.description || prev.label === event.label)
+                  );
+                })
+                .map((event, idx) => (
                 <div key={idx} className="relative">
                   <span
                     className={cn(
@@ -1163,17 +1207,27 @@ export default function AdminOrderDetailPage() {
             </div>
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
+                type="button"
                 onClick={() => setCancelModalOpen(false)}
-                className="px-3 py-1.5 rounded-xl text-xs text-slate-500"
+                disabled={isUpdating}
+                className="px-3 py-1.5 rounded-xl text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
               >
                 تراجع
               </button>
               <button
+                type="button"
                 onClick={handleConfirmCancel}
                 disabled={isUpdating}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white"
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white flex items-center gap-1.5 transition-colors cursor-pointer"
               >
-                تأكيد الإلغاء
+                {isUpdating ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>جاري الإلغاء...</span>
+                  </>
+                ) : (
+                  <span>تأكيد الإلغاء</span>
+                )}
               </button>
             </div>
           </div>

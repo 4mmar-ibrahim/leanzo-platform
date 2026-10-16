@@ -472,7 +472,9 @@ export const useBookingStore = create<BookingState>()(
             selectedPackage: pkg,
             selectedAddons: addons,
             addonsTotal: addonsTot,
-            durationMinutes: baseDur + addonsDur + travelDur,
+            durationMinutes: baseDur + addonsDur,
+            travelTimeMinutes: travelDur,
+            totalOccupiedMinutes: baseDur + addonsDur + travelDur,
             itemSubtotal: baseSelling + addonsTot,
             itemOriginalTotal: baseOriginal + addonsTot,
           };

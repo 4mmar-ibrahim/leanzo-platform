@@ -80,8 +80,8 @@ assert(normalizePhoneInput('01012345678').length === 11, 'Length is exactly 11')
 console.log('\n--- TEST GROUP 7: Canonical Validation Matrix ---');
 assert(validateEgyptianPhone('01012345678').isValid === true, '01012345678 is valid');
 assert(validateEgyptianPhone('01112345678').isValid === true, '01112345678 is valid');
-assert(validateEgyptianPhone('01212345678').isValid === true, '01212345678 is valid');
-assert(validateEgyptianPhone('01512345678').isValid === true, '01512345678 is valid');
+assert(validateEgyptianPhone('01212345678').isValid === false, '01212345678 prefix 012 is rejected');
+assert(validateEgyptianPhone('01512345678').isValid === false, '01512345678 prefix 015 is rejected');
 assert(validateEgyptianPhone('1012345678').isValid === false, 'Missing leading 0 is invalid');
 assert(validateEgyptianPhone('01312345678').isValid === false, 'Invalid prefix 013 is rejected');
 assert(validateEgyptianPhone('0101234567').isValid === false, '10 digits is rejected');

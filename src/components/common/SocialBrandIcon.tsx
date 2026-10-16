@@ -391,5 +391,18 @@ export function resolveSocialItems(social?: CMSSocialLinks | null): SocialLinkIt
     });
   }
 
-  return items;
+  if (items.length > 0) {
+    return items;
+  }
+
+  // Canonical fallback when no items or keys are populated
+  return [
+    { id: 'fallback-whatsapp', platform: 'whatsapp', name: 'واتساب كلينزو الرسمي', nameEn: 'Cleanzo WhatsApp', url: 'https://wa.me/201012345678', visible: true, order: 1 },
+    { id: 'fallback-facebook', platform: 'facebook', name: 'صفحة فيسبوك', nameEn: 'Facebook Page', url: 'https://facebook.com/cleanzo.app', visible: true, order: 2 },
+    { id: 'fallback-instagram', platform: 'instagram', name: 'إنستجرام', nameEn: 'Instagram', url: 'https://instagram.com/cleanzo.app', visible: true, order: 3 },
+    { id: 'fallback-tiktok', platform: 'tiktok', name: 'تيك توك', nameEn: 'TikTok', url: 'https://tiktok.com/@cleanzo.app', visible: true, order: 4 },
+    { id: 'fallback-youtube', platform: 'youtube', name: 'قناة يوتيوب', nameEn: 'YouTube Channel', url: 'https://youtube.com/@cleanzo', visible: true, order: 5 },
+    { id: 'fallback-twitter', platform: 'twitter', name: 'منصة X (تويتر)', nameEn: 'X (formerly Twitter)', url: 'https://twitter.com/cleanzo_app', visible: true, order: 6 },
+    { id: 'fallback-linkedin', platform: 'linkedin', name: 'لينكد إن', nameEn: 'LinkedIn', url: 'https://linkedin.com/company/cleanzo', visible: true, order: 7 },
+  ];
 }

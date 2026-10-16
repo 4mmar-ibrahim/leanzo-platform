@@ -404,7 +404,7 @@ export interface CustomerAnalyticsSummary {
   pendingOrders: number;
   inProgressOrders: number;
   totalSpent: number;
-  averageOrderValue: number;
+  averageOrderValue: number | null;
   servicesCount: number;
   servicesBreakdown: Array<{
     id: string;
@@ -852,6 +852,8 @@ export interface FooterLinkItem {
 
 export interface CustomerNotification {
   id: string;
+  userId?: string;
+  customerPhone?: string;
   title: string;
   titleEn: string;
   message: string;
@@ -882,6 +884,7 @@ export interface SystemSettings {
   booking: BookingSettings;
   appearance: AppearanceSettings;
   social: CMSSocialLinks;
+  contact?: CMSContactSection;
   mobileExperience: MobileExperienceSettings;
   branding: BrandingSettings;
   notifications: {
@@ -1022,6 +1025,7 @@ export interface ZoSettings {
 
 export interface AdminNotificationItem {
   id: string;
+  eventId?: string;
   title: string;
   titleEn: string;
   message: string;

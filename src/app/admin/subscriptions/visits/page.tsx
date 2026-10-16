@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { apiGet, apiPut, apiPost } from '@/lib/api';
 import { toast } from 'sonner';
+import { TimeRangeDisplay } from '@/components/common/TimeRangeDisplay';
 
 export default function AdminSubscriptionVisitsPage() {
   const [visits, setVisits] = useState<any[]>([]);
@@ -292,7 +293,7 @@ export default function AdminSubscriptionVisitsPage() {
                       <div className="font-bold font-mono text-foreground">{visit.date}</div>
                       <div className="text-[11px] text-foreground/60 font-mono flex items-center gap-1 mt-0.5">
                         <Clock className="w-3 h-3 text-primary" />
-                        {visit.time}
+                        <TimeRangeDisplay time={visit.time} locale="ar" className="text-[11px]" />
                       </div>
                     </td>
 

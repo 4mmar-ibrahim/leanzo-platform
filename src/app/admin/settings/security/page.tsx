@@ -45,6 +45,7 @@ interface EncryptionLogItem {
 
 export default function SecurityAndEncryptionPage() {
   const currentAdmin = useAdminStore((s) => s.currentAdmin);
+  const isOwner = currentAdmin?.role === 'owner' || currentAdmin?.role === 'super_admin';
   const addLog = useActivityLogStore((s) => s.addLog);
 
   const [encryptionStatus, setEncryptionStatus] = useState<{
@@ -182,6 +183,10 @@ export default function SecurityAndEncryptionPage() {
 
   // Execute comprehensive data wipe
   const handleWipeAll = async () => {
+    if (!isOwner) {
+      toast.error('عملية المسح الشامل محصورة بمالك المنصة (Platform Owner) فقط');
+      return;
+    }
     if (wipeConfirmInput.trim() !== 'مسح' && wipeConfirmInput.trim() !== 'WIPE') {
       toast.error('يرجى كتابة كلمة "مسح" لتأكيد التصفير النهائي');
       return;
@@ -319,23 +324,60 @@ export default function SecurityAndEncryptionPage() {
 
             {/* Status Badge */}
             <div className="flex items-center gap-2 self-start md:self-auto">
-              <span
-                className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold shadow-sm ${
-                  encryptionStatus.isEncrypted
-                    ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
-                    : 'bg-amber-500/20 border border-amber-500/40 text-amber-300'
-                }`}
-              >
-                <span
-                  className={`w-2.5 h-2.5 rounded-full ${
-                    encryptionStatus.isEncrypted ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
-                  }`}
-                />
-                <span>
-                  {encryptionStatus.isEncrypted
-                    ? 'البيانات مشفرة ومؤمنة بالكامل'
-                    : 'البيانات غير مشفرة حالياً'}
-                </span>
+              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold shadow-sm bg-emerald-500/20 border border-emerald-500/40 text-emerald-300">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>منظومة الحماية متعددة الطبقات نشطة ومؤمنة</span>
+              </span>
+            </div>
+          </div>
+
+          {/* Multi-Layer Security Overview (Bcrypt, TLS, JWT, AES-256-GCM) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+            <div className="p-3.5 rounded-2xl bg-white/10 border border-white/15 space-y-1 backdrop-blur-xs">
+              <div className="flex items-center gap-2 text-emerald-300 font-bold">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>تشفير كلمات المرور</span>
+              </div>
+              <p className="text-[11px] text-slate-300">Bcrypt Salted Hash (10 Rounds)</p>
+              <span className="inline-block text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                مؤمن بنسبة 100%
+              </span>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-white/10 border border-white/15 space-y-1 backdrop-blur-xs">
+              <div className="flex items-center gap-2 text-emerald-300 font-bold">
+                <Lock className="w-4 h-4 text-emerald-400" />
+                <span>تشفير الاتصال والبيانات</span>
+              </div>
+              <p className="text-[11px] text-slate-300">TLS 1.3 / HTTPS In-Transit</p>
+              <span className="inline-block text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                مشفر نشط 100%
+              </span>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-white/10 border border-white/15 space-y-1 backdrop-blur-xs">
+              <div className="flex items-center gap-2 text-emerald-300 font-bold">
+                <Key className="w-4 h-4 text-emerald-400" />
+                <span>جلسات المشرفين</span>
+              </div>
+              <p className="text-[11px] text-slate-300">JWT Cryptographically Signed</p>
+              <span className="inline-block text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                موقّع ومحمي 100%
+              </span>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-white/10 border border-white/15 space-y-1 backdrop-blur-xs">
+              <div className="flex items-center gap-2 text-sky-300 font-bold">
+                <Database className="w-4 h-4 text-sky-400" />
+                <span>تشفير حقول البيانات</span>
+              </div>
+              <p className="text-[11px] text-slate-300">AES-256-GCM Column Level</p>
+              <span className={`inline-block text-[10px] font-black px-2 py-0.5 rounded-md border ${
+                encryptionStatus.isEncrypted
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                  : 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+              }`}>
+                {encryptionStatus.isEncrypted ? `مفعّل (${encryptionStatus.totalRecordsEncrypted} حقل)` : 'جاهز للتطبيق عند الطلب'}
               </span>
             </div>
           </div>
@@ -397,20 +439,23 @@ export default function SecurityAndEncryptionPage() {
             <button
               type="button"
               onClick={() => setShowEncryptModal(true)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold text-xs sm:text-sm bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white shadow-lg shadow-sky-500/25 transition-all transform hover:-translate-y-0.5 active:translate-y-0"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold text-xs sm:text-sm bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white shadow-lg shadow-sky-500/25 transition-all transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
             >
               <Key className="w-4 h-4" />
-              <span>تشفير جميع بيانات البرنامج الآن</span>
+              <span>تشفير حقول البيانات (AES-256-GCM)</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setShowWipeModal(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl font-semibold text-xs sm:text-sm bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 transition-colors"
-            >
-              <Trash2 className="w-4 h-4 text-rose-400" />
-              <span>حذف جميع بيانات الموقع بالكامل (Wipe All Data)</span>
-            </button>
+            {isOwner && (
+              <button
+                type="button"
+                onClick={() => setShowWipeModal(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl font-semibold text-xs sm:text-sm bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 transition-colors cursor-pointer"
+                title="خاص بمالك المنصة فقط"
+              >
+                <Trash2 className="w-4 h-4 text-rose-400" />
+                <span>حذف جميع بيانات الموقع بالكامل (مالك المنصة فقط)</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

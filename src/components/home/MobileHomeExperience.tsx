@@ -38,6 +38,7 @@ import { useGalleryStore } from '@/store/useGalleryStore';
 import { ServiceCategory } from '@/types';
 import { useZoStore } from '@/store/useZoStore';
 import { resolveActionButtonUrl } from '@/lib/actionButtonUtils';
+import { autoTranslate } from '@/lib/i18n/autoTranslate';
 
 interface MobileSectionDividerProps {
   icon: React.ElementType;
@@ -114,6 +115,8 @@ export function MobileHomeExperience() {
   const hero = useCMSStore((s) => s.hero);
   const faqs = useCMSStore((s) => s.faqs);
   const contact = useCMSStore((s) => s.contact);
+  const settingsContact = useSettingsStore((s) => s.settings.contact);
+  const activeContact = (contact && (contact.phone || contact.whatsapp)) ? contact : (settingsContact || contact);
   const storeReviews = useCMSStore((s) => s.reviews);
   const fetchReviews = useCMSStore((s) => s.fetchReviews);
   const fetchPublishedContent = useCMSStore((s) => s.fetchPublishedContent);
@@ -230,7 +233,7 @@ export function MobileHomeExperience() {
                     .map((btn, idx) => {
                       const resolvedUrl = resolveActionButtonUrl(btn, { activeCategory });
                       if (!resolvedUrl) return null;
-                      const label = (isAr ? btn.label : btn.labelEn || btn.label) || 'إجراء';
+                      const label = (isAr ? btn.label : (btn.labelEn || autoTranslate(btn.label, 'en') || btn.label)) || (isAr ? 'إجراء' : 'Action');
                       const isExternal = resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://');
                       const isSection = resolvedUrl.startsWith('#');
                       const variant = btn.variant || (idx === 0 ? 'primary' : 'secondary');
@@ -421,7 +424,7 @@ export function MobileHomeExperience() {
                     {isAr ? offer.title : offer.titleEn}
                   </h4>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    كود الخصم: <span className="font-mono font-bold text-[#0866C6]">{offer.code}</span>
+                    {isAr ? 'كود الخصم:' : 'Promo Code:'} <span className="font-mono font-bold text-[#0866C6]">{offer.code}</span>
                   </p>
                 </div>
 
@@ -430,7 +433,7 @@ export function MobileHomeExperience() {
                   onClick={() => openBookingForCategory(offer.category || 'car')}
                   className="px-3 py-1.5 rounded-lg bg-[#0866C6] hover:bg-[#06529E] active:scale-95 text-white text-xs font-bold shrink-0 shadow-2xs transition-all"
                 >
-                  احجز بالعرض
+                  {isAr ? 'احجز بالعرض' : 'Book with Offer'}
                 </button>
               </div>
             ))}
@@ -491,21 +494,21 @@ export function MobileHomeExperience() {
 
             <div className="grid grid-cols-2 gap-2 pt-1">
               <a
-                href={`https://wa.me/${contact?.whatsapp?.replace(/[^0-9]/g, '') || '201012345678'}`}
+                href={`https://wa.me/${activeContact?.whatsapp?.replace(/[^0-9]/g, '') || '201012345678'}`}
                 target="_blank"
                 rel="noreferrer"
                 className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-transform"
               >
                 <MessageCircle className="w-4 h-4" />
-                <span>واتساب</span>
+                <span>{isAr ? 'واتساب' : 'WhatsApp'}</span>
               </a>
 
               <a
-                href={`tel:${contact?.phone || '+201012345678'}`}
+                href={`tel:${activeContact?.phone || '+201012345678'}`}
                 className="py-2.5 px-3 rounded-xl bg-[#0866C6] hover:bg-[#06529E] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-transform"
               >
                 <PhoneCall className="w-4 h-4" />
-                <span>اتصال هاتفي</span>
+                <span>{isAr ? 'اتصال هاتفي' : 'Phone Call'}</span>
               </a>
             </div>
           </div>

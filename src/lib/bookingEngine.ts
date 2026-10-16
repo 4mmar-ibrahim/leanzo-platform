@@ -496,13 +496,74 @@ export function getOrderCategory(order: any): string | undefined {
 }
 
 /**
+ * Checks if an order involves a target category (supports both single & multi-service composite orders).
+ */
+export function doesOrderInvolveCategory(order: any, targetCategory?: string): boolean {
+  if (!targetCategory || targetCategory === 'all') return true;
+  const targetNorm = normalizeCategory(targetCategory);
+
+  const rootCat = order.category || order.serviceSnapshot?.category || order.service?.category;
+  if (rootCat && normalizeCategory(rootCat) === targetNorm) return true;
+
+  const servicesList = [
+    ...(Array.isArray(order.selectedServices) ? order.selectedServices : []),
+    ...(Array.isArray(order.metadata?.services) ? order.metadata.services : []),
+    ...(Array.isArray(order.serviceSnapshot?.services) ? order.serviceSnapshot.services : []),
+    ...(Array.isArray(order.services) ? order.services : []),
+  ];
+
+  for (const s of servicesList) {
+    const sCat = s.category || s.service?.category;
+    if (sCat && normalizeCategory(sCat) === targetNorm) return true;
+  }
+
+  return false;
+}
+
+/**
  * Checks if an order belongs to the target category.
  */
 export function isSameCategory(order: any, targetCategory?: string): boolean {
-  if (!targetCategory || targetCategory === 'all') return true;
-  const orderCat = getOrderCategory(order);
-  if (!orderCat) return false;
-  return normalizeCategory(orderCat) === normalizeCategory(targetCategory);
+  return doesOrderInvolveCategory(order, targetCategory);
+}
+
+/**
+ * Extracts the specific execution interval occupied by a category within an order.
+ * In composite orders, services execute sequentially, so each category only occupies its sub-service window.
+ */
+export function getOrderCategoryInterval(
+  order: any,
+  targetCategory: string
+): { startMin: number; endMin: number } | null {
+  if (!order) return null;
+  const targetNorm = normalizeCategory(targetCategory);
+  const fullInterval = getBookingTimeInterval(order);
+
+  const servicesList = [
+    ...(Array.isArray(order.metadata?.services) ? order.metadata.services : []),
+    ...(Array.isArray(order.serviceSnapshot?.services) ? order.serviceSnapshot.services : []),
+    ...(Array.isArray(order.selectedServices) ? order.selectedServices : []),
+  ];
+
+  if (servicesList.length > 1) {
+    let cursor = fullInterval.startMin;
+    for (const item of servicesList) {
+      const itemDuration = Number(item.duration || item.service?.duration || 30);
+      const itemStart = cursor;
+      const itemEnd = cursor + itemDuration;
+      cursor = itemEnd;
+      const itemCat = normalizeCategory(item.category || item.service?.category) || 'car';
+      if (itemCat === targetNorm) {
+        return { startMin: itemStart, endMin: itemEnd };
+      }
+    }
+    return null;
+  }
+
+  if (doesOrderInvolveCategory(order, targetCategory)) {
+    return fullInterval;
+  }
+  return null;
 }
 
 /**

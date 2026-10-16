@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { apiGet, apiPut, apiPost } from '@/lib/api';
 import { toast } from 'sonner';
+import { TimeRangeDisplay } from '@/components/common/TimeRangeDisplay';
 
 export default function AdminSubscriptionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -338,7 +339,7 @@ export default function AdminSubscriptionDetailPage({ params }: { params: Promis
                         <div className="font-bold text-foreground">{visit.date}</div>
                         <div className="text-foreground/60 font-mono text-[11px] flex items-center gap-1 mt-0.5">
                           <Clock className="w-3 h-3 text-primary" />
-                          {visit.time}
+                          <TimeRangeDisplay time={visit.time} locale="ar" className="text-[11px]" />
                         </div>
                       </td>
                       <td className="py-3.5 px-4">
@@ -541,8 +542,12 @@ export default function AdminSubscriptionDetailPage({ params }: { params: Promis
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
           <div className="w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-xl space-y-4">
             <h3 className="text-lg font-bold">تعيين فني للزيارة</h3>
-            <p className="text-xs text-foreground/60">
-              الزيارة: <span className="font-bold">{selectedVisit.visitNumber}</span> ({selectedVisit.date} - {selectedVisit.time})
+            <p className="text-xs text-foreground/60 flex items-center gap-1.5 flex-wrap">
+              <span>الزيارة:</span>
+              <span className="font-bold">{selectedVisit.visitNumber}</span>
+              <span>({selectedVisit.date} -</span>
+              <TimeRangeDisplay time={selectedVisit.time} locale="ar" />
+              <span>)</span>
             </p>
             <div className="space-y-2">
               <label className="text-xs font-bold text-foreground/70">اختر الفني</label>

@@ -33,7 +33,7 @@ import { toast } from 'sonner';
 import { validateEgyptianPhone } from '@/lib/validation/phoneValidation';
 import { validateCustomerName } from '@/lib/validation/nameValidation';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
-import { isSameService, isSameTime, getBookingTimeInterval, isTimeIntervalOverlapping, timeStringToMinutes } from '@/lib/bookingEngine';
+import { isSameService, isSameTime, getBookingTimeInterval, isTimeIntervalOverlapping, timeStringToMinutes, getOrderCategoryInterval } from '@/lib/bookingEngine';
 import { isSameCategory } from '@/lib/services/categoryUtils';
 
 function AdminNewBookingContent() {
@@ -198,28 +198,45 @@ function AdminNewBookingContent() {
     }
 
     const primaryService = allItems[0].service;
-
-    // Slot Conflict Check (Cross-service in same category)
-    const existingOrders = useOrderStore.getState().orders || [];
     const targetCategory = primaryService.category || category;
-    const totalDuration = getTotalDuration();
+
+    // Slot Conflict Check (Cross-service & composite category isolation)
+    const startMin = timeStringToMinutes(selectedTime);
+    let cursor = startMin;
+    const proposedCategoryIntervals: { category: string; startMin: number; endMin: number }[] = [];
+    for (const item of allItems) {
+      const itemDuration = Number(item.selectedPackage?.durationMinutes || item.service.duration || 30);
+      const cat = (item.service.category || category || 'car').toLowerCase().trim();
+      proposedCategoryIntervals.push({
+        category: cat,
+        startMin: cursor,
+        endMin: cursor + itemDuration,
+      });
+      cursor += itemDuration;
+    }
+
+    const existingOrders = useOrderStore.getState().orders || [];
+    let conflictCategory = '';
+
     const isAlreadyBooked = existingOrders.some((o) => {
       if (o.status === 'cancelled') return false;
       if (o.date !== selectedDate) return false;
-      const orderCat = o.category || (o as any).serviceSnapshot?.category || o.service?.category;
-      const sameCategory = isSameCategory(orderCat, targetCategory);
-      if (!sameCategory) return false;
-      const otherInterval = getBookingTimeInterval(o);
-      const startMin = timeStringToMinutes(selectedTime);
-      const currentInterval = { startMin, endMin: startMin + totalDuration };
-      return isTimeIntervalOverlapping(currentInterval, otherInterval) || isSameTime(o.time, selectedTime);
+
+      for (const proposed of proposedCategoryIntervals) {
+        const orderCatInterval = getOrderCategoryInterval(o, proposed.category);
+        if (orderCatInterval && isTimeIntervalOverlapping(proposed, orderCatInterval)) {
+          conflictCategory = proposed.category;
+          return true;
+        }
+      }
+      return false;
     });
 
     if (isAlreadyBooked) {
       toast.error(
         isAr
-          ? `الموعد (${selectedTime}) محجوز بالفعل لنفس التصنيف (${targetCategory === 'home' ? 'منازل' : 'سيارات'}). يرجى اختيار موعد آخر.`
-          : `(${selectedTime}) is already booked for this category. Please select another slot.`
+          ? `الموعد (${selectedTime}) يتعارض مع حجز قائم لنفس التصنيف (${conflictCategory === 'home' ? 'منازل' : 'سيارات'}). يرجى اختيار موعد آخر.`
+          : `(${selectedTime}) conflicts with an existing booking for this category. Please select another slot.`
       );
       return;
     }

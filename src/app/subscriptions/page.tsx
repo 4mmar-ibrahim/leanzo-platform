@@ -22,6 +22,7 @@ import {
   Layers,
   Info,
   Package,
+  RefreshCw,
 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -29,7 +30,17 @@ import { useServiceStore } from '@/store/useServiceStore';
 import { toast } from 'sonner';
 import { apiGet, apiPost } from '@/lib/api';
 import { CleanzoImage } from '@/components/common/CleanzoImage';
+import { TimeRangeDisplay } from '@/components/common/TimeRangeDisplay';
 import { autoTranslate } from '@/lib/i18n/autoTranslate';
+import { timeStringToMinutes, isTimeIntervalOverlapping } from '@/lib/bookingEngine';
+import { CMSPreviewBanner } from '@/components/common/CMSPreviewBanner';
+import {
+  validateEgyptianPhone,
+  VALID_EGYPTIAN_PREFIXES,
+  CANONICAL_PHONE_ERROR_MESSAGE,
+  convertArabicToAsciiDigits,
+  normalizePhoneInput,
+} from '@/lib/validation/phoneValidation';
 
 interface IService {
   id: string;
@@ -76,6 +87,7 @@ export default function SubscriptionsPage() {
   const { user, isAuthenticated, initAuth } = useAuthStore();
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [plans, setPlans] = useState<IPlan[]>([]);
   const [services, setServices] = useState<IService[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -85,6 +97,39 @@ export default function SubscriptionsPage() {
   // Store categories
   const categories = useServiceStore((s) => s.categories);
   const fetchCategories = useServiceStore((s) => s.fetchCategories);
+
+  const loadData = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [plansRes, servicesRes] = await Promise.all([
+        apiGet<IPlan[]>('/subscriptions/plans'),
+        apiGet<IService[]>('/services'),
+        fetchCategories().catch(() => []),
+      ]);
+
+      if (plansRes?.data) {
+        const raw = Array.isArray(plansRes.data) ? plansRes.data : (plansRes.data as any)?.plans || [];
+        setPlans(raw);
+      }
+      if (servicesRes?.data) {
+        const rawServices = Array.isArray(servicesRes.data) ? servicesRes.data : (servicesRes.data as any)?.services || [];
+        const activeServices = rawServices.filter(
+          (s: any) => s.available !== false && !s.isArchived
+        );
+        setServices(activeServices);
+      }
+    } catch (err: any) {
+      console.error('Failed to load subscriptions data:', err);
+      setLoadError(err?.message || (isAr ? 'فشل تحميل بيانات باقات الاشتراكات' : 'Failed to load subscription plans'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [fetchCategories]);
 
   // Flow Step: 1 = Service & Plan, 2 = Dates & Schedule, 3 = Address & Vehicle, 4 = Review & Confirm
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
@@ -111,8 +156,53 @@ export default function SubscriptionsPage() {
   // Customer contact info (preloaded if authenticated)
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [phoneTouched, setPhoneTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  const handleCustomerPhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawVal = e.target.value;
+    const converted = convertArabicToAsciiDigits(rawVal);
+
+    if (/[^0-9]/.test(converted)) {
+      setPhoneError(isAr ? 'يرجى إدخال أرقام فقط دون مسافات أو رموز.' : 'Please enter numbers only without spaces or symbols.');
+    } else {
+      setPhoneError(null);
+    }
+
+    const digits = normalizePhoneInput(rawVal);
+    setCustomerPhone(digits);
+
+    if (digits.length >= 3) {
+      const prefix = digits.slice(0, 3);
+      if (!VALID_EGYPTIAN_PREFIXES.includes(prefix as any)) {
+        setPhoneError(isAr ? 'رقم الهاتف يجب أن يبدأ بـ 010 أو 011.' : 'Phone number must start with 010 or 011.');
+      } else if (digits.length === 11) {
+        setPhoneError(null);
+      } else if (phoneTouched) {
+        setPhoneError(isAr ? 'رقم الهاتف يجب أن يتكون من 11 رقمًا.' : 'Phone number must be 11 digits.');
+      }
+    } else if (digits.length === 0 && phoneTouched) {
+      setPhoneError(isAr ? 'يرجى إدخال رقم الهاتف.' : 'Please enter phone number.');
+    } else {
+      setPhoneError(null);
+    }
+  };
+
+  const handleCustomerPhoneBlur = () => {
+    setPhoneTouched(true);
+    if (!customerPhone.trim()) {
+      setPhoneError(isAr ? 'يرجى إدخال رقم الهاتف.' : 'Please enter phone number.');
+      return;
+    }
+    const val = validateEgyptianPhone(customerPhone);
+    if (!val.isValid) {
+      setPhoneError(val.message || (isAr ? 'يرجى إدخال رقم هاتف مصري يبدأ بـ 010 أو 011 ومكون من 11 رقمًا.' : 'Please enter valid Egyptian phone starting with 010 or 011.'));
+    } else {
+      setPhoneError(null);
+    }
+  };
 
   useEffect(() => {
     initAuth();
@@ -124,37 +214,6 @@ export default function SubscriptionsPage() {
       if (!customerPhone) setCustomerPhone(user.phone || '');
     }
   }, [user, customerName, customerPhone]);
-
-  // Load plans, services & categories from backend
-  useEffect(() => {
-    async function loadData() {
-      setLoading(true);
-      try {
-        const [plansRes, servicesRes] = await Promise.all([
-          apiGet<IPlan[]>('/subscriptions/plans'),
-          apiGet<IService[]>('/services'),
-          fetchCategories().catch(() => []),
-        ]);
-
-        if (plansRes?.data) {
-          const raw = Array.isArray(plansRes.data) ? plansRes.data : (plansRes.data as any)?.plans || [];
-          setPlans(raw);
-        }
-        if (servicesRes?.data) {
-          const rawServices = Array.isArray(servicesRes.data) ? servicesRes.data : (servicesRes.data as any)?.services || [];
-          const activeServices = rawServices.filter(
-            (s: any) => s.available !== false && !s.isArchived
-          );
-          setServices(activeServices);
-        }
-      } catch (err: any) {
-        console.error('Failed to load subscriptions data:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadData();
-  }, [fetchCategories]);
 
   // Dynamic Categories combined from store and any active service/plan category slugs
   const dynamicCategories = useMemo(() => {
@@ -374,9 +433,17 @@ export default function SubscriptionsPage() {
     if (!selectedPlan) return;
     setErrorMsg('');
 
-    if (!customerPhone || !customerPhone.trim()) {
-      setErrorMsg(isAr ? 'يرجى إدخال رقم الهاتف للتواصل' : 'Please enter your phone number');
-      toast.error(isAr ? 'رقم الهاتف مطلوب' : 'Phone number is required');
+    const phoneVal = validateEgyptianPhone(customerPhone);
+    if (!phoneVal.isValid) {
+      const msg =
+        phoneVal.message ||
+        (isAr
+          ? 'رقم الهاتف يجب أن يتكون من 11 رقمًا ويبدأ بـ 010 أو 011.'
+          : 'Phone number must be 11 digits starting with 010 or 011.');
+      setPhoneError(msg);
+      setErrorMsg(msg);
+      toast.error(msg);
+      setCurrentStep(3);
       return;
     }
 
@@ -394,6 +461,30 @@ export default function SubscriptionsPage() {
       setCurrentStep(2);
       setActiveVisitIndex(unselected);
       return;
+    }
+
+    // Verify no two visits overlap on the same date for the same vehicle
+    for (let i = 0; i < visitSchedules.length; i++) {
+      for (let j = i + 1; j < visitSchedules.length; j++) {
+        const vA = visitSchedules[i];
+        const vB = visitSchedules[j];
+        if (vA.date && vB.date && vA.date === vB.date && vA.time && vB.time) {
+          const startA = timeStringToMinutes(vA.time);
+          const endA = startA + 45;
+          const startB = timeStringToMinutes(vB.time);
+          const endB = startB + 45;
+          if (isTimeIntervalOverlapping({ startMin: startA, endMin: endA }, { startMin: startB, endMin: endB })) {
+            const conflictMsg = isAr
+              ? `يوجد تعارض وتداخل زمني بين الزيارة رقم (${i + 1}) والزيارة رقم (${j + 1}) في نفس اليوم (${vA.date}). لا يمكن حجز موعدين متداخلين لنفس السيارة.`
+              : `Conflict between visit #${i + 1} and visit #${j + 1} on ${vA.date}. Cannot schedule overlapping visits for the same vehicle.`;
+            setErrorMsg(conflictMsg);
+            toast.error(conflictMsg);
+            setCurrentStep(2);
+            setActiveVisitIndex(j);
+            return;
+          }
+        }
+      }
     }
 
     setSubmitting(true);
@@ -444,6 +535,7 @@ export default function SubscriptionsPage() {
 
   return (
     <div className="min-h-screen bg-[#EAF8FC] dark:bg-[#041728] text-slate-900 dark:text-slate-100 py-8 sm:py-12 transition-colors">
+      <CMSPreviewBanner pageName={isAr ? 'باقات الاشتراكات' : 'Subscription Plans'} adminEditUrl="/admin/subscriptions" />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
         
         {/* ================= HERO HEADER ================= */}
@@ -566,12 +658,29 @@ export default function SubscriptionsPage() {
             </div>
 
             {/* Plans Grid */}
-            {loading ? (
-              <div className="py-20 flex flex-col items-center justify-center gap-4">
-                <div className="w-10 h-10 border-4 border-[#0866C6]/20 border-t-[#0866C6] rounded-full animate-spin" />
-                <p className="text-xs sm:text-sm text-slate-500 font-semibold">
-                  {isAr ? 'جاري تحميل باقات الاشتراكات...' : 'Loading subscription plans...'}
+            {loading && plans.length === 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 animate-pulse">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-96 rounded-3xl bg-slate-200/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-800" />
+                ))}
+              </div>
+            ) : loadError && plans.length === 0 ? (
+              <div className="py-16 text-center rounded-3xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 p-8 space-y-4 max-w-lg mx-auto shadow-sm">
+                <AlertCircle className="w-10 h-10 text-rose-500 mx-auto" />
+                <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
+                  {isAr ? 'تعذر جلب باقات الاشتراكات' : 'Failed to load subscription plans'}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {isAr ? 'يرجى التحقق من اتصال الشبكة وإعادة المحاولة' : 'Please check your connection and retry'}
                 </p>
+                <button
+                  type="button"
+                  onClick={loadData}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0866C6] text-white text-xs font-bold hover:bg-[#074780] transition-colors shadow-md shadow-[#0866C6]/20"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>{isAr ? 'إعادة المحاولة' : 'Retry'}</span>
+                </button>
               </div>
             ) : filteredPlans.length === 0 ? (
               <div className="py-20 text-center rounded-3xl bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-800 p-8 space-y-3">
@@ -836,20 +945,37 @@ export default function SubscriptionsPage() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                     {availableSlots[activeVisitIndex].map((slot, sIdx) => {
                       const isChosen = visitSchedules[activeVisitIndex]?.time === slot.time;
+                      const currentDate = visitSchedules[activeVisitIndex]?.date;
+                      const candStart = timeStringToMinutes(slot.start || slot.time);
+                      const candEnd = slot.end ? timeStringToMinutes(slot.end) : candStart + 45;
+                      const overlappingVisitIndex = visitSchedules.findIndex((other, oIdx) => {
+                        if (oIdx === activeVisitIndex) return false;
+                        if (!other.date || !other.time || other.date !== currentDate) return false;
+                        const oStart = timeStringToMinutes(other.time);
+                        const oEnd = oStart + 45;
+                        return isTimeIntervalOverlapping({ startMin: candStart, endMin: candEnd }, { startMin: oStart, endMin: oEnd });
+                      });
+                      const isTakenByAnotherVisit = overlappingVisitIndex !== -1;
 
                       return (
                         <button
                           key={sIdx}
                           type="button"
-                          onClick={() => handleSlotSelect(activeVisitIndex, slot.time)}
+                          disabled={isTakenByAnotherVisit}
+                          title={isTakenByAnotherVisit ? (isAr ? `محجوز للزيارة رقم (${overlappingVisitIndex + 1})` : `Reserved for visit #${overlappingVisitIndex + 1}`) : undefined}
+                          onClick={() => !isTakenByAnotherVisit && handleSlotSelect(activeVisitIndex, slot.time)}
                           className={`p-3 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 border ${
                             isChosen
                               ? 'bg-[#0866C6] text-white border-[#0866C6] shadow-md shadow-[#0866C6]/20 ring-2 ring-[#0866C6]/30'
+                              : isTakenByAnotherVisit
+                              ? 'opacity-40 cursor-not-allowed bg-slate-100 dark:bg-slate-800/30 text-slate-400 border-dashed border-slate-300 dark:border-slate-700'
                               : 'bg-slate-50 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-[#0866C6]'
                           }`}
                         >
-                          <Clock className={`w-3.5 h-3.5 ${isChosen ? 'text-amber-300' : 'text-slate-400'}`} />
-                          <span>{slot.time}</span>
+                          <Clock className={`w-3.5 h-3.5 ${isChosen ? 'text-amber-300' : isTakenByAnotherVisit ? 'text-red-400' : 'text-slate-400'}`} />
+                          <span className={isTakenByAnotherVisit ? 'line-through' : ''}>
+                            <TimeRangeDisplay time={slot.time} locale={locale} />
+                          </span>
                         </button>
                       );
                     })}
@@ -924,10 +1050,24 @@ export default function SubscriptionsPage() {
                     type="tel"
                     dir="ltr"
                     value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    onChange={handleCustomerPhoneChange}
+                    onBlur={handleCustomerPhoneBlur}
                     placeholder="010XXXXXXXX"
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs sm:text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#0866C6]"
+                    className={`w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border ${
+                      phoneError
+                        ? 'border-rose-400 focus:ring-rose-400'
+                        : 'border-slate-300 dark:border-slate-700 focus:ring-[#0866C6]'
+                    } text-xs sm:text-sm font-semibold focus:outline-hidden focus:ring-2`}
                   />
+                  {phoneError ? (
+                    <p className="text-[11px] text-rose-500 font-semibold mt-1">
+                      {phoneError}
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-slate-400 font-medium mt-1">
+                      {isAr ? 'الصيغة المقبولة: 11 رقمًا تبدأ بـ 010 أو 011' : 'Accepted format: 11 digits starting with 010 or 011'}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -1056,8 +1196,16 @@ export default function SubscriptionsPage() {
 
               <button
                 onClick={() => {
-                  if (!customerPhone || !customerPhone.trim()) {
-                    toast.error(isAr ? 'رقم الهاتف مطلوب' : 'Phone is required');
+                  setPhoneTouched(true);
+                  const phoneVal = validateEgyptianPhone(customerPhone);
+                  if (!phoneVal.isValid) {
+                    const msg =
+                      phoneVal.message ||
+                      (isAr
+                        ? 'رقم الهاتف يجب أن يتكون من 11 رقمًا ويبدأ بـ 010 أو 011.'
+                        : 'Phone number must be 11 digits starting with 010 or 011.');
+                    setPhoneError(msg);
+                    toast.error(msg);
                     return;
                   }
                   if (!area || !area.trim()) {
@@ -1156,7 +1304,9 @@ export default function SubscriptionsPage() {
                         </div>
                         <div>
                           <div className="text-xs font-bold text-slate-900 dark:text-white">{v.date}</div>
-                          <div className="text-[11px] text-slate-500">{v.time}</div>
+                          <div>
+                            <TimeRangeDisplay time={v.time} locale={locale} className="text-[11px] text-slate-500 font-medium" />
+                          </div>
                         </div>
                       </div>
                       <CheckCircle2 className="w-4 h-4 text-emerald-500" />

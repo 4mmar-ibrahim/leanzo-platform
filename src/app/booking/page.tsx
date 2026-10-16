@@ -390,8 +390,8 @@ function BookingContent() {
         priority: 2,
         customExpression: 'happy',
         customPose: 'celebrating',
-        customMessage: 'ألف مبروك! حجزك اتسجل بنجاح، وفريق كلينزو في طريقه إليك 🎉',
-        customMessageEn: 'Congratulations! Your booking is confirmed, Cleanzo team is on the way 🎉',
+        customMessage: 'ألف مبروك! تم تسجيل حجزك بنجاح، وسيقوم فريق العمليات بمراجعته وتأكيده معك 🎉',
+        customMessageEn: 'Congratulations! Your booking request was received successfully and is being reviewed by operations 🎉',
       });
 
       toast.success(isAr ? `تم تسجيل طلبك بنجاح برقم #${createdBooking.id}` : `Booking created successfully #${createdBooking.id}`);

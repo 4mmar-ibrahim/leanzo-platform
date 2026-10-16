@@ -26,6 +26,7 @@ import { useOrderStore } from '@/store/useOrderStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
+import { useCMSStore } from '@/store/useCMSStore';
 import { useLocationStore } from '@/store/useLocationStore';
 import { useCustomerStore } from '@/store/useCustomerStore';
 import { useAddressStore, isSameAddress } from '@/store/useAddressStore';
@@ -42,6 +43,7 @@ import { validateCustomerName, sanitizeNameString } from '@/lib/validation/nameV
 import { validateEgyptianPhone, normalizePhoneInput } from '@/lib/validation/phoneValidation';
 import { calculateItemizedPricing } from '@/lib/pricing';
 import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
+import { autoTranslate } from '@/lib/i18n/autoTranslate';
 
 /**
  * Format a time range with a single AM/PM (ص/م) suffix when both start and end fall in the same period
@@ -93,9 +95,9 @@ function formatCleanInterval(startStr: string, endStr: string, isAr: boolean): s
   const eMinFormatted = eM.toString().padStart(2, '0');
 
   if (sPeriod === ePeriod) {
-    return `${sH12}:${sMinFormatted} – ${eH12}:${eMinFormatted} ${ePeriod}`;
+    return `\u200E${sH12}:${sMinFormatted}\u200E – \u200E${eH12}:${eMinFormatted} ${ePeriod}\u200E`;
   } else {
-    return `${sH12}:${sMinFormatted} ${sPeriod} – ${eH12}:${eMinFormatted} ${ePeriod}`;
+    return `\u200E${sH12}:${sMinFormatted} ${sPeriod}\u200E – \u200E${eH12}:${eMinFormatted} ${ePeriod}\u200E`;
   }
 }
 
@@ -190,11 +192,12 @@ export function QuickBookingBottomSheet({
 
   // Address & Contact info
   const prevIsOpenRef = useRef(false);
-  const pendingBookingRef = useRef<{ address: Address; name: string; phone: string } | null>(null);
   const socialSettings = useSettingsStore((s) => s.settings.social);
+  const cmsContact = useCMSStore((s) => s.contact);
+  const cmsSocial = useCMSStore((s) => s.social);
   const [governorateId, setGovernorateId] = useState<string>('');
   const [cityId, setCityId] = useState<string>('');
-  const [label, setLabel] = useState<string>(user?.addresses?.[0]?.label || 'المنزل');
+  const [label, setLabel] = useState<string>(user?.addresses?.[0]?.label || (isAr ? 'المنزل' : 'Home'));
   const [area, setArea] = useState(user?.addresses?.[0]?.area || '');
   const [building, setBuilding] = useState<string>(user?.addresses?.[0]?.building || '');
   const [floor, setFloor] = useState<string>(user?.addresses?.[0]?.floor || '');
@@ -216,6 +219,7 @@ export function QuickBookingBottomSheet({
   const [isTimeOpen, setIsTimeOpen] = useState(false);
   const dateDropdownRef = useRef<HTMLDivElement>(null);
   const timeDropdownRef = useRef<HTMLDivElement>(null);
+  const pendingBookingRef = useRef<{ address: any; name: string; phone: string } | null>(null);
 
   useEffect(() => {
     // Only initialize and reset form when the bottom sheet transitions from closed to open
@@ -906,13 +910,15 @@ export function QuickBookingBottomSheet({
             </div>
             <div>
               <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
-                {step === 4 ? 'تم تأكيد الحجز بنجاح 🎉' : 'حجز فوري مباشر (< 20 ثانية)'}
+                {step === 4 
+                  ? (isAr ? 'تم تأكيد الحجز بنجاح 🎉' : 'Booking Confirmed Successfully 🎉') 
+                  : (isAr ? 'حجز فوري مباشر (< 20 ثانية)' : 'Instant Direct Booking (< 20s)')}
               </h2>
               <p className="text-[10px] text-slate-400">
-                {step === 1 && 'الخطوة 1: اختر الخدمة'}
-                {step === 2 && 'الخطوة 2: حدد التاريخ والوقت'}
-                {step === 3 && 'الخطوة 3: بيانات الموقع والتأكيد'}
-                {step === 4 && `رقم الطلب #${confirmedOrderId}`}
+                {step === 1 && (isAr ? 'الخطوة 1: اختر الخدمة' : 'Step 1: Choose Service')}
+                {step === 2 && (isAr ? 'الخطوة 2: حدد التاريخ والوقت' : 'Step 2: Select Date & Time')}
+                {step === 3 && (isAr ? 'الخطوة 3: بيانات الموقع والتأكيد' : 'Step 3: Location & Confirmation')}
+                {step === 4 && (isAr ? `رقم الطلب #${confirmedOrderId}` : `Order ID #${confirmedOrderId}`)}
               </p>
             </div>
           </div>
@@ -1007,10 +1013,10 @@ export function QuickBookingBottomSheet({
                         )}
                         <div className="min-w-0 flex-1">
                           <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white leading-snug line-clamp-2 break-words">
-                            {svc.title}
+                            {isAr ? svc.title : (svc.titleEn || autoTranslate(svc.title, 'en') || svc.title)}
                           </h4>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5 leading-tight break-words">
-                            {svc.shortDescription}
+                            {isAr ? svc.shortDescription : (svc.shortDescriptionEn || autoTranslate(svc.shortDescription, 'en') || svc.shortDescription)}
                           </p>
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-[10px] text-sky-600 dark:text-sky-400 font-semibold flex items-center gap-1">
@@ -1019,7 +1025,7 @@ export function QuickBookingBottomSheet({
                             </span>
                             {svc.popular && (
                               <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-amber-500 text-white">
-                                الأكثر طلباً
+                                {isAr ? 'الأكثر طلباً' : 'Popular'}
                               </span>
                             )}
                           </div>
@@ -1028,7 +1034,7 @@ export function QuickBookingBottomSheet({
 
                       <div className="text-end shrink-0">
                         <p className="text-sm sm:text-base font-black text-sky-600 dark:text-sky-400">
-                          {svc.price} ج.م
+                          {svc.price} {isAr ? 'ج.م' : 'EGP'}
                         </p>
                         <span
                           className={cn(
@@ -1051,10 +1057,10 @@ export function QuickBookingBottomSheet({
                 <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-800 dark:text-white block">
-                      الباقات البديلة (اختياري):
+                      {isAr ? 'الباقات البديلة (اختياري):' : 'Alternative Packages (Optional):'}
                     </span>
                     <span className="text-[10px] text-slate-400">
-                      تستبدل السعر الأساسي
+                      {isAr ? 'تستبدل السعر الأساسي' : 'Replaces base price'}
                     </span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1073,11 +1079,11 @@ export function QuickBookingBottomSheet({
                           {selectedPkg === null && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                         </div>
                         <div className="flex flex-col">
-                           <span>بدون باقة (الخدمة الأساسية)</span>
-                          <span className="text-[10px] text-slate-400 font-normal">الافتراضي</span>
+                           <span>{isAr ? 'بدون باقة (الخدمة الأساسية)' : 'Without Package (Base Service)'}</span>
+                          <span className="text-[10px] text-slate-400 font-normal">{isAr ? 'الافتراضي' : 'Default'}</span>
                         </div>
                       </div>
-                      <span className="font-mono">{selectedService.price} ج.م</span>
+                      <span className="font-mono">{selectedService.price} {isAr ? 'ج.م' : 'EGP'}</span>
                     </div>
 
                     {(selectedService.packages || []).filter((p) => p && p.active !== false).map((pkg) => {
@@ -1098,7 +1104,7 @@ export function QuickBookingBottomSheet({
                               {isChosen && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                             </div>
                             <div className="flex flex-col">
-                              <span>{pkg.name}</span>
+                              <span>{isAr ? pkg.name : (pkg.nameEn || autoTranslate(pkg.name, 'en') || pkg.name)}</span>
                               <span className="text-[10px] text-slate-400 font-normal">
                                 {formatDuration(
                                   (Number(pkg.durationMinutes) || 45) + Number(selectedService.travelTimeMinutes || 0),
@@ -1107,7 +1113,7 @@ export function QuickBookingBottomSheet({
                               </span>
                             </div>
                           </div>
-                          <span className="font-mono">{pkg.price} ج.م</span>
+                          <span className="font-mono">{pkg.price} {isAr ? 'ج.م' : 'EGP'}</span>
                         </div>
                       );
                     })}
@@ -1118,7 +1124,7 @@ export function QuickBookingBottomSheet({
               {/* Add-ons Selection */}
               {selectedService && Array.isArray(selectedService.addons) && selectedService.addons.filter((a) => a && a.active !== false).length > 0 && (
                 <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
-                  <span className="text-xs font-bold text-slate-800 dark:text-white block">إضافات اختيارية:</span>
+                  <span className="text-xs font-bold text-slate-800 dark:text-white block">{isAr ? 'إضافات اختيارية:' : 'Optional Add-ons:'}</span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {(selectedService.addons || []).filter((a) => a && a.active !== false).map((addon) => {
                       const isAdded = selectedAddonsList.some((a) => a.id === addon.id);
@@ -1141,9 +1147,9 @@ export function QuickBookingBottomSheet({
                             <div className={cn('w-3.5 h-3.5 rounded-sm border flex items-center justify-center', isAdded ? 'border-amber-500 bg-amber-500 text-white' : 'border-slate-400')}>
                               {isAdded && <CheckCircle2 className="w-2.5 h-2.5" />}
                             </div>
-                            <span>{addon.name}</span>
+                            <span>{isAr ? addon.name : (addon.nameEn || autoTranslate(addon.name, 'en') || addon.name)}</span>
                           </div>
-                          <span className="font-mono">+{addon.price} ج.م</span>
+                          <span className="font-mono">+{addon.price} {isAr ? 'ج.م' : 'EGP'}</span>
                         </div>
                       );
                     })}
@@ -1159,10 +1165,10 @@ export function QuickBookingBottomSheet({
               {/* Selected Service Pill */}
               <div className="p-3 rounded-2xl bg-sky-50 dark:bg-sky-950/40 border border-sky-500/20 flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] text-sky-600 dark:text-sky-400 font-bold">الخدمة المختارة:</span>
+                  <span className="text-[10px] text-sky-600 dark:text-sky-400 font-bold">{isAr ? 'الخدمة المختارة:' : 'Selected Service:'}</span>
                   <p className="text-xs font-bold text-slate-900 dark:text-white">
-                    {selectedService?.title}
-                    {selectedPkg && ` (${selectedPkg.name})`}
+                    {isAr ? selectedService?.title : (selectedService?.titleEn || selectedService?.title)}
+                    {selectedPkg && ` (${isAr ? selectedPkg.name : (selectedPkg.nameEn || selectedPkg.name)})`}
                   </p>
                   <div className="flex items-center gap-1 text-[10px] text-sky-600 dark:text-sky-400 font-semibold mt-0.5">
                     <Clock className="w-3 h-3" />
@@ -1170,7 +1176,7 @@ export function QuickBookingBottomSheet({
                   </div>
                 </div>
                 <span className="text-sm font-black text-sky-600 dark:text-sky-400">
-                  {quickTotalPrice} ج.م
+                  {quickTotalPrice} {isAr ? 'ج.م' : 'EGP'}
                 </span>
               </div>
 
@@ -1432,7 +1438,7 @@ export function QuickBookingBottomSheet({
                 <div className="space-y-1">
                   <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-sky-500" />
-                    <span>المحافظة</span>
+                    <span>{isAr ? 'المحافظة' : 'Governorate'}</span>
                   </label>
                   <select
                     value={governorateId}
@@ -1457,7 +1463,7 @@ export function QuickBookingBottomSheet({
                 <div className="space-y-1">
                   <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-amber-500" />
-                    <span>المدينة</span>
+                    <span>{isAr ? 'المدينة' : 'City'}</span>
                   </label>
                   <select
                     value={cityId}
@@ -1584,21 +1590,25 @@ export function QuickBookingBottomSheet({
               {/* Order Final Summary Receipt */}
               <div className="p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-1.5 text-xs">
                 <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                  <span>الخدمة:</span>
-                  <span className="font-bold text-slate-900 dark:text-white">{selectedService?.title}</span>
+                  <span>{isAr ? 'الخدمة:' : 'Service:'}</span>
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    {isAr ? selectedService?.title : (selectedService?.titleEn || selectedService?.title)}
+                  </span>
                 </div>
                 {selectedPkg ? (
                   <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                    <span>الباقة المختارة:</span>
+                    <span>{isAr ? 'الباقة المختارة:' : 'Selected Package:'}</span>
                     <span className="font-bold text-sky-600 dark:text-sky-400">
-                      {selectedPkg.name} ({selectedPkg.price} ج.م)
+                      {isAr ? selectedPkg.name : (selectedPkg.nameEn || selectedPkg.name)} ({selectedPkg.price} {isAr ? 'ج.م' : 'EGP'})
                     </span>
                   </div>
                 ) : (
                   <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                    <span>الباقة:</span>
+                    <span>{isAr ? 'الباقة:' : 'Package:'}</span>
                     <span className="font-medium text-slate-500">
-                      بدون باقة (السعر الأساسي: {selectedService?.price} ج.م)
+                      {isAr
+                        ? `بدون باقة (السعر الأساسي: ${selectedService?.price} ج.م)`
+                        : `Without package (Base price: ${selectedService?.price} EGP)`}
                     </span>
                   </div>
                 )}
@@ -1606,31 +1616,31 @@ export function QuickBookingBottomSheet({
                   <div className="space-y-1 pt-1 border-t border-dashed border-slate-200 dark:border-slate-800">
                     {selectedAddonsList.map((addon) => (
                       <div key={addon.id} className="flex justify-between text-amber-700 dark:text-amber-400 text-[11px]">
-                        <span>+ {addon.name}:</span>
-                        <span className="font-mono font-bold">+{addon.price} ج.م</span>
+                        <span>+ {isAr ? addon.name : (addon.nameEn || addon.name)}:</span>
+                        <span className="font-mono font-bold">+{addon.price} {isAr ? 'ج.م' : 'EGP'}</span>
                       </div>
                     ))}
                   </div>
                 )}
                 <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                  <span>الموعد:</span>
+                  <span>{isAr ? 'الموعد:' : 'Appointment:'}</span>
                   <span className="font-bold text-slate-900 dark:text-white">
                     {selectedDate} — {selectedSlotObj ? (isAr ? selectedSlotObj.label : selectedSlotObj.labelEn) : selectedTime}
                   </span>
                 </div>
                 <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                  <span>رسوم الانتقال والمعدات:</span>
-                  <span className="font-bold text-emerald-600 dark:text-emerald-400">مجاناً (عرض اليوم)</span>
+                  <span>{isAr ? 'رسوم الانتقال والمعدات:' : 'Travel & Equipment:'}</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">{isAr ? 'مجاناً (عرض اليوم)' : 'Free (Today\'s Offer)'}</span>
                 </div>
                 {quickPricing.catalogDiscount > 0 && (
                   <div className="flex justify-between text-xs text-emerald-600 dark:text-emerald-400 font-bold">
-                    <span>خصم العرض المباشر ({quickPricing.catalogDiscountPercent}%):</span>
-                    <span className="font-mono">-{quickPricing.catalogDiscount} ج.م</span>
+                    <span>{isAr ? `خصم العرض المباشر (${quickPricing.catalogDiscountPercent}%):` : `Direct Offer Discount (${quickPricing.catalogDiscountPercent}%):`}</span>
+                    <span className="font-mono">-{quickPricing.catalogDiscount} {isAr ? 'ج.م' : 'EGP'}</span>
                   </div>
                 )}
                 <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex justify-between font-black text-sm text-slate-900 dark:text-white">
-                  <span>الإجمالي للدفع عند الاستلام:</span>
-                  <span className="text-sky-600 dark:text-sky-400 font-mono">{quickPricing.finalPrice} ج.م</span>
+                  <span>{isAr ? 'الإجمالي للدفع عند الاستلام:' : 'Total Due upon Service:'}</span>
+                  <span className="text-sky-600 dark:text-sky-400 font-mono">{quickPricing.finalPrice} {isAr ? 'ج.م' : 'EGP'}</span>
                 </div>
               </div>
             </div>
@@ -1645,50 +1655,58 @@ export function QuickBookingBottomSheet({
 
               <div className="space-y-1">
                 <h3 className="text-lg font-black text-slate-900 dark:text-white">
-                  تم استلام طلب الحجز بنجاح!
+                  {isAr ? 'تم استلام طلب الحجز بنجاح!' : 'Booking Request Received Successfully!'}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
-                  سيتواصل معك فني كلينزو للتأكيد والانطلاق في الموعد المحدد: {selectedDate} ({selectedSlotObj ? (isAr ? selectedSlotObj.label : selectedSlotObj.labelEn) : selectedTime}).
+                  {isAr
+                    ? `سيتواصل معك فني كلينزو للتأكيد والانطلاق في الموعد المحدد: ${selectedDate} (${selectedSlotObj ? selectedSlotObj.label : selectedTime}).`
+                    : `The Cleanzo specialist will contact you to confirm and arrive on time: ${selectedDate} (${selectedSlotObj ? selectedSlotObj.labelEn : selectedTime}).`}
                 </p>
               </div>
 
               <div className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs space-y-2 text-start">
                 <div className="flex justify-between">
-                  <span className="text-slate-400">رقم الحجز:</span>
+                  <span className="text-slate-400">{isAr ? 'رقم الحجز:' : 'Booking ID:'}</span>
                   <span className="font-mono font-bold text-sky-600 dark:text-sky-400">#{confirmedOrderId}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">الخدمة:</span>
+                  <span className="text-slate-400">{isAr ? 'الخدمة:' : 'Service:'}</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">
-                    {selectedService?.title}
-                    {selectedPkg && ` (${selectedPkg.name})`}
+                    {isAr ? selectedService?.title : (selectedService?.titleEn || selectedService?.title)}
+                    {selectedPkg && ` (${isAr ? selectedPkg.name : (selectedPkg.nameEn || selectedPkg.name)})`}
                   </span>
                 </div>
                 {selectedAddonsList.length > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-slate-400">الإضافات:</span>
+                    <span className="text-slate-400">{isAr ? 'الإضافات:' : 'Add-ons:'}</span>
                     <span className="font-semibold text-amber-600 dark:text-amber-400">
-                      {selectedAddonsList.map((a) => a.name).join(' + ')}
+                      {selectedAddonsList.map((a) => (isAr ? a.name : (a.nameEn || a.name))).join(' + ')}
                     </span>
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <span className="text-slate-400">المبلغ المطلوب:</span>
-                  <span className="font-bold text-emerald-600 font-mono">{quickTotalPrice} ج.م</span>
+                  <span className="text-slate-400">{isAr ? 'المبلغ المطلوب:' : 'Amount Due:'}</span>
+                  <span className="font-bold text-emerald-600 font-mono">{quickTotalPrice} {isAr ? 'ج.م' : 'EGP'}</span>
                 </div>
               </div>
 
               <div className="flex flex-col gap-2.5 w-full pt-2">
                 {(() => {
                   const rawWa =
+                    cmsContact?.whatsapp ||
+                    cmsSocial?.whatsapp ||
+                    cmsSocial?.items?.find((i) => i.platform === 'whatsapp')?.url ||
                     socialSettings?.whatsapp ||
                     socialSettings?.items?.find((i) => i.platform === 'whatsapp')?.url ||
                     '201012345678';
                   const cleanWa = rawWa.replace(/[^0-9]/g, '') || '201012345678';
                   const timeText = selectedSlotObj ? (isAr ? selectedSlotObj.label : selectedSlotObj.labelEn) : selectedTime;
-                  const pkgText = selectedPkg ? ` (${selectedPkg.name})` : '';
+                  const pkgText = selectedPkg ? ` (${isAr ? selectedPkg.name : (selectedPkg.nameEn || selectedPkg.name)})` : '';
+                  const svcTitle = isAr ? (selectedService?.title || '') : (selectedService?.titleEn || selectedService?.title || '');
                   const waText = encodeURIComponent(
-                    `مرحباً كلينزو، أود متابعة طلبي رقم #${confirmedOrderId} لخدمة ${selectedService?.title || ''}${pkgText} في موعد ${selectedDate} (${timeText}).`
+                    isAr
+                      ? `مرحباً كلينزو، أود متابعة طلبي رقم #${confirmedOrderId} لخدمة ${svcTitle}${pkgText} في موعد ${selectedDate} (${timeText}).`
+                      : `Hello Cleanzo, I would like to confirm my order #${confirmedOrderId} for ${svcTitle}${pkgText} on ${selectedDate} (${timeText}).`
                   );
                   return (
                     <a
@@ -1698,7 +1716,7 @@ export function QuickBookingBottomSheet({
                       className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
                     >
                       <MessageCircle className="w-4 h-4" />
-                      <span>تأكيد عبر واتساب مع الدعم</span>
+                      <span>{isAr ? 'تأكيد عبر واتساب مع الدعم' : 'Confirm via WhatsApp with Support'}</span>
                     </a>
                   );
                 })()}
@@ -1707,7 +1725,7 @@ export function QuickBookingBottomSheet({
                   onClick={onClose}
                   className="w-full py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
-                  إغلاق ومتابعة التصفح
+                  {isAr ? 'إغلاق ومتابعة التصفح' : 'Close and Continue Browsing'}
                 </button>
               </div>
             </div>
@@ -1723,11 +1741,11 @@ export function QuickBookingBottomSheet({
                 onClick={() => setStep((s) => (s - 1) as any)}
                 className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
-                السابق
+                {isAr ? 'السابق' : 'Back'}
               </button>
             ) : (
               <span className="text-xs font-extrabold text-sky-600 dark:text-sky-400">
-                {selectedService ? `${quickTotalPrice} ج.م` : ''}
+                {selectedService ? `${quickTotalPrice} ${isAr ? 'ج.م' : 'EGP'}` : ''}
               </span>
             )}
 
@@ -1792,7 +1810,7 @@ export function QuickBookingBottomSheet({
                   </>
                 ) : (
                   <>
-                    <span>تأكيد الحجز الفوري الآن</span>
+                    <span>{isAr ? 'تأكيد الحجز الفوري الآن' : 'Confirm Instant Booking Now'}</span>
                     <CheckCircle2 className="w-4 h-4" />
                   </>
                 )}

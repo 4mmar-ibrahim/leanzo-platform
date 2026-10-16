@@ -42,12 +42,7 @@ export function ServiceCard({ service, featured = false }: ServiceCardProps) {
     return resolveCategoryInfo(service.category, categories, isAr);
   }, [service.category, categories, isAr]);
 
-  const targetDetailUrl =
-    service.category === 'car'
-      ? `/services/car/${service.id}`
-      : service.category === 'home'
-      ? `/services/home/${service.id}`
-      : `/services/${service.id}`;
+  const targetDetailUrl = `/services/${service.id}`;
 
   const handleBookNow = (e: React.MouseEvent) => {
     e.preventDefault();

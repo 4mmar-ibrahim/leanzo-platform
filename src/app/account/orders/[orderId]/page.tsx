@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -16,31 +16,75 @@ import {
   UserCheck,
   RotateCcw,
   Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useOrderStore } from '@/store/useOrderStore';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { PriceDisplay } from '@/components/common/PriceDisplay';
+import { TimeRangeDisplay } from '@/components/common/TimeRangeDisplay';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { RescheduleModal } from '@/components/orders/RescheduleModal';
 import { toast } from 'sonner';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
-import { formatTimeTo12Hour } from '@/lib/timeUtils';
+import { Order } from '@/types';
 
 export default function OrderDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const { t, locale, direction } = useLocaleStore();
-  const { getOrderById, cancelOrder } = useOrderStore();
+  const { getOrderById, cancelOrder, addOrder } = useOrderStore();
   const isAr = locale === 'ar';
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
 
   const orderId = params?.orderId as string;
-  const order = getOrderById(orderId);
+  const storeOrder = getOrderById(orderId);
+  const [fetchedOrder, setFetchedOrder] = useState<Order | null>(null);
+  const [loading, setLoading] = useState<boolean>(!storeOrder && Boolean(orderId));
+
+  const order = storeOrder || fetchedOrder;
+
+  useEffect(() => {
+    if (!storeOrder && orderId) {
+      let isMounted = true;
+      setLoading(true);
+      (async () => {
+        try {
+          let res: Order | null = null;
+          try {
+            res = await cleanzoApi.bookings.getBookingById(orderId);
+          } catch {
+            try {
+              res = await cleanzoApi.bookings.trackOrder(orderId);
+            } catch {}
+          }
+          if (isMounted && res && res.id) {
+            setFetchedOrder(res);
+            addOrder(res);
+          }
+        } catch {
+        } finally {
+          if (isMounted) setLoading(false);
+        }
+      })();
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [orderId, storeOrder, addOrder]);
 
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
+
+  if (loading && !order) {
+    return (
+      <div className="p-16 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center space-y-4">
+        <Loader2 className="w-8 h-8 text-sky-500 animate-spin mx-auto" />
+        <p className="text-sm text-slate-500">{isAr ? 'جاري جلب تفاصيل الحجز...' : 'Loading order details...'}</p>
+      </div>
+    );
+  }
 
   if (!order) {
     return (
@@ -265,7 +309,7 @@ export default function OrderDetailsPage() {
             </div>
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-[#0866C6] shrink-0" />
-              <span>{formatTimeTo12Hour(order.time)}</span>
+              <TimeRangeDisplay time={order.time} locale={locale} format12 />
             </div>
             {order.rescheduledFrom && (
               <div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 p-2 rounded-xl border border-amber-200/80 dark:border-amber-800/80">
@@ -302,42 +346,55 @@ export default function OrderDetailsPage() {
       </div>
 
       {/* Multi-Service Itemized List if multiple services exist */}
-      {Array.isArray((order as any).serviceSnapshot?.services) && (order as any).serviceSnapshot.services.length > 1 && (
-        <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            {isAr ? `الخدمات المشمولة بالطلب (${(order as any).serviceSnapshot.services.length})` : `Included Services (${(order as any).serviceSnapshot.services.length})`}
-          </h3>
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {(order as any).serviceSnapshot.services.map((subSrv: any, idx: number) => (
-              <div key={idx} className="py-2.5 flex items-center justify-between gap-3 text-xs">
-                <div>
-                  <span className="font-bold text-slate-900 dark:text-white">
-                    #{idx + 1} {isAr ? subSrv.title : (subSrv.titleEn || subSrv.title)}
-                  </span>
-                  {subSrv.package && (
-                    <span className="text-sky-600 dark:text-sky-400 block text-[11px]">
-                      {isAr ? `باقة: ${subSrv.package.name}` : `Package: ${subSrv.package.name}`}
+      {(() => {
+        const compositeServices: any[] =
+          Array.isArray((order as any).serviceSnapshot?.services) && (order as any).serviceSnapshot.services.length > 0
+            ? (order as any).serviceSnapshot.services
+            : Array.isArray((order as any).metadata?.services) && (order as any).metadata.services.length > 0
+            ? (order as any).metadata.services
+            : [];
+
+        if (compositeServices.length <= 1) return null;
+
+        return (
+          <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              {isAr ? `الخدمات المشمولة بالطلب (${compositeServices.length})` : `Included Services (${compositeServices.length})`}
+            </h3>
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {compositeServices.map((subSrv: any, idx: number) => (
+                <div key={idx} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                  <div>
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      #{idx + 1} {isAr ? subSrv.title : (subSrv.titleEn || subSrv.title)}
                     </span>
-                  )}
-                  {subSrv.addons && subSrv.addons.length > 0 && (
-                    <span className="text-amber-600 dark:text-amber-400 block text-[10px]">
-                      +{subSrv.addons.length} {isAr ? 'إضافات' : 'add-ons'}
+                    {(subSrv.packageSnapshot || subSrv.package) && (
+                      <span className="text-sky-600 dark:text-sky-400 block text-[11px]">
+                        {isAr
+                          ? `باقة: ${(subSrv.packageSnapshot || subSrv.package).name}`
+                          : `Package: ${(subSrv.packageSnapshot || subSrv.package).name}`}
+                      </span>
+                    )}
+                    {subSrv.addons && subSrv.addons.length > 0 && (
+                      <span className="text-amber-600 dark:text-amber-400 block text-[10px]">
+                        +{subSrv.addons.length} {isAr ? 'إضافات' : 'add-ons'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-end font-mono">
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      {subSrv.itemTotal ?? subSrv.subtotal ?? subSrv.price} {isAr ? 'ج.م' : 'EGP'}
                     </span>
-                  )}
+                    <span className="block text-[10px] text-slate-400">
+                      {subSrv.duration} {isAr ? 'دقيقة' : 'min'}
+                    </span>
+                  </div>
                 </div>
-                <div className="text-end font-mono">
-                  <span className="font-bold text-slate-900 dark:text-white">
-                    {subSrv.subtotal || subSrv.price} {isAr ? 'ج.م' : 'EGP'}
-                  </span>
-                  <span className="block text-[10px] text-slate-400">
-                    {subSrv.duration} {isAr ? 'دقيقة' : 'min'}
-                  </span>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Financial Summary */}
       <div className="p-6 rounded-3xl bg-slate-100 dark:bg-slate-800/60 space-y-3">

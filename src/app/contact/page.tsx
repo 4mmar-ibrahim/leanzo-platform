@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Phone, Mail, MapPin, Clock, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useCMSStore } from '@/store/useCMSStore';
+import { useSettingsStore } from '@/store/useSettingsStore';
 import { SectionHeader } from '@/components/common/SectionHeader';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -11,10 +12,17 @@ import { toast } from 'sonner';
 import { useZoStudioStore } from '@/store/useZoStudioStore';
 import { SocialBrandIcon, resolveSocialItems } from '@/components/common/SocialBrandIcon';
 
+import { CMSPreviewBanner } from '@/components/common/CMSPreviewBanner';
+
 export default function ContactPage() {
   const { t, locale } = useLocaleStore();
   const contact = useCMSStore((s) => s.contact);
   const social = useCMSStore((s) => s.social);
+  const settingsContact = useSettingsStore((s) => s.settings.contact);
+  const settingsSocial = useSettingsStore((s) => s.settings.social);
+  const activeContact = (contact && (contact.phone || contact.email || contact.address)) ? contact : (settingsContact || contact);
+  const activeSocial = (social && (social.facebook || social.whatsapp || (social.items && social.items.length > 0))) ? social : (settingsSocial || social);
+  const isLoading = useCMSStore((s) => s.isLoading);
   const fetchPublishedContent = useCMSStore((s) => s.fetchPublishedContent);
   const isAr = locale === 'ar';
 
@@ -56,6 +64,9 @@ export default function ContactPage() {
   return (
     <div className="py-12 bg-[#EAF8FC] dark:bg-[#041728] min-h-screen space-y-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
+        {/* Admin Draft Preview Notice */}
+        <CMSPreviewBanner section="contact" />
+
         <SectionHeader
           badge={isAr ? 'تواصل معنا' : 'Contact Us'}
           title={isAr ? 'نحن هنا لمساعدتك على مدار الساعة' : "We're Here to Help Every Day"}
@@ -71,100 +82,136 @@ export default function ContactPage() {
               </h3>
 
               <div className="space-y-4 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
-                {contact?.phone && (
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-950 text-sky-600 flex items-center justify-center shrink-0">
-                      <Phone className="w-5 h-5" />
+                {isLoading ? (
+                  <div className="space-y-4 animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 shrink-0" />
+                      <div className="space-y-1.5 flex-1">
+                        <div className="w-12 h-3 bg-slate-200 dark:bg-slate-800 rounded-sm" />
+                        <div className="w-28 h-4 bg-slate-200 dark:bg-slate-800 rounded-md" />
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[11px] text-slate-400 font-bold uppercase">{isAr ? 'الهاتف' : 'Phone'}</p>
-                      <a href={`tel:${contact.phone}`} dir="ltr" className="font-bold text-slate-900 dark:text-white hover:text-sky-600">
-                        {contact.phone}
-                      </a>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 shrink-0" />
+                      <div className="space-y-1.5 flex-1">
+                        <div className="w-16 h-3 bg-slate-200 dark:bg-slate-800 rounded-sm" />
+                        <div className="w-32 h-4 bg-slate-200 dark:bg-slate-800 rounded-md" />
+                      </div>
                     </div>
-                  </div>
-                )}
-
-                {contact?.whatsapp && (
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600 flex items-center justify-center shrink-0">
-                      <MessageSquare className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-[11px] text-slate-400 font-bold uppercase">WhatsApp</p>
-                      <a
-                        href={contact.whatsapp.startsWith('http') ? contact.whatsapp : `https://wa.me/${contact.whatsapp.replace(/\D/g, '')}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        dir="ltr"
-                        className="font-bold text-slate-900 dark:text-white hover:text-emerald-600"
-                      >
-                        {contact.whatsapp}
-                      </a>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 shrink-0" />
+                      <div className="space-y-1.5 flex-1">
+                        <div className="w-20 h-3 bg-slate-200 dark:bg-slate-800 rounded-sm" />
+                        <div className="w-40 h-4 bg-slate-200 dark:bg-slate-800 rounded-md" />
+                      </div>
                     </div>
                   </div>
-                )}
+                ) : (
+                  <>
+                    {activeContact?.phone && (
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-950 text-sky-600 flex items-center justify-center shrink-0">
+                          <Phone className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-[11px] text-slate-400 font-bold uppercase">{isAr ? 'الهاتف' : 'Phone'}</p>
+                          <a href={`tel:${activeContact.phone}`} dir="ltr" className="font-bold text-slate-900 dark:text-white hover:text-sky-600">
+                            {activeContact.phone}
+                          </a>
+                        </div>
+                      </div>
+                    )}
 
-                {contact?.email && (
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-[#07345C]/30 text-[#0866C6] flex items-center justify-center shrink-0">
-                      <Mail className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-[11px] text-slate-400 font-bold uppercase">{isAr ? 'البريد الإلكتروني' : 'Email'}</p>
-                      <a href={`mailto:${contact.email}`} className="font-bold text-slate-900 dark:text-white hover:text-[#0866C6]">
-                        {contact.email}
-                      </a>
-                    </div>
-                  </div>
-                )}
+                    {activeContact?.whatsapp && (
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600 flex items-center justify-center shrink-0">
+                          <MessageSquare className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-[11px] text-slate-400 font-bold uppercase">WhatsApp</p>
+                          <a
+                            href={activeContact.whatsapp.startsWith('http') ? activeContact.whatsapp : `https://wa.me/${activeContact.whatsapp.replace(/\D/g, '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            dir="ltr"
+                            className="font-bold text-slate-900 dark:text-white hover:text-emerald-600"
+                          >
+                            {activeContact.whatsapp}
+                          </a>
+                        </div>
+                      </div>
+                    )}
 
-                {(contact?.workingHours || contact?.workingHoursEn) && (
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600 flex items-center justify-center shrink-0">
-                      <Clock className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-[11px] text-slate-400 font-bold uppercase">{isAr ? 'ساعات العمل' : 'Working Hours'}</p>
-                      <p className="font-bold text-slate-900 dark:text-white">
-                        {isAr ? (contact?.workingHours || contact?.workingHoursEn) : (contact?.workingHoursEn || contact?.workingHours)}
+                    {activeContact?.email && (
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-[#07345C]/30 text-[#0866C6] flex items-center justify-center shrink-0">
+                          <Mail className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-[11px] text-slate-400 font-bold uppercase">{isAr ? 'البريد الإلكتروني' : 'Email'}</p>
+                          <a href={`mailto:${activeContact.email}`} dir="ltr" className="font-bold text-slate-900 dark:text-white hover:text-[#0866C6]">
+                            {activeContact.email}
+                          </a>
+                        </div>
+                      </div>
+                    )}
+
+                    {(activeContact?.workingHours || activeContact?.workingHoursEn) && (
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600 flex items-center justify-center shrink-0">
+                          <Clock className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-[11px] text-slate-400 font-bold uppercase">{isAr ? 'ساعات العمل' : 'Working Hours'}</p>
+                          <p className="font-bold text-slate-900 dark:text-white">
+                            {isAr ? (activeContact?.workingHours || activeContact?.workingHoursEn) : (activeContact?.workingHoursEn || activeContact?.workingHours)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {(activeContact?.address || activeContact?.addressEn) && (
+                      <div className="flex items-start gap-3 pt-2">
+                        <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 flex items-center justify-center shrink-0 mt-0.5">
+                          <MapPin className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-[11px] text-slate-400 font-bold uppercase">{isAr ? 'المقر والفروع' : 'Offices'}</p>
+                          <p className="font-medium text-slate-900 dark:text-white">
+                            {isAr ? (activeContact?.address || activeContact?.addressEn) : (activeContact?.addressEn || activeContact?.address)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {!isLoading && !activeContact?.phone && !activeContact?.whatsapp && !activeContact?.email && !activeContact?.workingHours && !activeContact?.address && (
+                      <p className="text-xs text-slate-400 py-3">
+                        {isAr
+                          ? 'لم يتم تعيين بيانات تواصل مباشرة حتى الآن. يمكنك إرسال استفسارك من خلال النموذج وسنقوم بالرد عليك.'
+                          : 'No direct contact channels configured yet. Please submit your inquiry through the form.'}
                       </p>
-                    </div>
-                  </div>
-                )}
-
-                {(contact?.address || contact?.addressEn) && (
-                  <div className="flex items-start gap-3 pt-2">
-                    <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 flex items-center justify-center shrink-0 mt-0.5">
-                      <MapPin className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-[11px] text-slate-400 font-bold uppercase">{isAr ? 'المقر والفروع' : 'Offices'}</p>
-                      <p className="font-medium text-slate-900 dark:text-white">
-                        {isAr ? (contact?.address || contact?.addressEn) : (contact?.addressEn || contact?.address)}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {!contact?.phone && !contact?.whatsapp && !contact?.email && !contact?.workingHours && !contact?.address && (
-                  <p className="text-xs text-slate-400 py-3">
-                    {isAr
-                      ? 'لم يتم تعيين بيانات تواصل مباشرة حتى الآن. يمكنك إرسال استفسارك من خلال النموذج وسنقوم بالرد عليك.'
-                      : 'No direct contact channels configured yet. Please submit your inquiry through the form.'}
-                  </p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
 
             {/* Social Media Channels Card */}
-            {resolveSocialItems(social).filter((item) => item.visible !== false && Boolean(item.url?.trim())).length > 0 && (
+            {isLoading && resolveSocialItems(activeSocial).filter((item) => item.visible !== false && Boolean(item.url?.trim())).length === 0 ? (
+              <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-4 animate-pulse">
+                <div className="w-32 h-4 rounded-md bg-slate-200 dark:bg-slate-800" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="h-10 rounded-2xl bg-slate-100 dark:bg-slate-800" />
+                  <div className="h-10 rounded-2xl bg-slate-100 dark:bg-slate-800" />
+                </div>
+              </div>
+            ) : resolveSocialItems(activeSocial).filter((item) => item.visible !== false && Boolean(item.url?.trim())).length > 0 ? (
               <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-4">
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">
                   {isAr ? 'تابعنا على وسائل التواصل' : 'Follow Us On Social Media'}
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {resolveSocialItems(social)
+                  {resolveSocialItems(activeSocial)
                     .filter((item) => item.visible !== false && Boolean(item.url?.trim()))
                     .map((item) => {
                       const href =
@@ -192,7 +239,7 @@ export default function ContactPage() {
                     })}
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
 
           {/* Inquiry Form Column */}
@@ -242,6 +289,7 @@ export default function ContactPage() {
                       label={isAr ? 'رقم الهاتف' : 'Phone Number'}
                       placeholder="01012345678"
                       type="tel"
+                      dir="ltr"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       required

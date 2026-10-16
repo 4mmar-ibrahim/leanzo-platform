@@ -22,9 +22,11 @@ import {
   Sliders,
   Tag,
   ArrowUpRight,
+  AlertCircle,
 } from 'lucide-react';
 import { apiGet, apiPut } from '@/lib/api';
 import { toast } from 'sonner';
+import { TimeRangeDisplay } from '@/components/common/TimeRangeDisplay';
 
 interface ISubscription {
   id: string;
@@ -106,8 +108,12 @@ export default function AdminSubscriptionsPage() {
   };
 
   const [analytics, setAnalytics] = useState<any>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState<boolean>(true);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
 
   const fetchAnalytics = async () => {
+    setAnalyticsLoading(true);
+    setAnalyticsError(null);
     try {
       let res: any;
       try {
@@ -121,9 +127,14 @@ export default function AdminSubscriptionsPage() {
       }
       if (res?.data) {
         setAnalytics(res.data);
+      } else {
+        setAnalytics(null);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.warn('Analytics fetch error', e);
+      setAnalyticsError(e?.message || 'تعذر تحميل مؤشرات أداء الاشتراكات');
+    } finally {
+      setAnalyticsLoading(false);
     }
   };
 
@@ -198,29 +209,93 @@ export default function AdminSubscriptionsPage() {
       </div>
 
       {/* KPI Stats Bar */}
-      {analytics && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
-            <div className="text-[11px] font-bold text-slate-500">الاشتراكات النشطة</div>
-            <div className="text-2xl font-black text-[#0866C6] mt-1 font-mono">{analytics.activeSubscriptions}</div>
-            <div className="text-[10px] text-slate-400 mt-1">من إجمالي {analytics.totalSubscriptions} اشتراك</div>
-          </div>
-          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
-            <div className="text-[11px] font-bold text-slate-500">القيمة المالية النشطة</div>
-            <div className="text-2xl font-black text-emerald-500 mt-1 font-mono">{analytics.activeSubscriptionValue} ج.م</div>
-            <div className="text-[10px] text-slate-400 mt-1">إجمالي الإيرادات: {analytics.totalSubscriptionRevenue} ج.م</div>
-          </div>
-          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
-            <div className="text-[11px] font-bold text-slate-500">الزيارات المكتملة</div>
-            <div className="text-2xl font-black text-blue-500 mt-1 font-mono">{analytics.visitStats?.completed || 0}</div>
-            <div className="text-[10px] text-slate-400 mt-1">مجدولة: {analytics.visitStats?.scheduled || 0}</div>
-          </div>
-          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
-            <div className="text-[11px] font-bold text-slate-500">معدل التجديد</div>
-            <div className="text-2xl font-black text-purple-500 mt-1 font-mono">%{analytics.renewalRate || 0}</div>
-            <div className="text-[10px] text-slate-400 mt-1">تم تجديد: {analytics.renewedSubscriptions}</div>
-          </div>
+      {analyticsLoading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 animate-pulse">
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-2.5"
+            >
+              <div className="h-3 w-24 bg-slate-200 dark:bg-slate-800 rounded-md" />
+              <div className="h-7 w-28 bg-slate-200 dark:bg-slate-800 rounded-md" />
+              <div className="h-2.5 w-36 bg-slate-100 dark:bg-slate-800/60 rounded-md" />
+            </div>
+          ))}
         </div>
+      ) : analyticsError ? (
+        <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 text-rose-800 dark:text-rose-300 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span className="font-bold">{analyticsError}</span>
+          </div>
+          <button
+            onClick={fetchAnalytics}
+            className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition-colors shrink-0"
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      ) : (
+        (() => {
+          const kpis = analytics?.kpis || analytics?.summary || analytics || {};
+          const totalSubs = Number(kpis.totalSubscriptions ?? 0);
+          const activeSubs = Number(kpis.activeSubscriptions ?? 0);
+          const activeVal = Number(kpis.activeSubscriptionValue ?? 0);
+          const totalRev = Number(kpis.totalSubscriptionRevenue ?? 0);
+          const compVisits = Number(
+            kpis.completedVisits ?? kpis.completedSubscriptionVisits ?? kpis.visitStats?.completed ?? 0
+          );
+          const schedVisits = Number(
+            kpis.upcomingVisits ?? kpis.upcomingSubscriptionVisits ?? kpis.visitStats?.scheduled ?? 0
+          );
+          const renewedCount = Number(kpis.renewedSubscriptions ?? 0);
+          const hasData = totalSubs > 0 || compVisits > 0 || totalRev > 0;
+          const renewalRateStr = !hasData ? 'لا توجد بيانات' : `${Number(kpis.renewalRate ?? 0)}%`;
+
+          return (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
+                <div className="text-[11px] font-bold text-slate-500">الاشتراكات النشطة</div>
+                <div className="text-2xl font-black text-[#0866C6] mt-1 font-mono">
+                  {activeSubs.toLocaleString()}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">
+                  من إجمالي {totalSubs.toLocaleString()} اشتراك
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
+                <div className="text-[11px] font-bold text-slate-500">القيمة المالية النشطة</div>
+                <div className="text-2xl font-black text-emerald-500 mt-1 font-mono">
+                  {activeVal.toLocaleString()} ج.م
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">
+                  إجمالي الإيرادات: {totalRev.toLocaleString()} ج.م
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
+                <div className="text-[11px] font-bold text-slate-500">الزيارات المكتملة</div>
+                <div className="text-2xl font-black text-blue-500 mt-1 font-mono">
+                  {compVisits.toLocaleString()}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">
+                  مجدولة: {schedVisits.toLocaleString()}
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
+                <div className="text-[11px] font-bold text-slate-500">معدل التجديد</div>
+                <div className="text-2xl font-black text-purple-500 mt-1 font-mono">
+                  {renewalRateStr}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">
+                  تم تجديد: {renewedCount.toLocaleString()}
+                </div>
+              </div>
+            </div>
+          );
+        })()
       )}
 
       {/* Filter & Search Bar */}
@@ -365,7 +440,7 @@ export default function AdminSubscriptionsPage() {
                             <div className="font-bold text-slate-800 dark:text-slate-200">{nextVisit.date}</div>
                             <div className="text-[10px] text-slate-500 flex items-center gap-1">
                               <Clock className="w-3 h-3" />
-                              <span>{nextVisit.time}</span>
+                              <TimeRangeDisplay time={nextVisit.time} locale="ar" className="text-[10px] text-slate-500 font-medium" />
                             </div>
                           </div>
                         ) : (

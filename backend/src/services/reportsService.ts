@@ -162,10 +162,12 @@ function buildBookingDateQuery(range: ParsedDateRange) {
 
 /**
  * Helper to calculate growth percentage safely without Infinity or NaN.
+ * When previous is 0 and current > 0, returns null ("new baseline period") rather than a misleading +100%.
  */
-export function calculateGrowth(current: number, previous: number): number {
+export function calculateGrowth(current: number, previous: number): number | null {
   if (previous === 0) {
-    return current > 0 ? 100 : 0;
+    if (current === 0) return 0;
+    return null;
   }
   const delta = current - previous;
   return Math.round((delta / previous) * 100 * 10) / 10;
@@ -221,9 +223,7 @@ export async function getReportsOverview(filter: ReportFilter = {}) {
   const averageOrderValue =
     completedBookings.length > 0
       ? Math.round(completedRevenue / completedBookings.length)
-      : totalOrders > 0
-      ? Math.round(grossPotentialRevenue / totalOrders)
-      : 0;
+      : null;
 
   const cancellationRate =
     totalOrders > 0
@@ -452,7 +452,7 @@ export async function getOrdersReport(filter: ReportFilter = {}) {
   });
 
   const averageOrderValue =
-    completedCount > 0 ? Math.round(completedRevenue / completedCount) : 0;
+    completedCount > 0 ? Math.round(completedRevenue / completedCount) : null;
   const averageDurationMinutes =
     totalOrders > 0 ? Math.round(totalDurationMinutes / totalOrders) : 0;
 
@@ -711,7 +711,7 @@ export async function getServicesReport(filter: ReportFilter = {}) {
 
   const allServiceStats = Object.values(serviceStatsMap).map((item) => ({
     ...item,
-    averageOrderValue: item.completedCount > 0 ? Math.round(item.revenue / item.completedCount) : 0,
+    averageOrderValue: item.completedCount > 0 ? Math.round(item.revenue / item.completedCount) : null,
   }));
 
   const activeServicesCount = services.filter((s) => (s as any).active ?? (s.available !== false && !s.isArchived)).length;
@@ -1015,7 +1015,7 @@ export async function getAnalyticsOverview(filter: ReportFilter = {}) {
   const currAOV =
     currCompletedBookings.length > 0
       ? Math.round(currRevenue / currCompletedBookings.length)
-      : 0;
+      : null;
 
   // Previous period metrics
   const prevTotalOrders = prevBookings.length;
@@ -1027,13 +1027,14 @@ export async function getAnalyticsOverview(filter: ReportFilter = {}) {
   const prevAOV =
     prevCompletedBookings.length > 0
       ? Math.round(prevRevenue / prevCompletedBookings.length)
-      : 0;
+      : null;
 
   // Mathematically calculated true growth percentages
   const customerGrowth = calculateGrowth(currCustomers, prevCustomers);
   const ordersGrowth = calculateGrowth(currTotalOrders, prevTotalOrders);
   const revenueGrowth = calculateGrowth(currRevenue, prevRevenue);
-  const aovGrowth = calculateGrowth(currAOV, prevAOV);
+  const aovGrowth =
+    currAOV !== null && prevAOV !== null ? calculateGrowth(currAOV, prevAOV) : null;
 
   // Efficiency rates
   const cancellationRate =
@@ -1239,8 +1240,12 @@ export async function getDashboardKPIs(filter: ReportFilter = {}) {
   const range = parseDateFilter(filter);
   const bookingQuery = buildBookingDateQuery(range);
 
-  const [totalCustomers, bookings] = await Promise.all([
+  const [totalCustomers, newCustomersInPeriod, bookings] = await Promise.all([
     User.countDocuments({ isDeleted: { $ne: true } }),
+    User.countDocuments({
+      isDeleted: { $ne: true },
+      createdAt: { $gte: range.start, $lte: range.end },
+    }),
     Booking.find(bookingQuery).lean(),
   ]);
 
@@ -1303,11 +1308,7 @@ export async function getDashboardKPIs(filter: ReportFilter = {}) {
   });
 
   const averageOrderValue =
-    completedOrders > 0
-      ? Math.round(completedRevenue / completedOrders)
-      : totalOrders > 0
-      ? Math.round(completedRevenue / totalOrders)
-      : 0;
+    completedOrders > 0 ? Math.round(completedRevenue / completedOrders) : null;
 
   // Most popular service
   let popularServiceName = 'لا توجد طلبات مسجلة';
@@ -1339,6 +1340,7 @@ export async function getDashboardKPIs(filter: ReportFilter = {}) {
     startDate: range.startStr,
     endDate: range.endStr,
     totalCustomers,
+    newCustomers: newCustomersInPeriod,
     totalOrders,
     newOrders,
     completedOrders,
@@ -1346,6 +1348,7 @@ export async function getDashboardKPIs(filter: ReportFilter = {}) {
     inProgressOrders: inProgressOrders + assignedOrders + confirmedOrders,
     totalRevenue: completedRevenue,
     averageOrderValue,
+    hasEligibleOrders: completedOrders > 0,
     popularServiceName,
     popularServicePct,
     dailyChart,

@@ -58,17 +58,20 @@ interface AnalyticsData {
 export function SubscriptionDashboardOverview() {
   const [range, setRange] = useState<string>('30days');
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<AnalyticsData | null>(null);
 
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await apiGet<AnalyticsData>(`/subscriptions/admin/analytics?range=${range}`);
       if (res?.data) {
         setData(res.data);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch subscription analytics:', err);
+      setError(err?.message || 'تعذر تحميل مؤشرات أداء الاشتراكات');
     } finally {
       setLoading(false);
     }
@@ -149,7 +152,18 @@ export function SubscriptionDashboardOverview() {
         </div>
       </div>
 
-      {loading ? (
+      {error ? (
+        <div className="py-12 px-6 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 text-center space-y-3">
+          <ShieldAlert className="w-8 h-8 text-rose-500 mx-auto" />
+          <p className="text-xs font-bold text-rose-700 dark:text-rose-300">{error}</p>
+          <button
+            onClick={() => fetchAnalytics()}
+            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      ) : loading ? (
         <div className="py-20 flex flex-col items-center justify-center gap-3">
           <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
           <span className="text-xs font-medium text-slate-400">جاري احتساب مؤشرات الاشتراكات...</span>
@@ -222,7 +236,7 @@ export function SubscriptionDashboardOverview() {
                   </div>
                 </div>
                 <div className="text-lg font-black text-slate-900 dark:text-white">
-                  {s.renewalRate}%
+                  {s.totalSubscriptions === 0 ? 'لا توجد بيانات' : `${s.renewalRate}%`}
                 </div>
                 <span className="text-[10px] text-slate-400">نسبة الاشتراكات المجددة</span>
               </div>

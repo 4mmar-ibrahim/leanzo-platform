@@ -95,8 +95,8 @@ export const initialSystemSettings: SystemSettings = {
     footerCategoryLinks: DEFAULT_FOOTER_CATEGORY_LINKS,
     topBanner: {
       enabled: true,
-      text: 'خصم 20% لفتره محدودة على جميع باقات الغسيل والديتيلينج بمناسبه التحديث الجديد! كود: WELCOME20',
-      textEn: 'Limited time 20% OFF on all packages celebrating the new update! Code: WELCOME20',
+      text: 'خصم 20% لفترة محدودة على الحجوزات بمناسبة التحديث الجديد! كود: WELCOME20 (للطلبات من 200 ج.م)',
+      textEn: 'Limited time 20% OFF on bookings celebrating the new update! Code: WELCOME20 (Orders from 200 EGP)',
       discountBadge: 'خصم 20%',
       link: '/booking',
       bgColor: 'from-[#07345C] to-[#0866C6]',

@@ -4,7 +4,7 @@ import React, { useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { Car, Sparkles, ShieldCheck, Clock, ArrowLeft, ArrowRight } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
-import { useServiceStore } from '@/store/useServiceStore';
+import { useServiceStore, matchesCategory } from '@/store/useServiceStore';
 import { ServiceCard } from '@/components/services/ServiceCard';
 import { SectionHeader } from '@/components/common/SectionHeader';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -18,6 +18,7 @@ export default function CarServicesPage() {
 
   const storeServices = useServiceStore((s) => s.services);
   const categories = useServiceStore((s) => s.categories);
+  const isLoading = useServiceStore((s) => s.isLoading);
   const fetchServices = useServiceStore((s) => s.fetchServices);
   const fetchCategories = useServiceStore((s) => s.fetchCategories);
 
@@ -30,7 +31,7 @@ export default function CarServicesPage() {
     return (storeServices || []).filter((s) => {
       if (s.available === false || (s as any).isArchived) return false;
       const cat = resolveCategoryInfo(s.category, categories, isAr);
-      return cat.isCar || s.category === 'car';
+      return cat.isCar || matchesCategory(s.category, 'car');
     });
   }, [storeServices, categories, isAr]);
 
@@ -79,7 +80,26 @@ export default function CarServicesPage() {
           </span>
         </div>
 
-        {carServices.length > 0 ? (
+        {isLoading && carServices.length === 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div
+                key={i}
+                className="h-80 rounded-3xl bg-white/60 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 p-6 animate-pulse flex flex-col justify-between"
+              >
+                <div className="space-y-4">
+                  <div className="w-full h-44 rounded-2xl bg-slate-200 dark:bg-slate-700/60" />
+                  <div className="h-5 w-2/3 rounded-lg bg-slate-200 dark:bg-slate-700/60" />
+                  <div className="h-4 w-full rounded-lg bg-slate-200 dark:bg-slate-700/60" />
+                </div>
+                <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+                  <div className="h-5 w-16 rounded-md bg-slate-200 dark:bg-slate-700/60" />
+                  <div className="h-9 w-24 rounded-xl bg-slate-200 dark:bg-slate-700/60" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : carServices.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {carServices.map((service) => (
               <ServiceCard key={service.id} service={service} />

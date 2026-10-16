@@ -20,6 +20,7 @@ import {
   FileText,
 } from 'lucide-react';
 import Link from 'next/link';
+import { TimeRangeDisplay } from '@/components/common/TimeRangeDisplay';
 
 interface SubscriptionVisitDetailsModalProps {
   visit: any | null;
@@ -147,13 +148,16 @@ export function SubscriptionVisitDetailsModal({
             </div>
             <div className="flex justify-between py-1 border-b border-border/20">
               <span className="text-foreground/60">الوقت:</span>
-              <span className="font-bold text-foreground font-mono">{visit.time}</span>
+              <TimeRangeDisplay time={visit.time} locale="ar" className="font-bold text-foreground font-mono" />
             </div>
             <div className="flex justify-between py-1 border-b border-border/20">
               <span className="text-foreground/60">فترة البدء والانتهاء:</span>
-              <span className="font-mono text-foreground">
-                {visit.scheduledStart || visit.timeSlotStart} – {visit.scheduledEnd || 'نهاية الموعد'}
-              </span>
+              <TimeRangeDisplay
+                start={visit.scheduledStart || visit.timeSlotStart}
+                end={visit.scheduledEnd}
+                locale="ar"
+                className="font-mono text-foreground"
+              />
             </div>
             <div className="flex justify-between py-1">
               <span className="text-foreground/60">مدة الخدمة + الانتقال:</span>

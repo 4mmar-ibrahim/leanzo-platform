@@ -8,6 +8,7 @@ import { useLocaleStore } from '@/store/useLocaleStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useCustomerStore } from '@/store/useCustomerStore';
+import { useCustomerNotificationStore } from '@/store/useCustomerNotificationStore';
 import { MaintenanceScreen } from './MaintenanceScreen';
 import { normalizeMediaUrl } from '@/lib/utils';
 
@@ -114,6 +115,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
         localStorage.removeItem(k);
         sessionStorage.removeItem(k);
       });
+      // Purge any legacy un-scoped test/admin notifications from in-memory customer store
+      useCustomerNotificationStore.getState().purgeLegacyUnscoped();
     } catch {}
 
     // Silently restore persistent customer session via HttpOnly cookie/token

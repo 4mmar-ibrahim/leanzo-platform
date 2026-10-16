@@ -3,7 +3,7 @@ import { Service } from '@/types';
 export const mockServices: Service[] = [
   // ===================== CAR SERVICES =====================
   {
-    id: 'car-basic-wash',
+    id: 'srv-1791711071734',
     category: 'car',
     title: 'غسيل واش أساسي متطور',
     titleEn: 'Basic Express Wash',
@@ -42,7 +42,7 @@ export const mockServices: Service[] = [
     ],
   },
   {
-    id: 'car-premium-wash',
+    id: 'srv-1791711116838',
     category: 'car',
     title: 'غسيل بريميوم متكامل مع طبقة شمع',
     titleEn: 'Premium Wash & Wax Seal',
@@ -170,7 +170,7 @@ export const mockServices: Service[] = [
 
   // ===================== HOME SERVICES =====================
   {
-    id: 'home-standard-clean',
+    id: 'srv-1791711140713',
     category: 'home',
     title: 'التنظيف المنزلي الدوري والشامل',
     titleEn: 'Standard Home Maintenance Clean',
@@ -286,7 +286,7 @@ export const mockServices: Service[] = [
     ],
   },
   {
-    id: 'home-upholstery-steam',
+    id: 'srv-1791711099194',
     category: 'home',
     title: 'غسيل وتعقيم المفروشات والكنب والسجاد بالبخار',
     titleEn: 'Upholstery, Sofa & Carpet Steam Wash',

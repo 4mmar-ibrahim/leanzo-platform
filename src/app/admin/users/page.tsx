@@ -38,14 +38,28 @@ import {
   ALL_TECHNICIAN_PERMISSION_TOKENS,
   hasPermission,
 } from '@/lib/permissions';
+import { initialRoleDefinitions } from '@/data/adminUsers';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+
+function formatSafeDate(dateStr?: string | null, fallback = 'لم يسجل دخول بعد'): string {
+  if (!dateStr) return fallback;
+  if (typeof dateStr === 'string' && (dateStr.includes('منذ') || dateStr.includes('اليوم') || dateStr.includes('أمس'))) {
+    return dateStr;
+  }
+  const d = new Date(dateStr);
+  return isNaN(d.getTime())
+    ? fallback
+    : d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
+}
 
 export default function AdminUsersPage() {
   const {
     currentAdmin,
     adminUsers,
+    roles,
     fetchUsers,
+    fetchRoles,
     updateOwnerProfile,
     changeOwnerPassword,
     changeUserPassword,
@@ -62,8 +76,9 @@ export default function AdminUsersPage() {
   // Fetch live users and technicians on mount
   useEffect(() => {
     fetchUsers();
+    fetchRoles();
     fetchTechnicians();
-  }, [fetchUsers, fetchTechnicians]);
+  }, [fetchUsers, fetchRoles, fetchTechnicians]);
 
   // Find single Platform Owner
   const ownerUser = useMemo(() => {
@@ -596,7 +611,7 @@ export default function AdminUsersPage() {
                     <span>تاريخ إنشاء الحساب:</span>
                   </div>
                   <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    {ownerUser?.createdAt ? new Date(ownerUser.createdAt).toLocaleDateString('ar-EG') : 'حساب مؤسس'}
+                    {formatSafeDate(ownerUser?.createdAt, 'حساب مؤسس')}
                   </p>
                 </div>
               </div>
@@ -607,7 +622,7 @@ export default function AdminUsersPage() {
                 صلاحيات المالك: <strong className="text-[#0866C6] font-black">كاملة وغير مقيدة (Full Access)</strong> لجميع الأقسام الحالية والمستقبلية.
               </span>
               <span className="text-[11px] font-bold text-slate-500">
-                آخر دخول: {ownerUser?.lastLogin ? new Date(ownerUser.lastLogin).toLocaleDateString('ar-EG') : 'اليوم'}
+                آخر دخول: {formatSafeDate(ownerUser?.lastLogin, 'اليوم')}
               </span>
             </div>
           </div>
@@ -804,9 +819,31 @@ export default function AdminUsersPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filteredStaffUsers.map((user) => {
-                    const activePermCount = Array.isArray(user.granularPermissions)
-                      ? user.granularPermissions.length
-                      : Object.values(user.permissions || {}).filter((p) => p !== 'hidden').length;
+                    const activePermCount = (() => {
+                      if (user.role === 'owner' || user.role === 'super_admin') {
+                        return ALL_PERMISSION_TOKENS.length;
+                      }
+                      if (Array.isArray(user.granularPermissions) && user.granularPermissions.length > 0) {
+                        return user.granularPermissions.length;
+                      }
+                      if (user.permissions && Object.keys(user.permissions).length > 0) {
+                        const count = Object.values(user.permissions).filter((p) => p && (p as string) !== 'hidden' && (p as string) !== 'none').length;
+                        if (count > 0) return count;
+                      }
+                      // Fallback to role definitions
+                      const allRoles = (roles && roles.length > 0) ? roles : initialRoleDefinitions;
+                      const roleDef = allRoles.find((r) => r.id === user.role);
+                      if (roleDef?.permissions) {
+                        if (Array.isArray(roleDef.permissions)) {
+                          return roleDef.permissions.length;
+                        }
+                        return Object.values(roleDef.permissions).filter((p: any) => {
+                          if (Array.isArray(p)) return p.length > 0;
+                          return p && (p as string) !== 'hidden' && (p as string) !== 'none';
+                        }).length;
+                      }
+                      return 0;
+                    })();
 
                     return (
                       <tr
@@ -887,7 +924,7 @@ export default function AdminUsersPage() {
                         </td>
 
                         <td className="p-4 text-slate-400 text-[11px]">
-                          {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString('ar-EG') : 'لم يدخل بعد'}
+                          {formatSafeDate(user.lastLogin, 'لم يدخل بعد')}
                         </td>
 
                         <td className="p-4">

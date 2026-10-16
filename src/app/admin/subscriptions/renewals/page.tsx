@@ -98,39 +98,53 @@ export default function AdminSubscriptionRenewalsPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="p-5 rounded-2xl bg-card border border-border/50 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-            <RefreshCw className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-xs text-foreground/60 font-medium">إجمالي عمليات التجديد</div>
-            <div className="text-2xl font-black text-foreground mt-0.5">{renewalsList.length} دورة</div>
-          </div>
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-pulse">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="p-5 rounded-2xl bg-card border border-border/50 shadow-sm flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-muted" />
+              <div className="space-y-2">
+                <div className="h-3 w-28 bg-muted rounded-md" />
+                <div className="h-6 w-20 bg-muted rounded-md" />
+              </div>
+            </div>
+          ))}
         </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-5 rounded-2xl bg-card border border-border/50 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+              <RefreshCw className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="text-xs text-foreground/60 font-medium">إجمالي عمليات التجديد</div>
+              <div className="text-2xl font-black text-foreground mt-0.5">{renewalsList.length} دورة</div>
+            </div>
+          </div>
 
-        <div className="p-5 rounded-2xl bg-card border border-border/50 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-            <DollarSign className="w-6 h-6" />
+          <div className="p-5 rounded-2xl bg-card border border-border/50 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+              <DollarSign className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="text-xs text-foreground/60 font-medium">عائدات التجديد</div>
+              <div className="text-2xl font-black text-emerald-500 mt-0.5">{(totalRenewalRevenue || 0).toLocaleString()} ج.م</div>
+            </div>
           </div>
-          <div>
-            <div className="text-xs text-foreground/60 font-medium">عائدات التجديد</div>
-            <div className="text-2xl font-black text-emerald-500 mt-0.5">{totalRenewalRevenue.toLocaleString()} ج.م</div>
-          </div>
-        </div>
 
-        <div className="p-5 rounded-2xl bg-card border border-border/50 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
-            <CheckCircle2 className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-xs text-foreground/60 font-medium">معدل الحفاظ على العملاء</div>
-            <div className="text-2xl font-black text-blue-500 mt-0.5">
-              {renewalsList.length > 0 ? 'نشط ومستمر' : 'في انتظار التجديدات'}
+          <div className="p-5 rounded-2xl bg-card border border-border/50 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+              <CheckCircle2 className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="text-xs text-foreground/60 font-medium">معدل الحفاظ على العملاء</div>
+              <div className="text-2xl font-black text-blue-500 mt-0.5">
+                {renewalsList.length > 0 ? 'نشط ومستمر' : 'لا توجد بيانات'}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Filter / Search Bar */}
       <div className="p-4 rounded-2xl bg-card border border-border/50 shadow-sm flex items-center gap-3">

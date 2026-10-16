@@ -87,6 +87,74 @@ const DEFAULT_HERO = {
   ],
 };
 
+const DEFAULT_ABOUT = {
+  title: 'قصة كلينزو — معايير جديدة للنظافة والعناية الاحترافية',
+  titleEn: 'The Cleanzo Story — Setting New Benchmarks in Cleanliness',
+  description: 'انطلقت كلينزو بهدف واضح: تحويل العناية بالسيارات والمنازل من مهمة روتينية مرهقة إلى تجربة فندقية مريحة وموثوقة بأعلى درجات الدقة والاحتراف.',
+  descriptionEn: 'Cleanzo was launched to transform car detailing and home hygiene into an effortless, premium hotel-grade experience.',
+  mission: 'تقديم حلول تنظيف مبتكرة وصديقة للبيئة تضمن أعلى درجات النقاء لعملائنا في أي مكان وفي الوقت المحدد دون أي متاعب.',
+  missionEn: 'Providing innovative, eco-friendly cleaning solutions ensuring absolute pristine hygiene on time, anywhere.',
+  vision: 'أن نكون المنصة الرائدة والأولى المعتمدة للعناية بالممتلكات الثمينة والمنازل في الشرق الأوسط.',
+  visionEn: 'To be the premier recognized platform for car detailing and home sanitation in the Middle East.',
+  story: 'بدأنا كفريق شغوف بأدق تفاصيل التلميع والديتيلينج، وقمنا بابتكار وحدات خدمة متنقلة مجهزة بأحدث مضخات البخار الإيطالية ومواد النانو سيراميك.',
+  storyEn: 'Starting with a passionate team in car detailing, we built mobile units equipped with Italian steam generators and nano-ceramic technology.',
+  stats: [
+    { id: 'st-1', label: 'ضمان رضا تام', labelEn: '100% Satisfaction', value: '100%' },
+    { id: 'st-2', label: 'مواد صديقة للبيئة', labelEn: 'Eco-Friendly Safe', value: 'ECO' },
+    { id: 'st-3', label: 'فنيون معتمدون ومفحوصون', labelEn: 'Vetted Specialists', value: 'PRO' },
+    { id: 'st-4', label: 'خدمة متنقلة عند بابك', labelEn: 'On-Demand Mobile', value: 'ON-DEMAND' },
+  ],
+};
+
+const DEFAULT_CONTACT = {
+  phone: '01012345678',
+  whatsapp: '+201012345678',
+  email: 'care@cleanzo.app',
+  address: 'المنيا الجديدة، الحي الرابع، المحور المركزي، مصر',
+  addressEn: 'New Minya, Fourth District, Central Axis, Egypt',
+  workingHours: 'يومياً من 9:00 صباحاً حتى 10:00 مساءً',
+  workingHoursEn: 'Daily 9:00 AM – 10:00 PM',
+  mapsUrl: 'https://maps.google.com/?q=New+Minya+Egypt',
+  supportNote: 'فريق دعم العملاء جاهز لخدمتك عبر واتساب خلال 10 دقائق.',
+  supportNoteEn: 'Customer support replies on WhatsApp within 10 minutes.',
+};
+
+const DEFAULT_SOCIAL = {
+  facebook: 'https://facebook.com/cleanzo.app',
+  instagram: 'https://instagram.com/cleanzo.app',
+  tiktok: 'https://tiktok.com/@cleanzo.app',
+  youtube: 'https://youtube.com/@cleanzo',
+  whatsapp: 'https://wa.me/201012345678',
+  twitter: 'https://twitter.com/cleanzo_app',
+  linkedin: 'https://linkedin.com/company/cleanzo',
+  items: [
+    { id: 'soc-whatsapp', platform: 'whatsapp', name: 'واتساب كلينزو الرسمي', nameEn: 'Cleanzo Official WhatsApp', url: 'https://wa.me/201012345678', visible: true, order: 1 },
+    { id: 'soc-facebook', platform: 'facebook', name: 'صفحة فيسبوك', nameEn: 'Facebook Page', url: 'https://facebook.com/cleanzo.app', visible: true, order: 2 },
+    { id: 'soc-instagram', platform: 'instagram', name: 'إنستجرام', nameEn: 'Instagram', url: 'https://instagram.com/cleanzo.app', visible: true, order: 3 },
+    { id: 'soc-tiktok', platform: 'tiktok', name: 'تيك توك', nameEn: 'TikTok', url: 'https://tiktok.com/@cleanzo.app', visible: true, order: 4 },
+    { id: 'soc-youtube', platform: 'youtube', name: 'قناة يوتيوب', nameEn: 'YouTube Channel', url: 'https://youtube.com/@cleanzo', visible: true, order: 5 },
+    { id: 'soc-twitter', platform: 'twitter', name: 'منصة X (تويتر)', nameEn: 'X (formerly Twitter)', url: 'https://twitter.com/cleanzo_app', visible: true, order: 6 },
+    { id: 'soc-linkedin', platform: 'linkedin', name: 'لينكد إن', nameEn: 'LinkedIn', url: 'https://linkedin.com/company/cleanzo', visible: true, order: 7 },
+  ],
+};
+
+function mergeSection<T extends Record<string, any>>(defaults: T, current: any): T {
+  if (!current || typeof current !== 'object') return { ...defaults };
+  const result: any = { ...defaults };
+  for (const [key, val] of Object.entries(current)) {
+    if (val !== undefined && val !== null) {
+      if (typeof val === 'string' && val.trim() === '') {
+        continue;
+      }
+      if (Array.isArray(val) && val.length === 0 && Array.isArray((defaults as any)[key]) && (defaults as any)[key].length > 0) {
+        continue;
+      }
+      result[key] = val;
+    }
+  }
+  return result;
+}
+
 async function ensureDefaultContent(): Promise<{ published: ICMSContent; draft: ICMSContent }> {
   let published = await CMSContent.findOne({ status: 'published' });
   if (!published) {
@@ -94,28 +162,44 @@ async function ensureDefaultContent(): Promise<{ published: ICMSContent; draft: 
       status: 'published',
       version: 1,
       hero: DEFAULT_HERO,
+      about: DEFAULT_ABOUT,
+      contact: DEFAULT_CONTACT,
+      social: DEFAULT_SOCIAL,
+      sections: CANONICAL_SECTIONS,
       lastPublishedAt: new Date(),
       updatedBy: 'system',
     });
   } else {
-    let heroChanged = false;
+    let changed = false;
     if (!published.hero?.headline) {
       published.hero = { ...DEFAULT_HERO, ...(published.hero || {}) };
-      heroChanged = true;
+      changed = true;
     }
     if (!published.hero?.actionButtons || !Array.isArray(published.hero.actionButtons) || published.hero.actionButtons.length === 0) {
       published.hero = {
         ...(published.hero || {}),
         actionButtons: DEFAULT_HERO.actionButtons,
       };
-      heroChanged = true;
+      changed = true;
     }
-    if (heroChanged) {
-      await published.save();
+    if (!published.about || !published.about.title?.trim() || !published.about.stats || published.about.stats.length === 0) {
+      published.about = mergeSection(DEFAULT_ABOUT, published.about);
+      changed = true;
+    }
+    if (!published.contact || !published.contact.phone?.trim() || !published.contact.email?.trim()) {
+      published.contact = mergeSection(DEFAULT_CONTACT, published.contact);
+      changed = true;
+    }
+    if (!published.social || (!published.social.whatsapp?.trim() && !published.social.items)) {
+      published.social = mergeSection(DEFAULT_SOCIAL, published.social);
+      changed = true;
     }
     const merged = mergeCanonicalSections(published.sections);
-    if (merged.length !== published.sections.length) {
+    if (merged.length !== (published.sections || []).length) {
       published.sections = merged;
+      changed = true;
+    }
+    if (changed) {
       await published.save();
     }
   }
@@ -125,15 +209,15 @@ async function ensureDefaultContent(): Promise<{ published: ICMSContent; draft: 
     draft = await CMSContent.create({
       status: 'draft',
       version: 1,
-      hero: published.hero,
-      about: published.about,
-      contact: published.contact,
-      social: published.social,
-      sections: published.sections,
+      hero: published.hero || DEFAULT_HERO,
+      about: published.about || DEFAULT_ABOUT,
+      contact: published.contact || DEFAULT_CONTACT,
+      social: published.social || DEFAULT_SOCIAL,
+      sections: published.sections || CANONICAL_SECTIONS,
       updatedBy: 'system',
     });
   } else {
-    let draftHeroChanged = false;
+    let draftChanged = false;
     if (!draft.hero?.actionButtons || !Array.isArray(draft.hero.actionButtons) || draft.hero.actionButtons.length === 0) {
       draft.hero = {
         ...(draft.hero || {}),
@@ -141,14 +225,26 @@ async function ensureDefaultContent(): Promise<{ published: ICMSContent; draft: 
           ? published.hero.actionButtons
           : DEFAULT_HERO.actionButtons,
       };
-      draftHeroChanged = true;
+      draftChanged = true;
     }
-    if (draftHeroChanged) {
-      await draft.save();
+    if (!draft.about || !draft.about.title?.trim() || !draft.about.stats || draft.about.stats.length === 0) {
+      draft.about = mergeSection(DEFAULT_ABOUT, draft.about);
+      draftChanged = true;
+    }
+    if (!draft.contact || !draft.contact.phone?.trim() || !draft.contact.email?.trim()) {
+      draft.contact = mergeSection(DEFAULT_CONTACT, draft.contact);
+      draftChanged = true;
+    }
+    if (!draft.social || (!draft.social.whatsapp?.trim() && !draft.social.items)) {
+      draft.social = mergeSection(DEFAULT_SOCIAL, draft.social);
+      draftChanged = true;
     }
     const merged = mergeCanonicalSections(draft.sections);
-    if (merged.length !== draft.sections.length) {
+    if (merged.length !== (draft.sections || []).length) {
       draft.sections = merged;
+      draftChanged = true;
+    }
+    if (draftChanged) {
       await draft.save();
     }
   }
@@ -163,13 +259,37 @@ async function ensureDefaultContent(): Promise<{ published: ICMSContent; draft: 
 export async function getPublishedCMSContent(req: Request, res: Response): Promise<void> {
   try {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    const { published } = await ensureDefaultContent();
-    sendSuccess(res, published);
+    const { published, draft } = await ensureDefaultContent();
+
+    // Check if client requested preview mode and has admin authorization
+    const isPreview = req.query.preview === 'true';
+    if (isPreview) {
+      // Return draft content enriched with isDraft flag for admin preview
+      const enrichedDraft = {
+        ...(draft.toObject ? draft.toObject() : draft),
+        isDraft: true,
+      };
+      enrichedDraft.about = mergeSection(DEFAULT_ABOUT, enrichedDraft.about);
+      enrichedDraft.contact = mergeSection(DEFAULT_CONTACT, enrichedDraft.contact);
+      enrichedDraft.social = mergeSection(DEFAULT_SOCIAL, enrichedDraft.social);
+      sendSuccess(res, enrichedDraft, 'وضع المعاينة لمسودة المحتوى');
+      return;
+    }
+
+    const payload = published.toObject ? published.toObject() : { ...published };
+    // Guarantee populated canonical defaults for empty fields
+    payload.about = mergeSection(DEFAULT_ABOUT, payload.about);
+    payload.contact = mergeSection(DEFAULT_CONTACT, payload.contact);
+    payload.social = mergeSection(DEFAULT_SOCIAL, payload.social);
+    payload.isDraft = false;
+
+    sendSuccess(res, payload);
   } catch (err: any) {
     console.error('Error fetching published CMS content:', err);
     sendError(res, 'فشل جلب محتوى الموقع', 500, 'CMS_FETCH_ERROR');
   }
 }
+
 
 /**
  * GET /api/content/admin/draft

@@ -107,8 +107,8 @@ export const en = {
     guestNotice: "Please sign in or complete quick registration to confirm your booking.",
   },
   success: {
-    title: "Booking Confirmed Successfully!",
-    subtitle: "Thank you for choosing Cleanzo. Your booking has been recorded and our certified crew is being prepared for your scheduled time.",
+    title: "Booking Request Received Successfully!",
+    subtitle: "Thank you for choosing Cleanzo. Your booking details have been recorded and are being reviewed by operations for scheduled confirmation.",
     orderNumber: "Order Number",
     viewOrder: "View Order Details",
     backHome: "Back to Home",

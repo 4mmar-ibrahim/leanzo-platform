@@ -41,6 +41,7 @@ import { CleanzoImage } from '@/components/common/CleanzoImage';
 import { calculateItemizedPricing } from '@/lib/pricing';
 import { Service, ServiceCategory, ServicePackage, ServiceAddon } from '@/types';
 import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
+import { autoTranslate } from '@/lib/i18n/autoTranslate';
 
 interface ServiceDetailViewProps {
   serviceId: string;
@@ -324,7 +325,7 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
           </Link>
           <span>/</span>
           <span className="text-slate-900 dark:text-white font-semibold truncate max-w-[200px]">
-            {isAr ? service.title : service.titleEn}
+            {isAr ? service.title : (service.titleEn || autoTranslate(service.title, 'en') || service.title)}
           </span>
         </div>
 
@@ -390,7 +391,7 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
               >
                 <CleanzoImage
                   src={service.image}
-                  alt={isAr ? service.title : service.titleEn}
+                  alt={isAr ? service.title : (service.titleEn || autoTranslate(service.title, 'en') || service.title)}
                   fit="cover"
                   position="center"
                   priority
@@ -419,10 +420,10 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
             <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 space-y-6 text-start shadow-xs">
               <div className="space-y-2">
                 <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-                  {isAr ? service.title : service.titleEn}
+                  {isAr ? service.title : (service.titleEn || autoTranslate(service.title, 'en') || service.title)}
                 </h1>
                 <p className="text-base text-slate-600 dark:text-slate-300 leading-relaxed">
-                  {isAr ? service.description : service.descriptionEn}
+                  {isAr ? service.description : (service.descriptionEn || autoTranslate(service.description, 'en') || service.description)}
                 </p>
               </div>
 
@@ -432,7 +433,12 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
                   {t.services.includedFeatures}
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {(isAr ? service.features : service.featuresEn).map((feat, idx) => (
+                  {(isAr
+                    ? (service.features || [])
+                    : ((service.featuresEn && service.featuresEn.length > 0)
+                        ? service.featuresEn
+                        : (service.features || []).map((f) => autoTranslate(f, 'en')))
+                  ).map((feat, idx) => (
                     <div key={idx} className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
                       <CheckCircle2 className="w-4 h-4 text-[#0866C6] shrink-0 mt-0.5" />
                       <span className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 font-medium">
@@ -532,7 +538,7 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
                                 {isChosen && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                               </div>
                               <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
-                                {isAr ? pkg.name : pkg.nameEn || pkg.name}
+                                {isAr ? pkg.name : (pkg.nameEn || autoTranslate(pkg.name, 'en') || pkg.name)}
                               </span>
                             </div>
 
@@ -545,7 +551,7 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
 
                           {pkg.description && (
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 ps-6 line-clamp-2">
-                              {isAr ? pkg.description : pkg.descriptionEn || pkg.description}
+                              {isAr ? pkg.description : (pkg.descriptionEn || autoTranslate(pkg.description, 'en') || pkg.description)}
                             </p>
                           )}
 
@@ -602,7 +608,7 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
 
                             <div className="min-w-0">
                               <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                                {isAr ? addon.name : addon.nameEn || addon.name}
+                                {isAr ? addon.name : (addon.nameEn || autoTranslate(addon.name, 'en') || addon.name)}
                               </p>
                               {addon.durationMinutes > 0 && (
                                 <p className="text-[10px] text-slate-400">
@@ -635,7 +641,7 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
                   {selectedPkg
                     ? isAr
                       ? `سعر الباقة (${selectedPkg.name})`
-                      : `Package (${selectedPkg.nameEn || selectedPkg.name})`
+                      : `Package (${selectedPkg.nameEn || autoTranslate(selectedPkg.name, 'en') || selectedPkg.name})`
                     : isAr
                     ? 'سعر الخدمة'
                     : 'Service Price'}
@@ -650,7 +656,7 @@ export function ServiceDetailView({ serviceId, expectedCategory }: ServiceDetail
                   </span>
                   {selectedAddonsList.map((a) => (
                     <div key={a.id} className="flex justify-between">
-                      <span>• {isAr ? a.name : a.nameEn || a.name}</span>
+                      <span>• {isAr ? a.name : (a.nameEn || autoTranslate(a.name, 'en') || a.name)}</span>
                       <span className="font-bold font-mono">+{a.price} {isAr ? 'ج.م' : 'EGP'}</span>
                     </div>
                   ))}

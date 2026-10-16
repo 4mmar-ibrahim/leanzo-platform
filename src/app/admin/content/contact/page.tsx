@@ -38,13 +38,17 @@ export default function AdminContentContactPage() {
   const addLog = useActivityLogStore((s) => s.addLog);
 
   // Contact Form State
-  const [phone, setPhone] = useState(contact.phone);
-  const [whatsapp, setWhatsapp] = useState(contact.whatsapp);
-  const [email, setEmail] = useState(contact.email);
-  const [address, setAddress] = useState(contact.address);
-  const [workingHours, setWorkingHours] = useState(contact.workingHours);
-  const [mapsUrl, setMapsUrl] = useState(contact.mapsUrl);
-  const [supportNote, setSupportNote] = useState(contact.supportNote);
+  const hasInitializedRef = React.useRef(false);
+  const isDirtyRef = React.useRef(false);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  const [phone, setPhone] = useState(contact.phone || '');
+  const [whatsapp, setWhatsapp] = useState(contact.whatsapp || '');
+  const [email, setEmail] = useState(contact.email || '');
+  const [address, setAddress] = useState(contact.address || '');
+  const [workingHours, setWorkingHours] = useState(contact.workingHours || '');
+  const [mapsUrl, setMapsUrl] = useState(contact.mapsUrl || '');
+  const [supportNote, setSupportNote] = useState(contact.supportNote || '');
 
   // Social Links Form State
   const [facebook, setFacebook] = useState(social?.facebook || '');
@@ -59,24 +63,34 @@ export default function AdminContentContactPage() {
   }, [fetchDraftContent]);
 
   useEffect(() => {
-    if (contact) {
-      setPhone(contact.phone || '');
-      setWhatsapp(contact.whatsapp || '');
-      setEmail(contact.email || '');
-      setAddress(contact.address || '');
-      setWorkingHours(contact.workingHours || '');
-      setMapsUrl(contact.mapsUrl || '');
-      setSupportNote(contact.supportNote || '');
-    }
-    if (social) {
-      setFacebook(social.facebook || '');
-      setInstagram(social.instagram || '');
-      setTiktok(social.tiktok || '');
-      setYoutube(social.youtube || '');
-      setTwitter(social.twitter || '');
-      setLinkedin(social.linkedin || '');
+    // Only pre-fill from store on initial load if user hasn't made unsaved modifications
+    if (!hasInitializedRef.current && !isDirtyRef.current) {
+      if (contact && (contact.phone || contact.email || contact.address)) {
+        setPhone(contact.phone || '');
+        setWhatsapp(contact.whatsapp || '');
+        setEmail(contact.email || '');
+        setAddress(contact.address || '');
+        setWorkingHours(contact.workingHours || '');
+        setMapsUrl(contact.mapsUrl || '');
+        setSupportNote(contact.supportNote || '');
+        hasInitializedRef.current = true;
+      }
+      if (social && (social.facebook || social.whatsapp || social.instagram || social.items?.length)) {
+        setFacebook(social.facebook || '');
+        setInstagram(social.instagram || '');
+        setTiktok(social.tiktok || '');
+        setYoutube(social.youtube || '');
+        setTwitter(social.twitter || '');
+        setLinkedin(social.linkedin || '');
+      }
     }
   }, [contact, social]);
+
+  const markDirty = () => {
+    isDirtyRef.current = true;
+    setHasChanges(true);
+    setHasUnsavedChanges(true);
+  };
 
   const applyLocalChanges = () => {
     updateContact({
@@ -117,6 +131,10 @@ export default function AdminContentContactPage() {
     applyLocalChanges();
     const success = await saveDraftToDatabase();
     if (success) {
+      isDirtyRef.current = false;
+      setHasChanges(false);
+      setHasUnsavedChanges(false);
+      hasInitializedRef.current = true;
       addLog({
         adminName: currentAdmin?.name || 'Admin',
         adminRole: currentAdmin?.role || 'owner',
@@ -134,6 +152,10 @@ export default function AdminContentContactPage() {
     applyLocalChanges();
     const success = await publishToDatabase();
     if (success) {
+      isDirtyRef.current = false;
+      setHasChanges(false);
+      setHasUnsavedChanges(false);
+      hasInitializedRef.current = true;
       addLog({
         adminName: currentAdmin?.name || 'Admin',
         adminRole: currentAdmin?.role || 'owner',
@@ -227,9 +249,10 @@ export default function AdminContentContactPage() {
                 value={phone}
                 onChange={(e) => {
                   setPhone(e.target.value);
-                  setHasUnsavedChanges(true);
+                  markDirty();
                 }}
-                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
+                dir="ltr"
+                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-left"
               />
             </div>
 
@@ -244,9 +267,10 @@ export default function AdminContentContactPage() {
                 value={whatsapp}
                 onChange={(e) => {
                   setWhatsapp(e.target.value);
-                  setHasUnsavedChanges(true);
+                  markDirty();
                 }}
-                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
+                dir="ltr"
+                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-left"
               />
             </div>
           </div>
@@ -263,9 +287,10 @@ export default function AdminContentContactPage() {
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
-                  setHasUnsavedChanges(true);
+                  markDirty();
                 }}
-                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                dir="ltr"
+                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-left"
               />
             </div>
 
@@ -279,7 +304,7 @@ export default function AdminContentContactPage() {
                 value={workingHours}
                 onChange={(e) => {
                   setWorkingHours(e.target.value);
-                  setHasUnsavedChanges(true);
+                  markDirty();
                 }}
                 className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
               />
@@ -296,7 +321,7 @@ export default function AdminContentContactPage() {
               value={address}
               onChange={(e) => {
                 setAddress(e.target.value);
-                setHasUnsavedChanges(true);
+                markDirty();
               }}
               className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
             />
@@ -309,9 +334,10 @@ export default function AdminContentContactPage() {
               value={mapsUrl}
               onChange={(e) => {
                 setMapsUrl(e.target.value);
-                setHasUnsavedChanges(true);
+                markDirty();
               }}
-              className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
+              dir="ltr"
+              className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-left"
             />
           </div>
 
@@ -322,7 +348,7 @@ export default function AdminContentContactPage() {
               value={supportNote}
               onChange={(e) => {
                 setSupportNote(e.target.value);
-                setHasUnsavedChanges(true);
+                markDirty();
               }}
               className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
             />
@@ -352,10 +378,11 @@ export default function AdminContentContactPage() {
                 value={facebook}
                 onChange={(e) => {
                   setFacebook(e.target.value);
-                  setHasUnsavedChanges(true);
+                  markDirty();
                 }}
+                dir="ltr"
                 placeholder="https://facebook.com/cleanzo"
-                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
+                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-left"
               />
             </div>
 
@@ -366,10 +393,11 @@ export default function AdminContentContactPage() {
                 value={instagram}
                 onChange={(e) => {
                   setInstagram(e.target.value);
-                  setHasUnsavedChanges(true);
+                  markDirty();
                 }}
+                dir="ltr"
                 placeholder="https://instagram.com/cleanzo"
-                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
+                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-left"
               />
             </div>
 
@@ -380,10 +408,11 @@ export default function AdminContentContactPage() {
                 value={tiktok}
                 onChange={(e) => {
                   setTiktok(e.target.value);
-                  setHasUnsavedChanges(true);
+                  markDirty();
                 }}
+                dir="ltr"
                 placeholder="https://tiktok.com/@cleanzo"
-                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
+                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-left"
               />
             </div>
 
@@ -394,10 +423,11 @@ export default function AdminContentContactPage() {
                 value={youtube}
                 onChange={(e) => {
                   setYoutube(e.target.value);
-                  setHasUnsavedChanges(true);
+                  markDirty();
                 }}
+                dir="ltr"
                 placeholder="https://youtube.com/@cleanzo"
-                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
+                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-left"
               />
             </div>
 
@@ -408,10 +438,11 @@ export default function AdminContentContactPage() {
                 value={twitter}
                 onChange={(e) => {
                   setTwitter(e.target.value);
-                  setHasUnsavedChanges(true);
+                  markDirty();
                 }}
+                dir="ltr"
                 placeholder="https://x.com/cleanzo"
-                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
+                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-left"
               />
             </div>
 
@@ -422,10 +453,11 @@ export default function AdminContentContactPage() {
                 value={linkedin}
                 onChange={(e) => {
                   setLinkedin(e.target.value);
-                  setHasUnsavedChanges(true);
+                  markDirty();
                 }}
+                dir="ltr"
                 placeholder="https://linkedin.com/company/cleanzo"
-                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
+                className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-left"
               />
             </div>
           </div>

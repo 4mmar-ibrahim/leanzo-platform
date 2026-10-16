@@ -455,10 +455,11 @@ export const cleanzoApi = {
         method: 'DELETE',
         isAdmin: true,
       }),
-    deleteAllAdmin: () =>
+    deleteAllAdmin: (confirmation = 'مسح التقييمات') =>
       apiRequest<{ cleared: boolean }>('/reviews/admin/all', {
         method: 'DELETE',
         isAdmin: true,
+        body: JSON.stringify({ confirmation }),
       }),
   },
 
@@ -784,7 +785,7 @@ export const cleanzoApi = {
           pendingOrders: number;
           inProgressOrders: number;
           totalSpent: number;
-          averageOrderValue: number;
+          averageOrderValue: number | null;
           servicesCount: number;
           servicesBreakdown: Array<{
             id: string;
@@ -1027,7 +1028,8 @@ export const cleanzoApi = {
 
   // Central CMS Content Management System
   content: {
-    getPublished: () => apiRequest<CMSContentData>('/content'),
+    getPublished: (preview?: boolean) =>
+      apiRequest<CMSContentData>(preview ? '/content?preview=true' : '/content'),
     getDraft: () => apiRequest<CMSContentData>('/content/admin/draft', { isAdmin: true }),
     updateDraft: (data: Partial<{
       hero: Partial<CMSHeroSection>;
@@ -1318,16 +1320,33 @@ export const cleanzoApi = {
       }),
   },
   notifications: {
-    getAdmin: () =>
-      apiRequest<any[]>('/notifications/admin', { isAdmin: true }),
+    getAdmin: async () => {
+      const res = await apiRequest<any>('/notifications/admin', { isAdmin: true });
+      if (res && Array.isArray(res.notifications)) {
+        return res;
+      }
+      if (Array.isArray(res)) {
+        return {
+          notifications: res,
+          unreadCount: res.filter((n: any) => !n.read).length,
+          totalCount: res.length,
+        };
+      }
+      return { notifications: [], unreadCount: 0, totalCount: 0 };
+    },
     markAdminRead: (id: string) =>
-      apiRequest<void>(`/notifications/admin/${id}/read`, { method: 'PUT', isAdmin: true }),
+      apiRequest<{ unreadCount: number }>(`/notifications/admin/${id}/read`, { method: 'PUT', isAdmin: true }),
     markAllAdminRead: () =>
-      apiRequest<void>('/notifications/admin/read-all', { method: 'PUT', isAdmin: true }),
+      apiRequest<{ unreadCount: number }>('/notifications/admin/read-all', { method: 'PUT', isAdmin: true }),
     clearAllAdmin: () =>
-      apiRequest<void>('/notifications/admin/clear-all', { method: 'DELETE', isAdmin: true }),
+      apiRequest<{ unreadCount: number; notifications: any[] }>('/notifications/admin/clear-all', { method: 'DELETE', isAdmin: true }),
     deleteAdmin: (id: string) =>
-      apiRequest<void>(`/notifications/admin/${id}`, { method: 'DELETE', isAdmin: true }),
+      apiRequest<{ unreadCount: number }>(`/notifications/admin/${id}`, { method: 'DELETE', isAdmin: true }),
+    cleanupDuplicates: () =>
+      apiRequest<{ removedCount: number; unreadCount: number; totalCount: number }>('/notifications/admin/cleanup-duplicates', {
+        method: 'POST',
+        isAdmin: true,
+      }),
     createAdmin: (data: any) =>
       apiRequest<any>('/notifications/admin', { method: 'POST', isAdmin: true, body: JSON.stringify(data) }),
     getCustomer: () =>

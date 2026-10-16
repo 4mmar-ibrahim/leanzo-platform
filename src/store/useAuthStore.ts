@@ -213,6 +213,9 @@ export const useAuthStore = create<AuthState>()(
               rememberMe: remember,
             });
             syncUserToCustomerStore(res.user);
+            try {
+              useCustomerNotificationStore.getState().purgeLegacyUnscoped();
+            } catch {}
             return { success: true };
           }
         } catch (err: any) {
@@ -294,6 +297,9 @@ export const useAuthStore = create<AuthState>()(
         });
 
         syncUserToCustomerStore(updatedUser);
+        try {
+          useCustomerNotificationStore.getState().purgeLegacyUnscoped();
+        } catch {}
         return { success: true };
       },
 
@@ -438,6 +444,10 @@ export const useAuthStore = create<AuthState>()(
               ],
             }));
             syncUserToCustomerStore(res.user);
+            try {
+              // Ensure brand-new account starts with 0 notifications
+              useCustomerNotificationStore.getState().clearAll();
+            } catch {}
             return { success: true };
           }
         } catch (err: any) {
@@ -492,6 +502,10 @@ export const useAuthStore = create<AuthState>()(
         }));
 
         syncUserToCustomerStore(newUser);
+        try {
+          // Ensure brand-new account starts with 0 notifications
+          useCustomerNotificationStore.getState().clearAll();
+        } catch {}
         return { success: true };
       },
 

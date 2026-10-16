@@ -53,7 +53,7 @@ function RegisterForm() {
 
     // Check for invalid characters (letters, spaces, symbols, +, -)
     if (/[^0-9\s\+\-]/.test(converted)) {
-      setPhoneError('يرجى إدخال أرقام فقط.');
+      setPhoneError('يرجى إدخال أرقام فقط دون مسافات أو رموز.');
     } else {
       setPhoneError(null);
     }
@@ -65,7 +65,7 @@ function RegisterForm() {
     if (digits.length >= 3) {
       const prefix = digits.slice(0, 3);
       if (!VALID_EGYPTIAN_PREFIXES.includes(prefix as any)) {
-        setPhoneError('رقم الهاتف يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015.');
+        setPhoneError('رقم الهاتف يجب أن يبدأ بـ 010 أو 011.');
       } else if (digits.length === 11) {
         setPhoneError(null);
       } else if (phoneTouched) {
@@ -199,7 +199,7 @@ function RegisterForm() {
 
             <Input
               label={isAr ? 'رقم الهاتف' : 'Phone Number'}
-              placeholder={isAr ? '01xxxxxxxxx' : '01xxxxxxxxx'}
+              placeholder="010XXXXXXXX"
               type="tel"
               inputMode="numeric"
               maxLength={11}

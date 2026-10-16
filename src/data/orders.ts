@@ -6,7 +6,7 @@ export const initialOrders: Order[] = [
   {
     id: 'CLZ-2026-000124',
     userId: 'usr-cleanzo-001',
-    serviceId: 'car-premium-wash',
+    serviceId: 'srv-1791711116838',
     service: mockServices[1], // car-premium-wash
     category: 'car',
     date: '2026-09-10',
@@ -144,7 +144,7 @@ export const initialOrders: Order[] = [
   {
     id: 'CLZ-2026-000095',
     userId: 'usr-cleanzo-001',
-    serviceId: 'car-basic-wash',
+    serviceId: 'srv-1791711071734',
     service: mockServices[0], // car-basic-wash
     category: 'car',
     date: '2026-08-20',

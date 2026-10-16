@@ -81,9 +81,12 @@ export function formatSingleTimeTo12Hour(
  * Converts any time string (including intervals like "18:00 – 19:00" or single "18:00")
  * to 12-hour AM/PM format.
  *
+ * Uses Unicode Left-to-Right Marks (\u200E) around intervals to strictly prevent
+ * the BiDi algorithm from reversing the time range in RTL layouts.
+ *
  * Examples:
  * - "18:00" -> "6:00 PM"
- * - "18:00 – 19:00" -> "6:00 PM – 7:00 PM"
+ * - "18:00 – 19:00" -> "6:00 PM – 7:00 PM" (with \u200E isolation)
  * - "00:00" -> "12:00 AM"
  * - "12:30" -> "12:30 PM"
  * - "10:30 AM" -> "10:30 AM"
@@ -103,9 +106,22 @@ export function formatTimeTo12Hour(
   if (raw.includes('–') || raw.includes('-') || raw.includes('—')) {
     const parts = raw.split(/[-–—]/).map((p) => p.trim());
     if (parts.length >= 2 && parts[0] && parts[1]) {
-      const start12 = formatSingleTimeTo12Hour(parts[0], locale);
-      const end12 = formatSingleTimeTo12Hour(parts[1], locale);
-      return `${start12} – ${end12}`;
+      let startPart = parts[0];
+      let endPart = parts[1];
+
+      // Guarantee start is chronologically before end
+      const startMin = parseTimeToMinutes(startPart);
+      const endMin = parseTimeToMinutes(endPart);
+      if (startMin > endMin && endMin > 0) {
+        // Swap if accidentally reversed
+        const temp = startPart;
+        startPart = endPart;
+        endPart = temp;
+      }
+
+      const start12 = formatSingleTimeTo12Hour(startPart, locale);
+      const end12 = formatSingleTimeTo12Hour(endPart, locale);
+      return `\u200E${start12}\u200E – \u200E${end12}\u200E`;
     }
   }
 
@@ -123,3 +139,97 @@ export function formatStartTimeTo12Hour(
   const firstPart = String(timeStr).split(/[-–—]/)[0].trim();
   return formatSingleTimeTo12Hour(firstPart, locale);
 }
+
+/**
+ * Parses and formats any time interval (e.g. "09:00 – 10:00" or start/end) safely for RTL and LTR contexts.
+ * Guarantees:
+ * 1. Start time is strictly displayed before end time.
+ * 2. BiDi Unicode marks (\u200E) prevent inversion around neutral separators in RTL.
+ * 3. Consistent separator " – " (en-dash with spaces).
+ */
+export function formatTimeRange(
+  startStr: string,
+  endStr: string,
+  options?: { locale?: string; format12?: boolean }
+): string {
+  if (!startStr) return '—';
+  const locale = options?.locale || 'ar';
+  const format12 = options?.format12 ?? false;
+
+  let s = startStr.trim();
+  let e = (endStr || '').trim();
+
+  if (s && e) {
+    const sMin = parseTimeToMinutes(s);
+    const eMin = parseTimeToMinutes(e);
+    if (sMin > eMin && eMin > 0) {
+      const tmp = s;
+      s = e;
+      e = tmp;
+    }
+  }
+
+  const sFormatted = format12 ? formatSingleTimeTo12Hour(s, locale) : s;
+  const eFormatted = e ? (format12 ? formatSingleTimeTo12Hour(e, locale) : e) : '';
+
+  if (!eFormatted) return sFormatted;
+  return `\u200E${sFormatted}\u200E – \u200E${eFormatted}\u200E`;
+}
+
+/**
+ * Normalizes an interval string (such as "09:00 - 10:00", "09:00–10:00", "10:00 - 09:00")
+ * ensuring start < end and safe LTR ordering in RTL contexts.
+ */
+export function formatTimeInterval(
+  timeStr?: string | null,
+  options?: { locale?: string; format12?: boolean }
+): string {
+  if (!timeStr || String(timeStr).trim() === '' || String(timeStr).trim() === '—') {
+    return '—';
+  }
+
+  const raw = String(timeStr).trim();
+  if (raw.includes('–') || raw.includes('-') || raw.includes('—')) {
+    const parts = raw.split(/[-–—]/).map((p) => p.trim());
+    if (parts.length >= 2 && parts[0] && parts[1]) {
+      return formatTimeRange(parts[0], parts[1], options);
+    }
+  }
+
+  const locale = options?.locale || 'ar';
+  return options?.format12 ? formatSingleTimeTo12Hour(raw, locale) : raw;
+}
+
+/**
+ * Returns an accessible string for screen readers.
+ * Example in Arabic: "من 09:00 إلى 10:00"
+ * Example in English: "From 09:00 to 10:00"
+ */
+export function getTimeRangeAriaLabel(
+  timeStr?: string | null,
+  locale: string = 'ar'
+): string {
+  if (!timeStr || String(timeStr).trim() === '' || String(timeStr).trim() === '—') {
+    return locale === 'ar' ? 'الوقت غير محدد' : 'Time not specified';
+  }
+
+  const raw = String(timeStr).trim();
+  if (raw.includes('–') || raw.includes('-') || raw.includes('—')) {
+    const parts = raw.split(/[-–—]/).map((p) => p.trim());
+    if (parts.length >= 2 && parts[0] && parts[1]) {
+      let s = parts[0];
+      let e = parts[1];
+      const sMin = parseTimeToMinutes(s);
+      const eMin = parseTimeToMinutes(e);
+      if (sMin > eMin && eMin > 0) {
+        const tmp = s;
+        s = e;
+        e = tmp;
+      }
+      return locale === 'ar' ? `من ${s} إلى ${e}` : `From ${s} to ${e}`;
+    }
+  }
+
+  return locale === 'ar' ? `الساعة ${raw}` : `At ${raw}`;
+}
+

@@ -16,6 +16,9 @@ import {
   getCurrentCairoDateString,
   getCurrentCairoTimeString,
   withBookingLock,
+  doIntervalsOverlap,
+  normalizeCategory,
+  canonicalizePlateNumber,
 } from './availabilityService.js';
 import { generateSubscriptionNumber, generateVisitNumber } from '../utils/orderNumber.js';
 
@@ -193,13 +196,21 @@ export async function createSubscriptionAtomic(input: CreateSubscriptionInput): 
   const startDate = new Date();
   const endDate = new Date(startDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
-  const lockKey = `sub_create_${serviceId}`;
+  const subCategory = normalizeCategory(service.category) || 'car';
+  const lockKeys: string[] = visits.map((v) => `${v.date}_${subCategory}`);
+  const cleanPlate = canonicalizePlateNumber(vehicleDetails?.plateNumber);
+  if (cleanPlate) {
+    lockKeys.push(`vehicle_${cleanPlate}`);
+  }
+  lockKeys.push(`sub_create_${serviceId}`);
 
-  return await withBookingLock(lockKey, async () => {
+  return await withBookingLock(lockKeys, async () => {
     // 4. Pre-validate each requested visit slot against Dynamic Continuous Availability Engine
     const validatedVisitSlots: Array<{
       date: string;
       time: string;
+      startMin: number;
+      endMin: number;
       scheduledStart: string;
       scheduledEnd: string;
       serviceDurationMinutes: number;
@@ -220,21 +231,30 @@ export async function createSubscriptionAtomic(input: CreateSubscriptionInput): 
           dateStr: v.date,
           timeStr: v.time,
           serviceId,
+          vehiclePlate: vehicleDetails?.plateNumber,
         });
 
-        // Also ensure no duplicate intervals requested within this same submission
-        const duplicateInRequest = validatedVisitSlots.some(
-          (prev) => prev.date === v.date && prev.scheduledStart === slotTiming.scheduledStart
+        const slotStartMin = timeStringToMinutes(slotTiming.scheduledStart);
+        const slotEndMin = timeStringToMinutes(slotTiming.scheduledEnd);
+
+        // Ensure no overlapping intervals requested within this same submission
+        const overlappingInRequest = validatedVisitSlots.find(
+          (prev) => prev.date === v.date && doIntervalsOverlap(slotStartMin, slotEndMin, prev.startMin, prev.endMin)
         );
-        if (duplicateInRequest) {
-          const err: any = new Error(`تم تكرار نفس الموعد (${v.date} - ${slotTiming.scheduledStart}) أكثر من مرة في نفس الاشتراك`);
-          err.statusCode = 400;
+        if (overlappingInRequest) {
+          const err: any = new Error(
+            `يوجد تعارض وتداخل زمني في المواعيد المختارة لنفس اليوم (${v.date}): الموعد (${slotTiming.scheduledStart} – ${slotTiming.scheduledEnd}) يتداخل مع موعد آخر تم اختياره لنفس الاشتراك (${overlappingInRequest.time}). لا يمكن حجز موعدين متداخلين لنفس السيارة.`
+          );
+          err.statusCode = 409;
+          err.code = 'VEHICLE_DOUBLE_BOOKING';
           throw err;
         }
 
         validatedVisitSlots.push({
           date: v.date,
           time: `${slotTiming.scheduledStart} – ${slotTiming.scheduledEnd}`,
+          startMin: slotStartMin,
+          endMin: slotEndMin,
           scheduledStart: slotTiming.scheduledStart,
           scheduledEnd: slotTiming.scheduledEnd,
           serviceDurationMinutes: slotTiming.serviceDurationMinutes,
@@ -242,9 +262,12 @@ export async function createSubscriptionAtomic(input: CreateSubscriptionInput): 
           totalOccupiedMinutes: slotTiming.totalOccupiedMinutes,
         });
       } catch (slotErr: any) {
-        const conflictErr: any = new Error(`الموعد المحدد للزيارة رقم (${i + 1}) في يوم ${v.date} الساعة ${v.time} لم يعد متاحًا، يرجى اختيار موعد آخر.`);
+        const conflictErr: any = new Error(
+          slotErr.message || `الموعد المحدد للزيارة رقم (${i + 1}) في يوم ${v.date} الساعة ${v.time} لم يعد متاحًا، يرجى اختيار موعد آخر.`
+        );
         conflictErr.statusCode = slotErr.statusCode || 409;
-        conflictErr.code = 'SLOT_UNAVAILABLE';
+        conflictErr.code = slotErr.code || 'SLOT_UNAVAILABLE';
+        conflictErr.suggestedSlots = slotErr.suggestedSlots;
         throw conflictErr;
       }
     }
@@ -632,15 +655,22 @@ export async function rescheduleSubscriptionVisit(params: {
     }
   }
 
-  const lockKey = `sub_reschedule_${visit.serviceId}`;
+  const visitCat = normalizeCategory((visit.serviceSnapshot as any)?.category) || 'car';
+  const rescheduleLocks = [`${newDate}_${visitCat}`, `sub_reschedule_${visit.serviceId}`];
+  const vPlate = (visit.vehicleDetails as any)?.plateNumber || (visit.subscription?.vehicleDetails as any)?.plateNumber;
+  const cleanVPlate = canonicalizePlateNumber(vPlate);
+  if (cleanVPlate) {
+    rescheduleLocks.push(`vehicle_${cleanVPlate}`);
+  }
 
-  return await withBookingLock(lockKey, async () => {
+  return await withBookingLock(rescheduleLocks, async () => {
     // 1. Validate new appointment slot BEFORE touching old reservation
     const slotTiming = await assertSlotAvailability({
       dateStr: newDate,
       timeStr: newTime,
       serviceId: visit.serviceId,
       excludeVisitId: visit.id,
+      vehiclePlate: vPlate,
     });
 
     // 2. Atomic update: modify visit to new slot

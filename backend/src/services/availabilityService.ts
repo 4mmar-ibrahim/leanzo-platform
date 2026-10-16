@@ -243,26 +243,295 @@ export async function resolveServiceTiming(
 }
 
 /**
- * In-memory concurrency lock to serialize simultaneous booking submissions per (date, serviceId)
+ * In-memory concurrency lock to serialize simultaneous booking submissions per (date, category/resource, plate).
+ * Supports multiple keys atomically (sorted to avoid deadlocks).
  */
 const bookingResourceLocks = new Map<string, Promise<void>>();
 
-export async function withBookingLock<T>(lockKey: string, task: () => Promise<T>): Promise<T> {
-  while (bookingResourceLocks.has(lockKey)) {
-    await bookingResourceLocks.get(lockKey);
+export async function withBookingLock<T>(
+  lockKeysInput: string | string[],
+  task: () => Promise<T>
+): Promise<T> {
+  const keys = (Array.isArray(lockKeysInput) ? lockKeysInput : [lockKeysInput])
+    .filter(Boolean)
+    .map(String);
+  const uniqueKeys = Array.from(new Set(keys)).sort();
+
+  if (uniqueKeys.length === 0) {
+    return await task();
   }
 
-  let releaseLock: () => void;
-  const lockPromise = new Promise<void>((resolve) => {
-    releaseLock = resolve;
-  });
-  bookingResourceLocks.set(lockKey, lockPromise);
+  // Wait for all locks in deterministic order
+  for (const key of uniqueKeys) {
+    while (bookingResourceLocks.has(key)) {
+      await bookingResourceLocks.get(key);
+    }
+  }
+
+  const releaseCallbacks: Array<() => void> = [];
+  for (const key of uniqueKeys) {
+    let releaseLock: () => void;
+    const lockPromise = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    bookingResourceLocks.set(key, lockPromise);
+    releaseCallbacks.push(releaseLock!);
+  }
 
   try {
     return await task();
   } finally {
-    bookingResourceLocks.delete(lockKey);
-    releaseLock!();
+    for (let i = 0; i < uniqueKeys.length; i++) {
+      bookingResourceLocks.delete(uniqueKeys[i]);
+      releaseCallbacks[i]();
+    }
+  }
+}
+
+/**
+ * Extracts all operational intervals occupied by a booking or subscription visit
+ * for a specific resourceCategory ('car' | 'home').
+ *
+ * For single-service bookings:
+ *   If booking belongs to resourceCategory, occupies [bStart, bEnd).
+ *
+ * For composite (multi-service) bookings:
+ *   Sub-services execute sequentially in order.
+ *   Each sub-service occupies its respective resource category during its specific time window.
+ */
+export function extractBookingResourceIntervals(
+  record: any,
+  targetCategory: string,
+  serviceToCatMap: Map<string, string>
+): Array<{ start: number; end: number; reason: string }> {
+  const results: Array<{ start: number; end: number; reason: string }> = [];
+
+  let bStart = timeStringToMinutes(record.scheduledStart || record.timeSlotStart);
+  let bEnd = record.scheduledEnd ? timeStringToMinutes(record.scheduledEnd) : 0;
+
+  const rawTimeStr = String(record.time || '').trim();
+  if ((!bStart || !bEnd) && (rawTimeStr.includes('–') || rawTimeStr.includes('-') || rawTimeStr.includes('—'))) {
+    const parts = rawTimeStr.split(/[-–—]/).map((p: string) => p.trim());
+    if (parts.length >= 2) {
+      const min1 = timeStringToMinutes(parts[0]);
+      const min2 = timeStringToMinutes(parts[1]);
+      if (min1 > 0 && min2 > 0) {
+        if (!bStart) bStart = Math.min(min1, min2);
+        if (!bEnd) bEnd = Math.max(min1, min2);
+      }
+    }
+  }
+
+  if (!bStart) {
+    bStart = timeStringToMinutes(record.time);
+  }
+
+  const bDuration =
+    record.totalOccupiedMinutes ||
+    (record.serviceDurationMinutes
+      ? record.serviceDurationMinutes + (record.travelTimeMinutes || 0)
+      : record.duration) ||
+    45;
+
+  if (!bEnd || bEnd <= bStart) {
+    bEnd = bStart + bDuration;
+  }
+
+  let meta = record.metadata;
+  if (typeof meta === 'string') {
+    try { meta = JSON.parse(meta); } catch {}
+  }
+  let snap = record.serviceSnapshot;
+  if (typeof snap === 'string') {
+    try { snap = JSON.parse(snap); } catch {}
+  }
+
+  // Check if this record is a composite/multi-service order
+  const subServices: any[] =
+    (Array.isArray(meta?.services) && meta.services.length > 0
+      ? meta.services
+      : Array.isArray(snap?.services) && snap.services.length > 0
+      ? snap.services
+      : null) as any[];
+
+  if (subServices && subServices.length > 1) {
+    // Sequential execution schedule for composite order
+    let cursor = bStart;
+    for (const item of subServices) {
+      const itemCat =
+        normalizeCategory(item.category) ||
+        (item.serviceId ? serviceToCatMap.get(item.serviceId) : undefined) ||
+        (item.id ? serviceToCatMap.get(item.id) : undefined) ||
+        normalizeCategory(record.category) ||
+        'car';
+      const itemDuration = Number(item.duration) || Math.floor(bDuration / subServices.length) || 30;
+      const itemStart = cursor;
+      const itemEnd = cursor + itemDuration;
+      cursor = itemEnd;
+
+      if (itemCat === targetCategory) {
+        results.push({
+          start: itemStart,
+          end: itemEnd,
+          reason: `محجوز بالكامل (${item.title || 'خدمة ضمن طلب مركب'})`,
+        });
+      }
+    }
+    return results;
+  }
+
+  // Single service booking
+  const recordCat =
+    (record.serviceId && serviceToCatMap.get(record.serviceId)) ||
+    (record.category ? normalizeCategory(record.category) : undefined) ||
+    (snap?.category ? normalizeCategory(snap.category) : undefined) ||
+    'car';
+
+  if (recordCat === targetCategory) {
+    results.push({
+      start: bStart,
+      end: bEnd,
+      reason: 'محجوز بالكامل',
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Normalizes vehicle license plates canonically:
+ * - Maps Eastern Arabic numerals (٠-٩) to standard ASCII numerals (0-9).
+ * - Unifies Arabic character variants (أ/إ/آ -> ا, ة -> ه, ى -> ي).
+ * - Strips all spaces, hyphens, slashes, and punctuation.
+ * - Converts to lower case.
+ */
+export function canonicalizePlateNumber(plate?: string | null): string {
+  if (!plate) return '';
+  const easternToArabicMap: Record<string, string> = {
+    '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+    '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9',
+  };
+  let clean = String(plate).trim().toLowerCase();
+  clean = clean.replace(/[٠-٩]/g, (ch) => easternToArabicMap[ch] || ch);
+  clean = clean
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/[\s\-_.\/\\|]+/g, '');
+  return clean;
+}
+
+/**
+ * Checks if a specific vehicle (by plate number) is already booked on the specified date and interval.
+ */
+export async function assertVehicleNotBooked(
+  dateStr: string,
+  startMin: number,
+  endMin: number,
+  plateNumber?: string,
+  excludeBookingId?: string,
+  excludeVisitId?: string
+): Promise<void> {
+  if (!plateNumber || !plateNumber.trim()) return;
+  const cleanPlate = canonicalizePlateNumber(plateNumber);
+  if (!cleanPlate) return;
+
+  // 1. Check existing bookings
+  const existingBookings = await Booking.find({
+    date: dateStr,
+    status: { $nin: ['cancelled'] },
+    ...(excludeBookingId ? { id: { $ne: excludeBookingId } } : {}),
+  }).select('id scheduledStart scheduledEnd time duration vehicleDetails metadata');
+
+  for (const b of existingBookings) {
+    let meta = b.metadata;
+    if (typeof meta === 'string') {
+      try { meta = JSON.parse(meta); } catch {}
+    }
+    const bPlate =
+      b.vehicleDetails?.plateNumber ||
+      meta?.vehicleDetails?.plateNumber ||
+      meta?.plateNumber ||
+      (b as any).vehiclePlate ||
+      meta?.vehiclePlate;
+    if (!bPlate) continue;
+    const cleanBPlate = canonicalizePlateNumber(bPlate);
+    if (cleanBPlate === cleanPlate) {
+      const bStart = timeStringToMinutes(b.scheduledStart || b.time);
+      const bDuration = b.duration || 45;
+      const bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + bDuration;
+      if (doIntervalsOverlap(startMin, endMin, bStart, bEnd)) {
+        const err: any = new Error(
+          `السيارة ذات اللوحة (${plateNumber}) لديها حجز بالفعل في هذا الموعد (${minutesToDisplayTime(bStart).time24} – ${minutesToDisplayTime(bEnd).time24}). لا يمكن حجز موعدين لنفس السيارة في نفس الوقت.`
+        );
+        err.statusCode = 409;
+        err.code = 'VEHICLE_DOUBLE_BOOKING';
+        throw err;
+      }
+    }
+  }
+
+  // 2. Check existing subscription visits
+  const existingVisits = await SubscriptionVisit.find({
+    date: dateStr,
+    status: { $nin: ['cancelled'] },
+    ...(excludeVisitId ? { id: { $ne: excludeVisitId } } : {}),
+  }).select('id scheduledStart scheduledEnd time duration vehicleDetails metadata subscriptionId');
+
+  for (const v of existingVisits) {
+    let meta = v.metadata;
+    if (typeof meta === 'string') {
+      try { meta = JSON.parse(meta); } catch {}
+    }
+    const vPlate =
+      v.vehicleDetails?.plateNumber ||
+      meta?.vehicleDetails?.plateNumber ||
+      meta?.plateNumber ||
+      (v as any).vehiclePlate ||
+      meta?.vehiclePlate;
+    if (!vPlate) continue;
+    const cleanVPlate = canonicalizePlateNumber(vPlate);
+    if (cleanVPlate === cleanPlate) {
+      const vStart = timeStringToMinutes(v.scheduledStart || v.time);
+      const vDuration = v.duration || 45;
+      const vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + vDuration;
+      if (doIntervalsOverlap(startMin, endMin, vStart, vEnd)) {
+        const err: any = new Error(
+          `السيارة ذات اللوحة (${plateNumber}) مسجل لها زيارة اشتراك في هذا الموعد (${minutesToDisplayTime(vStart).time24} – ${minutesToDisplayTime(vEnd).time24}). لا يمكن حجز زيارتين لنفس السيارة في نفس الوقت.`
+        );
+        err.statusCode = 409;
+        err.code = 'VEHICLE_DOUBLE_BOOKING';
+        throw err;
+      }
+    }
+  }
+}
+
+/**
+ * Computes the nearest available slots on a day if a requested slot is unavailable.
+ */
+export async function findNearestAvailableSlots(
+  dateStr: string,
+  serviceId?: string,
+  category?: string,
+  customDuration?: number,
+  targetMin?: number
+): Promise<string[]> {
+  try {
+    const avail = await getAvailableSlots(dateStr, serviceId, customDuration, undefined, undefined, category, false);
+    const availableSlots = avail.slots.filter((s) => s.available);
+    if (availableSlots.length === 0) return [];
+
+    if (targetMin !== undefined) {
+      availableSlots.sort((a, b) => {
+        const diffA = Math.abs(timeStringToMinutes(a.start) - targetMin);
+        const diffB = Math.abs(timeStringToMinutes(b.start) - targetMin);
+        return diffA - diffB;
+      });
+    }
+    return availableSlots.slice(0, 3).map((s) => s.time);
+  } catch {
+    return [];
   }
 }
 
@@ -326,6 +595,12 @@ export function normalizeCategory(cat?: string | null): string {
     raw === 'cat-mv2vgjo7'
   ) return 'car';
   if (
+    raw === 'mixed' ||
+    raw === 'mix' ||
+    raw.includes('mixed') ||
+    raw.includes('مختلط')
+  ) return 'mixed';
+  if (
     raw === 'home' ||
     raw === 'homes' ||
     raw.includes('home') ||
@@ -337,6 +612,50 @@ export function normalizeCategory(cat?: string | null): string {
   ) return 'home';
   return raw;
 }
+
+export function getCategoryDisplayName(category?: string | null, isAr: boolean = true): string {
+  const norm = normalizeCategory(category);
+  if (norm === 'car') return isAr ? 'سيارات' : 'Cars';
+  if (norm === 'home') return isAr ? 'منازل' : 'Homes';
+  if (norm === 'mixed') return isAr ? 'مختلط' : 'Mixed';
+  return isAr ? (category || 'عام') : (category || 'General');
+}
+
+export function computeOrderCategory(order: any): 'car' | 'home' | 'mixed' | string {
+  if (!order) return 'car';
+
+  const rawCat = normalizeCategory(order.category);
+  if (rawCat === 'mixed') return 'mixed';
+
+  const subServices: any[] =
+    (Array.isArray(order.serviceSnapshot?.services) && order.serviceSnapshot.services.length > 0
+      ? order.serviceSnapshot.services
+      : Array.isArray(order.metadata?.services) && order.metadata.services.length > 0
+      ? order.metadata.services
+      : Array.isArray(order.selectedServices) && order.selectedServices.length > 0
+      ? order.selectedServices
+      : Array.isArray(order.items) && order.items.length > 0
+      ? order.items
+      : null) as any[];
+
+  if (subServices && subServices.length > 0) {
+    const cats = new Set<string>();
+    for (const s of subServices) {
+      const c = normalizeCategory(s.category || s.service?.category);
+      if (c === 'car' || c === 'home') cats.add(c);
+      else if (c === 'mixed') return 'mixed';
+    }
+    if (cats.has('car') && cats.has('home')) {
+      return 'mixed';
+    }
+    if (cats.size === 1) {
+      return cats.values().next().value || 'car';
+    }
+  }
+
+  return rawCat || normalizeCategory(order.serviceSnapshot?.category) || 'car';
+}
+
 
 export async function mapCategoryCanonical(cat?: string | null): Promise<string> {
   if (!cat) return '';
@@ -527,67 +846,40 @@ export async function getAvailableSlots(
       continue;
     }
 
-    // Category-Based Scheduling Filter:
-    // All services within targetCategory share the same schedule.
-    // Services in other categories have an independent schedule and do NOT block this category.
-    if (targetCategory) {
-      let bCat = (b.serviceId && serviceToCatMap.get(b.serviceId))
-        || (b.category ? await mapCategoryCanonical(b.category) : undefined)
-        || (b.serviceSnapshot?.category ? await mapCategoryCanonical(b.serviceSnapshot.category) : undefined);
-      if (!bCat || bCat !== targetCategory) {
-        continue; // Different or non-matching category -> independent schedule, DO NOT BLOCK!
-      }
-    } else if (requestedServiceIds.length > 0) {
-      const bServices = getBookingServiceIds(b);
-      const matches = requestedServiceIds.some((sId) => bServices.includes(sId));
-      if (!matches) {
-        continue;
-      }
-    }
-
-    let bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart);
-    let bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : 0;
-
-    const rawTimeStr = String(b.time || '').trim();
-    if ((!bStart || !bEnd) && (rawTimeStr.includes('–') || rawTimeStr.includes('-') || rawTimeStr.includes('—'))) {
-      const parts = rawTimeStr.split(/[-–—]/).map((p) => p.trim());
-      if (parts.length >= 2) {
-        const min1 = timeStringToMinutes(parts[0]);
-        const min2 = timeStringToMinutes(parts[1]);
-        if (min1 > 0 && min2 > 0) {
-          if (!bStart) bStart = Math.min(min1, min2);
-          if (!bEnd) bEnd = Math.max(min1, min2);
-        }
-      }
-    }
-
-    if (!bStart) {
-      bStart = timeStringToMinutes(b.time);
-    }
-
-    const bDuration = b.totalOccupiedMinutes || (b.serviceDurationMinutes ? b.serviceDurationMinutes + (b.travelTimeMinutes || 0) : b.duration) || 45;
-    if (!bEnd || bEnd <= bStart) {
-      bEnd = bStart + bDuration;
-    }
-
-    if (b.status !== 'cancelled') {
-      // Active booking: occupies [bStart, bEnd]
-      occupiedIntervals.push({ start: bStart, end: bEnd, type: 'booking', reason: 'محجوز بالكامل' });
-    } else {
-      // Cancelled booking safety rules:
+    if (b.status === 'cancelled') {
       const wasStarted = Array.isArray(b.timeline) && b.timeline.some((e: any) => e.status === 'in_progress');
       if (wasStarted) {
-        // Service execution was already in progress: elapsed time cannot be reopened
+        let bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
+        let bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + (b.duration || 45);
         occupiedIntervals.push({ start: bStart, end: bEnd, type: 'booking', reason: 'محجوز بالكامل' });
       } else if (b.cancelledAt) {
         const cancelDateStr = getCairoDateFromDate(new Date(b.cancelledAt));
         if (isToday || cancelDateStr === dateStr) {
           const cancelTimeStr = getCairoTimeFromDate(new Date(b.cancelledAt));
           const cancelMin = timeStringToMinutes(cancelTimeStr);
+          let bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
+          let bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + (b.duration || 45);
           if (cancelMin > bStart && cancelMin < bEnd) {
             occupiedIntervals.push({ start: bStart, end: cancelMin, type: 'elapsed', reason: 'وقت منقضي' });
           }
         }
+      }
+      continue;
+    }
+
+    // Active booking: extract intervals matching targetCategory (handles both single & composite orders)
+    if (targetCategory) {
+      const intervals = extractBookingResourceIntervals(b, targetCategory, serviceToCatMap);
+      for (const inv of intervals) {
+        occupiedIntervals.push({ start: inv.start, end: inv.end, type: 'booking', reason: inv.reason });
+      }
+    } else if (requestedServiceIds.length > 0) {
+      const bServices = getBookingServiceIds(b);
+      const matches = requestedServiceIds.some((sId) => bServices.includes(sId));
+      if (matches) {
+        let bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
+        let bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + (b.duration || 45);
+        occupiedIntervals.push({ start: bStart, end: bEnd, type: 'booking', reason: 'محجوز بالكامل' });
       }
     }
   }
@@ -598,61 +890,28 @@ export async function getAvailableSlots(
   );
 
   for (const v of allVisits) {
+    if (v.status === 'cancelled') {
+      const wasStarted = Array.isArray(v.timeline) && v.timeline.some((e: any) => e.status === 'in_progress');
+      if (wasStarted) {
+        let vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart || v.time);
+        let vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + (v.duration || 45);
+        occupiedIntervals.push({ start: vStart, end: vEnd, type: 'booking', reason: 'محجوز بالكامل' });
+      }
+      continue;
+    }
+
     if (targetCategory) {
-      let vCat = (v.serviceId && serviceToCatMap.get(v.serviceId))
-        || (v.category ? await mapCategoryCanonical(v.category) : undefined)
-        || (v.serviceSnapshot?.category ? await mapCategoryCanonical(v.serviceSnapshot.category) : undefined);
-      if (!vCat || vCat !== targetCategory) {
-        continue;
+      const intervals = extractBookingResourceIntervals(v, targetCategory, serviceToCatMap);
+      for (const inv of intervals) {
+        occupiedIntervals.push({ start: inv.start, end: inv.end, type: 'booking', reason: inv.reason });
       }
     } else if (requestedServiceIds.length > 0) {
       const vServices = getBookingServiceIds(v);
       const matches = requestedServiceIds.some((sId) => vServices.includes(sId));
-      if (!matches) {
-        continue;
-      }
-    }
-
-    let vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart);
-    let vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : 0;
-
-    const rawVTimeStr = String(v.time || '').trim();
-    if ((!vStart || !vEnd) && (rawVTimeStr.includes('–') || rawVTimeStr.includes('-') || rawVTimeStr.includes('—'))) {
-      const parts = rawVTimeStr.split(/[-–—]/).map((p) => p.trim());
-      if (parts.length >= 2) {
-        const min1 = timeStringToMinutes(parts[0]);
-        const min2 = timeStringToMinutes(parts[1]);
-        if (min1 > 0 && min2 > 0) {
-          if (!vStart) vStart = Math.min(min1, min2);
-          if (!vEnd) vEnd = Math.max(min1, min2);
-        }
-      }
-    }
-
-    if (!vStart) {
-      vStart = timeStringToMinutes(v.time);
-    }
-
-    const vDuration = v.totalOccupiedMinutes || (v.serviceDurationMinutes ? v.serviceDurationMinutes + (v.travelTimeMinutes || 0) : v.duration) || 45;
-    if (!vEnd || vEnd <= vStart) {
-      vEnd = vStart + vDuration;
-    }
-
-    if (v.status !== 'cancelled') {
-      occupiedIntervals.push({ start: vStart, end: vEnd, type: 'booking', reason: 'محجوز بالكامل' });
-    } else {
-      const wasStarted = Array.isArray(v.timeline) && v.timeline.some((e: any) => e.status === 'in_progress');
-      if (wasStarted) {
+      if (matches) {
+        let vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart || v.time);
+        let vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + (v.duration || 45);
         occupiedIntervals.push({ start: vStart, end: vEnd, type: 'booking', reason: 'محجوز بالكامل' });
-      } else if (v.cancelledAt) {
-        const cancelDateStr = getCairoDateFromDate(new Date(v.cancelledAt));
-        if (isToday || cancelDateStr === dateStr) {
-          const cancelTimeStr = getCairoTimeFromDate(new Date(v.cancelledAt));
-          const cancelMin = timeStringToMinutes(cancelTimeStr);
-          if (cancelMin > vStart && cancelMin < vEnd) {
-            occupiedIntervals.push({ start: vStart, end: cancelMin, type: 'elapsed', reason: 'وقت منقضي' });
-          }
-        }
       }
     }
   }
@@ -859,14 +1118,17 @@ export async function assertSlotAvailability(params: {
   excludeBookingId?: string;
   excludeVisitId?: string;
   technicianId?: string;
+  vehiclePlate?: string;
+  compositeServices?: Array<{ serviceId: string; category?: string; duration?: number; title?: string }>;
 }): Promise<{
   scheduledStart: string;
   scheduledEnd: string;
   serviceDurationMinutes: number;
   travelTimeMinutes: number;
   totalOccupiedMinutes: number;
+  suggestedSlots?: string[];
 }> {
-  const { dateStr, timeStr, serviceId, serviceIds, category, customDuration, excludeBookingId, excludeVisitId, technicianId } = params;
+  const { dateStr, timeStr, serviceId, serviceIds, category, customDuration, excludeBookingId, excludeVisitId, technicianId, vehiclePlate, compositeServices } = params;
 
   const targetCategory = await resolveTargetCategory(category, serviceId, serviceIds);
 
@@ -935,19 +1197,36 @@ export async function assertSlotAvailability(params: {
     }
   }
 
-  // 5. Query active bookings on that date (Category-Based Collision Validation)
+  // 5. Vehicle plate collision check (Customer vehicle is an exclusive operational resource)
+  if (vehiclePlate) {
+    await assertVehicleNotBooked(
+      dateStr,
+      slotStartMin,
+      slotEndMin,
+      vehiclePlate,
+      excludeBookingId,
+      excludeVisitId
+    );
+  }
+
+  // 6. Query all bookings & subscription visits on that date
   const query: any = { date: dateStr };
   if (excludeBookingId) {
     query.id = { $ne: excludeBookingId };
   }
 
   const existingBookings = await Booking.find(query).select(
-    'id status scheduledStart scheduledEnd timeSlotStart time duration totalOccupiedMinutes travelTimeMinutes serviceId serviceSnapshot category assignedTechnicianId cancelledAt timeline metadata'
+    'id status scheduledStart scheduledEnd timeSlotStart time duration totalOccupiedMinutes travelTimeMinutes serviceId serviceSnapshot category assignedTechnicianId cancelledAt timeline metadata vehicleDetails'
   );
 
-  const targetServiceIds = Array.isArray(serviceIds) && serviceIds.length > 0
-    ? serviceIds.filter(Boolean)
-    : serviceId ? [serviceId] : [];
+  const subVisitQuery: any = { date: dateStr };
+  if (excludeVisitId) {
+    subVisitQuery.id = { $ne: excludeVisitId };
+  }
+
+  const existingVisits = await SubscriptionVisit.find(subVisitQuery).select(
+    'id status scheduledStart scheduledEnd timeSlotStart time duration totalOccupiedMinutes travelTimeMinutes serviceId serviceSnapshot category assignedTechnicianId cancelledAt timeline metadata vehicleDetails'
+  );
 
   const allServicesForAssert = await Service.find({});
   const assertServiceCatMap = new Map<string, string>();
@@ -957,151 +1236,136 @@ export async function assertSlotAvailability(params: {
     }
   }
 
-  for (const b of existingBookings) {
-    if (technicianId && b.assignedTechnicianId && b.assignedTechnicianId !== technicianId) {
-      continue;
+  // 7. Check collisions
+  if (Array.isArray(compositeServices) && compositeServices.length > 1) {
+    // Composite order: Validate sequential execution chain
+    let cursor = slotStartMin;
+    for (const item of compositeServices) {
+      const itemDuration = Number(item.duration) || 30;
+      const itemStart = cursor;
+      const itemEnd = cursor + itemDuration;
+      cursor = itemEnd;
+
+      const itemCategory =
+        normalizeCategory(item.category) ||
+        (item.serviceId ? assertServiceCatMap.get(item.serviceId) : undefined) ||
+        targetCategory ||
+        'car';
+
+      // Check against bookings
+      for (const b of existingBookings) {
+        if (b.status === 'cancelled') continue;
+        if (excludeBookingId && (b.id === excludeBookingId || String(b._id) === excludeBookingId)) continue;
+        const occupieds = extractBookingResourceIntervals(b, itemCategory, assertServiceCatMap);
+        for (const occ of occupieds) {
+          if (doIntervalsOverlap(itemStart, itemEnd, occ.start, occ.end)) {
+            const nearest = await findNearestAvailableSlots(dateStr, serviceId, targetCategory, timing.totalOccupiedMinutes, slotStartMin);
+            const suggestionText = nearest.length > 0 ? ` أقرب المواعيد المتاحة لهذا اليوم: ${nearest.join(' ، ')}.` : '';
+            const conflictErr: any = new Error(
+              `الموعد المطلوب يتعارض مع حجز قائم لخدمة (${item.title || item.serviceId || 'خدمة ضمن الطلب'}) في الفترة (${minutesToDisplayTime(occ.start).time24} – ${minutesToDisplayTime(occ.end).time24}).${suggestionText}`
+            );
+            conflictErr.statusCode = 409;
+            conflictErr.code = 'SLOT_UNAVAILABLE';
+            conflictErr.suggestedSlots = nearest;
+            throw conflictErr;
+          }
+        }
+      }
+
+      // Check against subscription visits
+      for (const v of existingVisits) {
+        if (v.status === 'cancelled') continue;
+        if (excludeVisitId && (v.id === excludeVisitId || String(v._id) === excludeVisitId)) continue;
+        const occupieds = extractBookingResourceIntervals(v, itemCategory, assertServiceCatMap);
+        for (const occ of occupieds) {
+          if (doIntervalsOverlap(itemStart, itemEnd, occ.start, occ.end)) {
+            const nearest = await findNearestAvailableSlots(dateStr, serviceId, targetCategory, timing.totalOccupiedMinutes, slotStartMin);
+            const suggestionText = nearest.length > 0 ? ` أقرب المواعيد المتاحة لهذا اليوم: ${nearest.join(' ، ')}.` : '';
+            const conflictErr: any = new Error(
+              `الموعد المطلوب يتعارض مع زيارة اشتراك قائمة لخدمة (${item.title || item.serviceId || 'خدمة ضمن الطلب'}) في الفترة (${minutesToDisplayTime(occ.start).time24} – ${minutesToDisplayTime(occ.end).time24}).${suggestionText}`
+            );
+            conflictErr.statusCode = 409;
+            conflictErr.code = 'SLOT_UNAVAILABLE';
+            conflictErr.suggestedSlots = nearest;
+            throw conflictErr;
+          }
+        }
+      }
     }
+  } else {
+    // Single service / homogeneous category
+    for (const b of existingBookings) {
+      if (b.status === 'cancelled') continue;
+      if (excludeBookingId && (b.id === excludeBookingId || String(b._id) === excludeBookingId)) continue;
 
-    // Technician Conflict Check: A single technician cannot be in two places at once,
-    // regardless of whether services are in different categories.
-    const isSameTechnician = Boolean(technicianId && b.assignedTechnicianId && b.assignedTechnicianId === technicianId);
+      const isSameTechnician = Boolean(technicianId && b.assignedTechnicianId && b.assignedTechnicianId === technicianId);
+      if (isSameTechnician) {
+        let bStart = timeStringToMinutes(b.scheduledStart || b.time);
+        let bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + (b.duration || 45);
+        if (doIntervalsOverlap(slotStartMin, slotEndMin, bStart, bEnd)) {
+          const nearest = await findNearestAvailableSlots(dateStr, serviceId, targetCategory, timing.totalOccupiedMinutes, slotStartMin);
+          const suggestionText = nearest.length > 0 ? ` أقرب المواعيد المتاحة لهذا اليوم: ${nearest.join(' ، ')}.` : '';
+          const conflictErr: any = new Error(`الفني المطلوب لديه حجز آخر في هذا الموعد (${minutesToDisplayTime(bStart).time24} – ${minutesToDisplayTime(bEnd).time24}).${suggestionText}`);
+          conflictErr.statusCode = 409;
+          conflictErr.code = 'TECHNICIAN_UNAVAILABLE';
+          conflictErr.suggestedSlots = nearest;
+          throw conflictErr;
+        }
+      }
 
-    if (!isSameTechnician) {
-      // Category-Based Collision Check:
-      // Only bookings belonging to the same category block this appointment.
       if (targetCategory) {
-        let bCat = (b.serviceId && assertServiceCatMap.get(b.serviceId))
-          || (b.category ? await mapCategoryCanonical(b.category) : undefined)
-          || (b.serviceSnapshot?.category ? await mapCategoryCanonical(b.serviceSnapshot.category) : undefined);
-        if (!bCat || bCat !== targetCategory) {
-          continue; // Different category -> independent schedule!
-        }
-      } else if (targetServiceIds.length > 0) {
-        const bServices = getBookingServiceIds(b);
-        const serviceMatch = targetServiceIds.some((sId) => bServices.includes(sId));
-        if (!serviceMatch) {
-          continue;
-        }
-      }
-    }
-
-    let bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart);
-    let bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : 0;
-
-    const rawTimeStr = String(b.time || '').trim();
-    if ((!bStart || !bEnd) && (rawTimeStr.includes('–') || rawTimeStr.includes('-') || rawTimeStr.includes('—'))) {
-      const parts = rawTimeStr.split(/[-–—]/).map((p) => p.trim());
-      if (parts.length >= 2) {
-        const min1 = timeStringToMinutes(parts[0]);
-        const min2 = timeStringToMinutes(parts[1]);
-        if (min1 > 0 && min2 > 0) {
-          if (!bStart) bStart = Math.min(min1, min2);
-          if (!bEnd) bEnd = Math.max(min1, min2);
+        const occupieds = extractBookingResourceIntervals(b, targetCategory, assertServiceCatMap);
+        for (const occ of occupieds) {
+          if (doIntervalsOverlap(slotStartMin, slotEndMin, occ.start, occ.end)) {
+            const nearest = await findNearestAvailableSlots(dateStr, serviceId, targetCategory, timing.totalOccupiedMinutes, slotStartMin);
+            const suggestionText = nearest.length > 0 ? ` أقرب المواعيد المتاحة لهذا اليوم: ${nearest.join(' ، ')}.` : '';
+            const conflictErr: any = new Error(
+              `الموعد المحدد (${minutesToDisplayTime(slotStartMin).time24} – ${minutesToDisplayTime(slotEndMin).time24}) لم يعد متاحاً لوجود تعارض في الموارد التشغيلية (${occ.reason}).${suggestionText}`
+            );
+            conflictErr.statusCode = 409;
+            conflictErr.code = 'SLOT_UNAVAILABLE';
+            conflictErr.suggestedSlots = nearest;
+            throw conflictErr;
+          }
         }
       }
     }
 
-    if (!bStart) {
-      bStart = timeStringToMinutes(b.time);
-    }
+    for (const v of existingVisits) {
+      if (v.status === 'cancelled') continue;
+      if (excludeVisitId && (v.id === excludeVisitId || String(v._id) === excludeVisitId)) continue;
 
-    const bDuration = b.totalOccupiedMinutes || (b.serviceDurationMinutes ? b.serviceDurationMinutes + (b.travelTimeMinutes || 0) : b.duration) || 45;
-    if (!bEnd || bEnd <= bStart) {
-      bEnd = bStart + bDuration;
-    }
-
-    let isOccupied = false;
-    let occStart = bStart;
-    let occEnd = bEnd;
-
-    if (b.status !== 'cancelled') {
-      isOccupied = true;
-    } else {
-      // Cancelled booking check:
-      const wasStarted = Array.isArray(b.timeline) && b.timeline.some((e: any) => e.status === 'in_progress');
-      if (wasStarted) {
-        isOccupied = true;
-      } else if (isToday && b.cancelledAt) {
-        const cancelTimeStr = getCairoTimeFromDate(new Date(b.cancelledAt));
-        const cancelMin = timeStringToMinutes(cancelTimeStr);
-        if (cancelMin > bStart && cancelMin < bEnd) {
-          isOccupied = true;
-          occEnd = cancelMin;
+      const isSameTechnician = Boolean(technicianId && v.assignedTechnicianId && v.assignedTechnicianId === technicianId);
+      if (isSameTechnician) {
+        let vStart = timeStringToMinutes(v.scheduledStart || v.time);
+        let vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + (v.duration || 45);
+        if (doIntervalsOverlap(slotStartMin, slotEndMin, vStart, vEnd)) {
+          const nearest = await findNearestAvailableSlots(dateStr, serviceId, targetCategory, timing.totalOccupiedMinutes, slotStartMin);
+          const suggestionText = nearest.length > 0 ? ` أقرب المواعيد المتاحة لهذا اليوم: ${nearest.join(' ، ')}.` : '';
+          const conflictErr: any = new Error(`الفني المطلوب لديه زيارة اشتراك في هذا الموعد (${minutesToDisplayTime(vStart).time24} – ${minutesToDisplayTime(vEnd).time24}).${suggestionText}`);
+          conflictErr.statusCode = 409;
+          conflictErr.code = 'TECHNICIAN_UNAVAILABLE';
+          conflictErr.suggestedSlots = nearest;
+          throw conflictErr;
         }
       }
-    }
 
-    if (isOccupied && doIntervalsOverlap(slotStartMin, slotEndMin, occStart, occEnd)) {
-      const conflictErr: any = new Error('الموعد لم يعد متاحًا، يرجى اختيار موعد آخر.');
-      conflictErr.statusCode = 409;
-      conflictErr.code = 'SLOT_UNAVAILABLE';
-      throw conflictErr;
-    }
-  }
-
-  // 6. Query active subscription visits on that date (Category-Based Collision Validation)
-  const subVisitQuery: any = { date: dateStr };
-  if (excludeVisitId) {
-    subVisitQuery.id = { $ne: excludeVisitId };
-  }
-
-  const existingVisits = await SubscriptionVisit.find(subVisitQuery).select(
-    'id status scheduledStart scheduledEnd timeSlotStart time duration totalOccupiedMinutes travelTimeMinutes serviceId serviceSnapshot category assignedTechnicianId cancelledAt timeline metadata'
-  );
-
-  for (const v of existingVisits) {
-    if (technicianId && v.assignedTechnicianId && v.assignedTechnicianId !== technicianId) {
-      continue;
-    }
-
-    const isSameTechnician = Boolean(technicianId && v.assignedTechnicianId && v.assignedTechnicianId === technicianId);
-
-    if (!isSameTechnician) {
       if (targetCategory) {
-        let vCat = (v.serviceId && assertServiceCatMap.get(v.serviceId))
-          || (v.category ? await mapCategoryCanonical(v.category) : undefined)
-          || (v.serviceSnapshot?.category ? await mapCategoryCanonical(v.serviceSnapshot.category) : undefined);
-        if (!vCat || vCat !== targetCategory) {
-          continue;
-        }
-      } else if (targetServiceIds.length > 0) {
-        const vServices = getBookingServiceIds(v);
-        const serviceMatch = targetServiceIds.some((sId) => vServices.includes(sId));
-        if (!serviceMatch) {
-          continue;
-        }
-      }
-    }
-
-    const vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart || v.time);
-    const vDuration = v.serviceDurationMinutes || v.duration || 45;
-    const vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + vDuration;
-
-    let isOccupied = false;
-    let occStart = vStart;
-    let occEnd = vEnd;
-
-    if (v.status !== 'cancelled') {
-      isOccupied = true;
-    } else {
-      const wasStarted = Array.isArray(v.timeline) && v.timeline.some((e: any) => e.status === 'in_progress');
-      if (wasStarted) {
-        isOccupied = true;
-      } else if (isToday && v.cancelledAt) {
-        const cancelTimeStr = getCairoTimeFromDate(new Date(v.cancelledAt));
-        const cancelMin = timeStringToMinutes(cancelTimeStr);
-        if (cancelMin > vStart && cancelMin < vEnd) {
-          isOccupied = true;
-          occEnd = cancelMin;
+        const occupieds = extractBookingResourceIntervals(v, targetCategory, assertServiceCatMap);
+        for (const occ of occupieds) {
+          if (doIntervalsOverlap(slotStartMin, slotEndMin, occ.start, occ.end)) {
+            const nearest = await findNearestAvailableSlots(dateStr, serviceId, targetCategory, timing.totalOccupiedMinutes, slotStartMin);
+            const suggestionText = nearest.length > 0 ? ` أقرب المواعيد المتاحة لهذا اليوم: ${nearest.join(' ، ')}.` : '';
+            const conflictErr: any = new Error(
+              `الموعد المحدد (${minutesToDisplayTime(slotStartMin).time24} – ${minutesToDisplayTime(slotEndMin).time24}) لم يعد متاحاً لوجود تعارض مع زيارة اشتراك (${occ.reason}).${suggestionText}`
+            );
+            conflictErr.statusCode = 409;
+            conflictErr.code = 'SLOT_UNAVAILABLE';
+            conflictErr.suggestedSlots = nearest;
+            throw conflictErr;
+          }
         }
       }
-    }
-
-    if (isOccupied && doIntervalsOverlap(slotStartMin, slotEndMin, occStart, occEnd)) {
-      const conflictErr: any = new Error('الموعد لم يعد متاحًا، يرجى اختيار موعد آخر.');
-      conflictErr.statusCode = 409;
-      conflictErr.code = 'SLOT_UNAVAILABLE';
-      throw conflictErr;
     }
   }
 

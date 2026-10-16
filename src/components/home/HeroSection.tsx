@@ -23,6 +23,7 @@ import { useZoStore } from '@/store/useZoStore';
 import { Button } from '@/components/ui/Button';
 import { normalizeMediaUrl } from '@/lib/utils';
 import { resolveActionButtonUrl } from '@/lib/actionButtonUtils';
+import { autoTranslate } from '@/lib/i18n/autoTranslate';
 
 export function HeroSection() {
   const { locale, direction } = useLocaleStore();
@@ -68,8 +69,9 @@ export function HeroSection() {
             <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-[#EAF8FC] dark:bg-[#072540] border border-[#0866C6]/20 dark:border-[#0866C6]/40 text-xs font-bold text-[#0866C6] dark:text-[#38BDF8] shadow-2xs font-sans">
               <span className="w-2 h-2 rounded-full bg-[#0866C6] dark:bg-[#38BDF8] animate-pulse" />
               <span>
-                {heroContent.badge ||
-                  (isAr ? 'CLEANZO • خدمات تنظيف احترافية' : 'CLEANZO • Professional Cleaning Services')}
+                {isAr
+                  ? (heroContent.badge || 'CLEANZO • خدمات تنظيف احترافية')
+                  : (heroContent.badgeEn || autoTranslate(heroContent.badge, 'en') || 'CLEANZO • Professional Cleaning Services')}
               </span>
             </div>
 
@@ -156,7 +158,7 @@ export function HeroSection() {
                     const resolvedUrl = resolveActionButtonUrl(btn, { activeCategory });
                     if (!resolvedUrl) return null; // Prevent broken links, '#' or 'undefined'
 
-                    const label = (isAr ? btn.label : btn.labelEn || btn.label) || 'إجراء';
+                    const label = (isAr ? btn.label : (btn.labelEn || autoTranslate(btn.label, 'en') || btn.label)) || (isAr ? 'إجراء' : 'Action');
                     const isExternal =
                       btn.destinationType === 'external' ||
                       resolvedUrl.startsWith('http://') ||

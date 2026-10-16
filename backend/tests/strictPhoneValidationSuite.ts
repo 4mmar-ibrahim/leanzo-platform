@@ -36,8 +36,8 @@ let adminToken: string;
 const QA_TEST_PHONES = [
   '01099990001',
   '01199990002',
-  '01299990003',
-  '01599990004',
+  '01099990003',
+  '01199990004',
 ];
 
 async function apiRequest(path: string, options: { method?: string; headers?: Record<string, string>; body?: any } = {}) {
@@ -105,16 +105,12 @@ async function runTestSuite() {
 
     console.log('\n--- SECTION 1: CANONICAL REGEX & UNIT VALIDATION ---');
 
-    // Valid Test Cases (Sections 19)
+    // Valid Test Cases (010 and 011 ONLY)
     const validTestCases = [
       '01012345678',
       '01000000000',
       '01112345678',
       '01100000000',
-      '01212345678',
-      '01200000000',
-      '01512345678',
-      '01500000000',
     ];
     for (const phone of validTestCases) {
       assert(
@@ -123,8 +119,12 @@ async function runTestSuite() {
       );
     }
 
-    // Invalid Prefix Test Cases (Section 20)
+    // Invalid Prefix Test Cases (012, 015, 013, 014, 016, 017, 018, 019, 020, etc.)
     const invalidPrefixes = [
+      '01212345678', // 012 rejected!
+      '01200000000',
+      '01512345678', // 015 rejected!
+      '01500000000',
       '01312345678',
       '01412345678',
       '01612345678',
@@ -210,6 +210,36 @@ async function runTestSuite() {
       regInvalidPrefix.status === 400 && regInvalidPrefix.body?.code === CANONICAL_PHONE_ERROR_CODE,
       'POST /api/auth/register rejects 01612345678 with HTTP 400 & INVALID_PHONE_NUMBER',
       regInvalidPrefix.body
+    );
+
+    // Rejection of 012 prefix in registration
+    const regInvalid012 = await apiRequest('/api/auth/register', {
+      method: 'POST',
+      body: {
+        name: 'QA Invalid 012',
+        phone: '01212345678',
+        password: 'Password123!',
+      },
+    });
+    assert(
+      regInvalid012.status === 400 && regInvalid012.body?.code === CANONICAL_PHONE_ERROR_CODE,
+      'POST /api/auth/register rejects 01212345678 (prefix 012) with HTTP 400',
+      regInvalid012.body
+    );
+
+    // Rejection of 015 prefix in registration
+    const regInvalid015 = await apiRequest('/api/auth/register', {
+      method: 'POST',
+      body: {
+        name: 'QA Invalid 015',
+        phone: '01512345678',
+        password: 'Password123!',
+      },
+    });
+    assert(
+      regInvalid015.status === 400 && regInvalid015.body?.code === CANONICAL_PHONE_ERROR_CODE,
+      'POST /api/auth/register rejects 01512345678 (prefix 015) with HTTP 400',
+      regInvalid015.body
     );
 
     // Rejection of 10 digits
@@ -439,57 +469,174 @@ async function runTestSuite() {
         adminCreateInvalid.body
       );
 
-      // Admin create customer with valid phone
+      // Admin create customer with valid phone (010 prefix)
       const adminCreateValid = await apiRequest('/api/customers', {
         method: 'POST',
         headers: { Authorization: `Bearer ${adminToken}` },
         body: {
           name: 'QA Admin Valid Cust',
-          phone: '01299990003',
+          phone: '01099990003',
           email: 'qa.admin.cust@example.com',
         },
       });
       const validAdminPhone = adminCreateValid.body?.data?.phone || adminCreateValid.body?.customer?.phone;
       assert(
-        adminCreateValid.status === 201 && validAdminPhone === '01299990003',
-        'Admin POST /api/customers creates customer with valid phone 01299990003',
+        adminCreateValid.status === 201 && validAdminPhone === '01099990003',
+        'Admin POST /api/customers creates customer with valid phone 01099990003',
         adminCreateValid.body
       );
       const createdCustId = adminCreateValid.body?.data?._id || adminCreateValid.body?.data?.id;
 
       if (createdCustId) {
-        // Admin edit customer with invalid phone
+        // Admin edit customer with invalid phone (012 is rejected)
         const adminEditInvalid = await apiRequest(`/api/customers/${createdCustId}`, {
           method: 'PUT',
           headers: { Authorization: `Bearer ${adminToken}` },
           body: {
-            phone: '01712345678',
+            phone: '01212345678',
           },
         });
         assert(
           adminEditInvalid.status === 400 && adminEditInvalid.body?.code === CANONICAL_PHONE_ERROR_CODE,
-          'Admin PUT /api/customers/:id rejects invalid prefix 01712345678 with HTTP 400',
+          'Admin PUT /api/customers/:id rejects invalid prefix 01212345678 with HTTP 400',
           adminEditInvalid.body
         );
 
-        // Admin edit customer with valid phone
+        // Admin edit customer with valid phone (011 prefix)
         const adminEditValid = await apiRequest(`/api/customers/${createdCustId}`, {
           method: 'PUT',
           headers: { Authorization: `Bearer ${adminToken}` },
           body: {
-            phone: '01599990004',
+            phone: '01199990004',
           },
         });
         const updatedPhone = adminEditValid.body?.data?.phone || adminEditValid.body?.customer?.phone;
         assert(
-          adminEditValid.status === 200 && updatedPhone === '01599990004',
-          'Admin PUT /api/customers/:id updates phone to valid 01599990004',
+          adminEditValid.status === 200 && updatedPhone === '01199990004',
+          'Admin PUT /api/customers/:id updates phone to valid 01199990004',
           adminEditValid.body
         );
       }
     } else {
       console.log('  ⚠️ Skipping Admin API tests (No admin found in DB)');
     }
+
+    console.log('\n--- SECTION 6.5: ISOLATED GUEST BOOKING & SUBSCRIPTIONS VALIDATION ---');
+
+    const testService = await prisma.service.findFirst({ where: { available: true } });
+    const svcId = testService?.id || 'car-wash';
+    const svcCat = testService?.category || 'car';
+
+    // 1. Guest Booking with 012 prefix (rejected)
+    const guestBooking012 = await apiRequest('/api/bookings', {
+      method: 'POST',
+      body: {
+        category: svcCat,
+        bookingCategory: svcCat,
+        serviceId: svcId,
+        date: '2026-10-25',
+        time: '14:00',
+        address: 'شارع الجمهورية - عمارة 5',
+        customerPhone: '01212345678',
+        customerName: 'عميل تجريبي ضيف',
+      },
+    });
+    assert(
+      guestBooking012.status === 400 && guestBooking012.body?.code === CANONICAL_PHONE_ERROR_CODE,
+      'POST /api/bookings (Guest) rejects 012 prefix with HTTP 400 & INVALID_PHONE_NUMBER',
+      guestBooking012.body
+    );
+
+    // 2. Guest Booking with spaces (rejected - no silent alteration)
+    const guestBookingSpaces = await apiRequest('/api/bookings', {
+      method: 'POST',
+      body: {
+        category: svcCat,
+        bookingCategory: svcCat,
+        serviceId: svcId,
+        date: '2026-10-25',
+        time: '14:00',
+        address: 'شارع الجمهورية - عمارة 5',
+        customerPhone: '010 1234 5678',
+        customerName: 'عميل تجريبي ضيف',
+      },
+    });
+    assert(
+      guestBookingSpaces.status === 400 && guestBookingSpaces.body?.code === CANONICAL_PHONE_ERROR_CODE,
+      'POST /api/bookings (Guest) rejects phone with spaces with HTTP 400 & INVALID_PHONE_NUMBER',
+      guestBookingSpaces.body
+    );
+
+    // 3. Guest Booking with 10 digits (rejected)
+    const guestBooking10Digits = await apiRequest('/api/bookings', {
+      method: 'POST',
+      body: {
+        category: svcCat,
+        bookingCategory: svcCat,
+        serviceId: svcId,
+        date: '2026-10-25',
+        time: '14:00',
+        address: 'شارع الجمهورية - عمارة 5',
+        customerPhone: '0101234567',
+        customerName: 'عميل تجريبي ضيف',
+      },
+    });
+    assert(
+      guestBooking10Digits.status === 400 && guestBooking10Digits.body?.code === CANONICAL_PHONE_ERROR_CODE,
+      'POST /api/bookings (Guest) rejects 10-digit phone with HTTP 400',
+      guestBooking10Digits.body
+    );
+
+    // 4. Guest Booking with 12 digits (rejected)
+    const guestBooking12Digits = await apiRequest('/api/bookings', {
+      method: 'POST',
+      body: {
+        category: svcCat,
+        bookingCategory: svcCat,
+        serviceId: svcId,
+        date: '2026-10-25',
+        time: '14:00',
+        address: 'شارع الجمهورية - عمارة 5',
+        customerPhone: '010123456789',
+        customerName: 'عميل تجريبي ضيف',
+      },
+    });
+    assert(
+      guestBooking12Digits.status === 400 && guestBooking12Digits.body?.code === CANONICAL_PHONE_ERROR_CODE,
+      'POST /api/bookings (Guest) rejects 12-digit phone with HTTP 400',
+      guestBooking12Digits.body
+    );
+
+    // 5. Subscription creation with 012 prefix (rejected)
+    const subInvalid012 = await apiRequest('/api/subscriptions', {
+      method: 'POST',
+      body: {
+        guestPhone: '01212345678',
+        guestName: 'Guest Sub 012',
+        planId: 'plan-1',
+        serviceId: 'car-wash',
+      },
+    });
+    assert(
+      subInvalid012.status === 400 && subInvalid012.body?.code === CANONICAL_PHONE_ERROR_CODE,
+      'POST /api/subscriptions rejects 012 prefix with HTTP 400 & INVALID_PHONE_NUMBER',
+      subInvalid012.body
+    );
+
+    // 6. Subscription creation with valid 010 phone (passes phone validation)
+    const subValidPhone = await apiRequest('/api/subscriptions', {
+      method: 'POST',
+      body: {
+        guestPhone: '01012345678',
+        guestName: 'Guest Sub Valid',
+        // Omitting valid plan/visits intentionally to verify it passed phone validation
+      },
+    });
+    assert(
+      subValidPhone.body?.code !== CANONICAL_PHONE_ERROR_CODE,
+      'POST /api/subscriptions with 01012345678 passes phone validation successfully',
+      subValidPhone.body
+    );
 
     console.log('\n--- SECTION 7: DATABASE INTEGRITY & CLEANUP ---');
 

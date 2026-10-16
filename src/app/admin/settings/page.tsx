@@ -32,6 +32,7 @@ import { toast } from 'sonner';
 
 export default function AdminSettingsHubPage() {
   const currentAdmin = useAdminStore((s) => s.currentAdmin);
+  const isOwner = currentAdmin?.role === 'owner' || currentAdmin?.role === 'super_admin';
   const addLog = useActivityLogStore((s) => s.addLog);
 
   // Encryption status state
@@ -126,6 +127,10 @@ export default function AdminSettingsHubPage() {
 
   // Execute full data wipe
   const handleWipeAll = async () => {
+    if (!isOwner) {
+      toast.error('عملية المسح الشامل محصورة بمالك المنصة (Platform Owner) فقط');
+      return;
+    }
     if (wipeConfirmInput.trim() !== 'مسح' && wipeConfirmInput.trim() !== 'WIPE') {
       toast.error('يرجى كتابة كلمة "مسح" لتأكيد التصفير');
       return;
@@ -289,22 +294,12 @@ export default function AdminSettingsHubPage() {
 
             {/* Current Status Badge */}
             <div className="flex items-center gap-2 self-start md:self-auto">
-              <span
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
-                  encryptionStatus.isEncrypted
-                    ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
-                    : 'bg-amber-500/20 border border-amber-500/40 text-amber-300'
-                }`}
-              >
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    encryptionStatus.isEncrypted ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
-                  }`}
-                />
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-500/20 border border-emerald-500/40 text-emerald-300">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 <span>
                   {encryptionStatus.isEncrypted
-                    ? 'البيانات مشفرة ومؤمنة بالكامل'
-                    : 'البيانات غير مشفرة حالياً'}
+                    ? `تشفير AES-256-GCM مفعّل (${encryptionStatus.totalRecordsEncrypted} سجل)`
+                    : 'حماية متعددة الطبقات نشطة (Bcrypt + TLS + JWT)'}
                 </span>
               </span>
             </div>
@@ -348,18 +343,21 @@ export default function AdminSettingsHubPage() {
               <span>تشفير جميع بيانات البرنامج (Encrypt All)</span>
             </button>
 
-            {/* Wipe Platform Data Button */}
-            <button
-              type="button"
-              onClick={() => {
-                setWipeConfirmInput('');
-                setShowWipeModal(true);
-              }}
-              className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold bg-rose-600/80 hover:bg-rose-600 text-white border border-rose-500/40 shadow-lg shadow-rose-600/10 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
-            >
-              <Trash2 className="w-4 h-4" />
-              <span>مسح وإعادة ضبط بيانات الموقع (Wipe & Reset)</span>
-            </button>
+            {/* Wipe Platform Data Button (Owner Only) */}
+            {isOwner && (
+              <button
+                type="button"
+                onClick={() => {
+                  setWipeConfirmInput('');
+                  setShowWipeModal(true);
+                }}
+                className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold bg-rose-600/80 hover:bg-rose-600 text-white border border-rose-500/40 shadow-lg shadow-rose-600/10 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                title="خاص بمالك المنصة فقط"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>مسح وإعادة ضبط بيانات الموقع (مالك المنصة فقط)</span>
+              </button>
+            )}
 
             {/* Dedicated Page Link */}
             <Link

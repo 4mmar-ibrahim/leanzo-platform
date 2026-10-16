@@ -167,6 +167,12 @@ export async function deleteReview(req: Request, res: Response): Promise<void> {
 
 export async function clearAllReviews(req: Request, res: Response): Promise<void> {
   try {
+    const confirmation = req.body?.confirmation || req.query?.confirmation;
+    if (confirmation !== 'مسح التقييمات' && confirmation !== 'CLEAR_ALL_REVIEWS') {
+      sendError(res, 'يجب تأكيد مسح جميع التقييمات بكتابة عبارة "مسح التقييمات"', 400, 'CONFIRMATION_REQUIRED');
+      return;
+    }
+
     reviewsWiped = true;
     await ReviewModel.deleteMany({});
     sendSuccess(res, { cleared: true }, 'تم مسح وحذف جميع آراء وتقييمات العملاء نهائياً');
@@ -175,3 +181,4 @@ export async function clearAllReviews(req: Request, res: Response): Promise<void
     sendError(res, err.message || 'فشل مسح جميع التقييمات', 500);
   }
 }
+

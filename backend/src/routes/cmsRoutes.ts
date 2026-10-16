@@ -16,14 +16,14 @@ router.get('/', getPublishedCMSContent);
 
 // Protected Admin Actions
 router.get(
-  '/admin/draft',
+  ['/admin/draft', '/draft'],
   authenticateAdmin,
   authorize('content', 'view'),
   getDraftCMSContent
 );
 
 router.put(
-  '/admin/draft',
+  ['/admin/draft', '/draft'],
   authenticateAdmin,
   authorize('content', 'edit'),
   recordAuditLog('update_cms_draft', 'content'),
@@ -31,7 +31,7 @@ router.put(
 );
 
 router.post(
-  '/admin/publish',
+  ['/admin/publish', '/publish'],
   authenticateAdmin,
   authorize('content', 'edit'),
   recordAuditLog('publish_cms_content', 'content'),

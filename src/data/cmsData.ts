@@ -54,10 +54,10 @@ export const initialAboutContent: CMSAboutSection = {
   story: 'بدأنا كفريق شغوف بأدق تفاصيل التلميع والديتيلينج، وقمنا بابتكار وحدات خدمة متنقلة مجهزة بأحدث مضخات البخار الإيطالية ومواد النانو سيراميك. اليوم، نفخر بثقة آلاف العملاء في كل خدمة نقدمها.',
   storyEn: 'Starting with a passionate team in car detailing, we built mobile units equipped with Italian steam generators and nano-ceramic technology.',
   stats: [
-    { id: 'st-1', label: 'عميل سعيد ومستمر', labelEn: 'Happy Customers', value: '+4,850' },
-    { id: 'st-2', label: 'خدمة نُفذت بدقة', labelEn: 'Services Completed', value: '+12,400' },
-    { id: 'st-3', label: 'فني معتمد ومحترف', labelEn: 'Certified Technicians', value: '45+' },
-    { id: 'st-4', label: 'تقييم الجودة الإجمالي', labelEn: 'Average Rating', value: '4.9/5' },
+    { id: 'st-1', label: 'ضمان رضا تام', labelEn: '100% Satisfaction', value: '100%' },
+    { id: 'st-2', label: 'مواد صديقة للبيئة', labelEn: 'Eco-Friendly Safe', value: 'ECO' },
+    { id: 'st-3', label: 'فنيون معتمدون ومفحوصون', labelEn: 'Vetted Specialists', value: 'PRO' },
+    { id: 'st-4', label: 'خدمة متنقلة عند بابك', labelEn: 'On-Demand Mobile', value: 'ON-DEMAND' },
   ],
 };
 

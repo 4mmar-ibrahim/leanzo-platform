@@ -122,7 +122,8 @@ export async function validateCouponHandler(req: Request, res: Response): Promis
       }
     }
 
-    let calculatedBasePrice = Number(reqBasePrice) || 0;
+    const rawPrice = req.body.orderTotal ?? req.body.basePrice ?? req.body.price;
+    let calculatedBasePrice = typeof rawPrice === 'number' || (typeof rawPrice === 'string' && rawPrice.trim()) ? Number(rawPrice) : 0;
     if (calculatedBasePrice <= 0 && serviceId) {
       const service = await Service.findOne({ id: serviceId });
       if (service) {
@@ -130,8 +131,8 @@ export async function validateCouponHandler(req: Request, res: Response): Promis
       }
     }
 
-    if (calculatedBasePrice <= 0) {
-      calculatedBasePrice = 300; // Fallback sensible default if checked without service selected
+    if (calculatedBasePrice <= 0 && rawPrice === undefined) {
+      calculatedBasePrice = 300; // Fallback sensible default ONLY if checked without price or service selected
     }
 
     const result = await validateCoupon(code, calculatedBasePrice, customerPhone, serviceId);

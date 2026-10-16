@@ -57,14 +57,18 @@ export function resolveCategoryInfo(
     rawCatLower === 'car' ||
     rawCatLower === 'cars' ||
     rawCatLower.includes('car') ||
-    rawCatLower.includes('سيار');
+    rawCatLower.includes('سيار') ||
+    rawCatLower === 'cat-mv2vgjo7' ||
+    rawCatLower === 'cat-car';
 
   const isHome =
     rawCatLower === 'home' ||
     rawCatLower === 'homes' ||
     rawCatLower.includes('home') ||
     rawCatLower.includes('منزل') ||
-    rawCatLower.includes('منازل');
+    rawCatLower.includes('منازل') ||
+    rawCatLower === 'cat-mv2vh6ty' ||
+    rawCatLower === 'cat-home';
 
   let name = '';
   if (isCar) {
@@ -95,6 +99,12 @@ export function normalizeCategory(category?: string | null): 'car' | 'home' | st
     raw === 'cat-mv2vgjo7'
   ) return 'car';
   if (
+    raw === 'mixed' ||
+    raw === 'mix' ||
+    raw.includes('mixed') ||
+    raw.includes('مختلط')
+  ) return 'mixed';
+  if (
     raw === 'home' ||
     raw === 'homes' ||
     raw.includes('home') ||
@@ -119,5 +129,47 @@ export function getCategoryDisplayName(category?: string | null, isAr: boolean =
   const norm = normalizeCategory(category);
   if (norm === 'car') return isAr ? 'سيارات' : 'Cars';
   if (norm === 'home') return isAr ? 'منازل' : 'Homes';
+  if (norm === 'mixed') return isAr ? 'مختلط' : 'Mixed';
   return isAr ? (category || 'عام') : (category || 'General');
 }
+
+/**
+ * Computes the authoritative category sector for an order from all its attached services.
+ * Returns 'mixed' if order contains both car and home services.
+ */
+export function computeOrderCategory(order: any): 'car' | 'home' | 'mixed' | string {
+  if (!order) return 'car';
+
+  const rawCat = normalizeCategory(order.category);
+  if (rawCat === 'mixed') return 'mixed';
+
+  // Check sub-services in snapshots or metadata
+  const subServices: any[] =
+    (Array.isArray(order.serviceSnapshot?.services) && order.serviceSnapshot.services.length > 0
+      ? order.serviceSnapshot.services
+      : Array.isArray(order.metadata?.services) && order.metadata.services.length > 0
+      ? order.metadata.services
+      : Array.isArray(order.selectedServices) && order.selectedServices.length > 0
+      ? order.selectedServices
+      : Array.isArray(order.items) && order.items.length > 0
+      ? order.items
+      : null) as any[];
+
+  if (subServices && subServices.length > 0) {
+    const cats = new Set<string>();
+    for (const s of subServices) {
+      const c = normalizeCategory(s.category || s.service?.category);
+      if (c === 'car' || c === 'home') cats.add(c);
+      else if (c === 'mixed') return 'mixed';
+    }
+    if (cats.has('car') && cats.has('home')) {
+      return 'mixed';
+    }
+    if (cats.size === 1) {
+      return cats.values().next().value || 'car';
+    }
+  }
+
+  return rawCat || normalizeCategory(order.serviceSnapshot?.category) || 'car';
+}
+

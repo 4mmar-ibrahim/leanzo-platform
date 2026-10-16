@@ -17,6 +17,8 @@ import {
   withBookingLock,
   mapCategoryCanonical,
   resolveTargetCategory,
+  canonicalizePlateNumber,
+  normalizeCategory,
 } from '../services/availabilityService.js';
 import { calculateBookingPrice, calculateMultiServiceBookingPrice } from '../services/bookingPriceService.js';
 import { redeemCouponAtomically, rollbackCouponRedemption } from '../services/couponService.js';
@@ -133,6 +135,29 @@ function isTimeIntervalOverlapping(
 ): boolean {
   return intA.startMin < intB.endMin && intB.startMin < intA.endMin;
 }
+
+/**
+ * Appends a timeline event idempotently without duplicating consecutive events
+ * for the same state transition.
+ */
+export function appendTimelineEvent(booking: any, newEvent: ITimelineEvent): boolean {
+  if (!booking) return false;
+  if (!Array.isArray(booking.timeline)) {
+    booking.timeline = [];
+  }
+  const lastEvent = booking.timeline[booking.timeline.length - 1];
+  if (lastEvent) {
+    const isSameStatus = lastEvent.status === newEvent.status;
+    const isSameDesc = (lastEvent.description || '').trim() === (newEvent.description || '').trim();
+    const isSameLabel = (lastEvent.label || '').trim() === (newEvent.label || '').trim();
+    if (isSameStatus && (isSameDesc || isSameLabel)) {
+      return false;
+    }
+  }
+  booking.timeline.push(newEvent);
+  return true;
+}
+
 
 interface StatusNotificationContent {
   title: string;
@@ -516,11 +541,33 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
     // 4. Concurrency-Safe Authoritative Category-Based Slot Assertion & Booking Creation
     // The service record from DB is the absolute source of truth (never trust spoofed client category)
     const authoritativeCategory = (service?.category ? await mapCategoryCanonical(service.category) : await resolveTargetCategory(bookingCategory, service.id, targetServiceIds)) || 'car';
-    const lockKey = `${date}_${authoritativeCategory}`;
+
+    // Collect ALL categories and vehicle plates involved for atomic multi-resource locking
+    const allCategoriesInOrder = new Set<string>();
+    allCategoriesInOrder.add(authoritativeCategory);
+    if (isMulti && Array.isArray(pricing.items)) {
+      for (const item of pricing.items) {
+        const itemCat = normalizeCategory(item.category) || (item.serviceId ? await mapCategoryCanonical(item.serviceId) : undefined) || 'car';
+        allCategoriesInOrder.add(itemCat);
+      }
+    }
+
+    // Determine authoritative category: if services span both car and home, mark as mixed
+    const finalOrderCategory =
+      allCategoriesInOrder.has('car') && allCategoriesInOrder.has('home')
+        ? 'mixed'
+        : authoritativeCategory;
+
+    const lockKeys: string[] = Array.from(allCategoriesInOrder).map((c) => `${date}_${c}`);
+    const vehiclePlateInput = req.body.vehicleDetails?.plateNumber || req.body.vehiclePlate || (typeof req.body.plateNumber === 'string' ? req.body.plateNumber : undefined);
+    if (vehiclePlateInput) {
+      lockKeys.push(`vehicle_${canonicalizePlateNumber(vehiclePlateInput)}`);
+    }
+
     let bookingResult: { isDuplicate: boolean; booking: any };
     try {
-      bookingResult = await withBookingLock(lockKey, async () => {
-        // 4.1 Authoritative Server-Side Availability Check under serialized resource lock
+      bookingResult = await withBookingLock(lockKeys, async () => {
+        // 4.1 Authoritative Server-Side Availability Check under serialized multi-resource lock
         const slotTiming = await assertSlotAvailability({
           dateStr: date,
           timeStr: time,
@@ -528,6 +575,8 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
           serviceIds: targetServiceIds,
           category: authoritativeCategory,
           customDuration: pricing.totalServiceDuration,
+          compositeServices: isMulti ? pricing.items : undefined,
+          vehiclePlate: vehiclePlateInput,
         });
 
         // 4.2 Idempotency / Duplicate Booking Protection:
@@ -580,7 +629,6 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
         ];
 
         // 4.5 Create Booking Record with immutable snapshot
-        const isMulti = pricing.items && pricing.items.length > 1;
         try {
           const created = await Booking.create({
             id: orderNumber,
@@ -592,7 +640,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
               id: service.id,
               title: isMulti ? pricing.items.map((i: any) => i.title).join(' + ') : service.title,
               titleEn: isMulti ? pricing.items.map((i: any) => i.titleEn).join(' + ') : service.titleEn,
-              category: authoritativeCategory,
+              category: finalOrderCategory,
               image: service.image,
               price: pricing.finalPrice,
               duration: pricing.totalServiceDuration,
@@ -601,7 +649,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
             packageId: pricing.packageId || null,
             packageSnapshot: pricing.packageSnapshot || null,
             addons: pricing.addons || [],
-            category: authoritativeCategory,
+            category: finalOrderCategory,
             date,
             time,
             timeSlotStart: time,
@@ -627,6 +675,8 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
               isMultiService: isMulti,
               serviceIds: targetServiceIds,
               services: pricing.items || undefined,
+              vehicleDetails: req.body.vehicleDetails || (vehiclePlateInput ? { plateNumber: vehiclePlateInput } : undefined),
+              plateNumber: vehiclePlateInput || undefined,
             },
           });
           return { isDuplicate: false, booking: created };
@@ -654,6 +704,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
 
       const isSlotConflict =
         availOrLockErr.code === 'SLOT_UNAVAILABLE' ||
+        availOrLockErr.code === 'VEHICLE_DOUBLE_BOOKING' ||
         availOrLockErr.statusCode === 409 ||
         availOrLockErr.message?.includes('غير متاح') ||
         availOrLockErr.message?.includes('يتعارض') ||
@@ -663,9 +714,10 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
       if (isSlotConflict) {
         sendError(
           res,
-          'الموعد لم يعد متاحًا، يرجى اختيار موعد آخر.',
+          availOrLockErr.message || 'الموعد لم يعد متاحًا، يرجى اختيار موعد آخر.',
           409,
-          'TIME_SLOT_UNAVAILABLE'
+          availOrLockErr.code || 'TIME_SLOT_UNAVAILABLE',
+          availOrLockErr.suggestedSlots ? { suggestedSlots: availOrLockErr.suggestedSlots } : undefined
         );
         return;
       }
@@ -730,6 +782,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
     try {
       await Notification.create({
         target: 'admin',
+        eventId: `order:created:admin:${newBooking.id}`,
         title: 'طلب حجز جديد',
         titleEn: 'New Booking Created',
         message: `طلب جديد برقم #${newBooking.id} لخدمة ${newBooking.serviceSnapshot?.title || 'كلينزو'} للعميل ${newBooking.customerName} بقيمة ${newBooking.finalPrice} ج.م`,
@@ -744,6 +797,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
         await Notification.create({
           target: 'customer',
           userId: customerId.toString(),
+          eventId: `order:created:cust:${newBooking.id}`,
           title: notifContent.title,
           titleEn: notifContent.titleEn,
           message: notifContent.message,
@@ -1368,7 +1422,7 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
     (req as any).auditAfter = { status, assignedTechnicianId: booking.assignedTechnicianId };
 
     let actionAudit = 'update_order_status';
-    if (status === 'confirmed') actionAudit = 'order_received';
+    if (status === 'confirmed') actionAudit = 'order_confirmed';
     else if (status === 'in_progress') actionAudit = 'order_started';
     else if (status === 'completed') actionAudit = 'order_completed';
     else if (status === 'cancelled') actionAudit = 'order_cancelled';
@@ -1377,22 +1431,22 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
     booking.status = status;
 
     const statusLabelsAr: Record<BookingStatus, string> = {
-      pending: 'قيد الانتظار',
-      confirmed: 'تم استلام الطلب',
-      assigned: 'تم تعيين الفني المختص',
-      on_the_way: 'الفني في الطريق إلى الموقع',
-      in_progress: 'بدء تنفيذ الخدمة',
-      completed: 'تم الانتهاء واكتمال الطلب بنجاح',
-      cancelled: 'تم إلغاء الطلب',
+      pending: 'قيد المراجعة',
+      confirmed: 'مؤكد',
+      assigned: 'تم تعيين الفني',
+      on_the_way: 'الفني في الطريق',
+      in_progress: 'قيد التنفيذ',
+      completed: 'مكتمل',
+      cancelled: 'ملغي',
     };
 
     const statusLabelsEn: Record<BookingStatus, string> = {
-      pending: 'Pending',
-      confirmed: 'Order Received',
+      pending: 'Pending Review',
+      confirmed: 'Confirmed',
       assigned: 'Technician Assigned',
       on_the_way: 'Technician on the way',
       in_progress: 'In Progress',
-      completed: 'Completed Successfully',
+      completed: 'Completed',
       cancelled: 'Cancelled',
     };
 
@@ -1418,7 +1472,7 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
       cancelled: 'Booking cancelled.',
     };
 
-    booking.timeline.push({
+    appendTimelineEvent(booking, {
       status: statusKey,
       label: statusLabelsAr[statusKey],
       labelEn: statusLabelsEn[statusKey],
@@ -1477,6 +1531,7 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
     try {
       await Notification.create({
         target: 'admin',
+        eventId: `order:status:admin:${booking.id}:${statusKey}`,
         title: `تحديث حالة الطلب #${booking.id}`,
         titleEn: `Order Status #${booking.id}`,
         message: `تم تغيير حالة طلب العميل ${booking.customerName} إلى (${statusLabelsAr[statusKey]})`,
@@ -1491,6 +1546,7 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
         await Notification.create({
           target: 'customer',
           userId: booking.customerId.toString(),
+          eventId: `order:status:cust:${booking.id}:${statusKey}`,
           title: notifContent.title,
           titleEn: notifContent.titleEn,
           message: notifContent.message,
@@ -1666,7 +1722,7 @@ export async function assignTechnicianToBooking(req: AuthenticatedAdminRequest, 
       (req as any).auditAfter = { status: freshBooking.status, assignedTechnicianId: tech.id, technicianName: tech.name };
       (req as any).auditAction = 'assign_technician';
 
-      freshBooking.timeline.push({
+      appendTimelineEvent(freshBooking, {
         status: 'assigned',
         label: `تم تعيين الفني: ${tech.name}`,
         labelEn: `Technician assigned: ${tech.name}`,
@@ -1701,6 +1757,7 @@ export async function assignTechnicianToBooking(req: AuthenticatedAdminRequest, 
       try {
         await Notification.create({
           target: 'admin',
+          eventId: `order:assign:admin:${freshBooking.id}:${tech.id || tech.name}`,
           title: 'إسناد فني لميدان العمل',
           titleEn: 'Technician Assigned',
           message: `تم إسناد الطلب #${freshBooking.id} إلى الفني الكابتن ${tech.name} (${tech.specialty || 'فني ميداني'}).`,
@@ -1724,6 +1781,7 @@ export async function assignTechnicianToBooking(req: AuthenticatedAdminRequest, 
           await Notification.create({
             target: 'customer',
             userId: freshBooking.customerId.toString(),
+            eventId: `order:assign:cust:${freshBooking.id}:${tech.id || tech.name}`,
             title: notifContent.title,
             titleEn: notifContent.titleEn,
             message: notifContent.message,
@@ -1902,6 +1960,7 @@ export async function cancelBookingCustomer(req: AuthenticatedRequest, res: Resp
     try {
       await Notification.create({
         target: 'admin',
+        eventId: `order:cancel:admin:${booking.id}`,
         title: `إلغاء حجز #${booking.id}`,
         titleEn: `Booking Cancelled #${booking.id}`,
         message: `قام العميل ${booking.customerName} بإلغاء الطلب #${booking.id}. السبب: ${booking.cancellationReason}`,
@@ -1915,6 +1974,7 @@ export async function cancelBookingCustomer(req: AuthenticatedRequest, res: Resp
         await Notification.create({
           target: 'customer',
           userId: booking.customerId.toString(),
+          eventId: `order:cancel:cust:${booking.id}`,
           title: `❌ تم تأكيد إلغاء حجز الطلب #${booking.id}`,
           titleEn: `❌ Booking #${booking.id} Cancelled`,
           message: `تم إلغاء طلبك #${booking.id} بنجاح بناءً على طلبك. نأمل أن نراك مجدداً قريباً ويمكنك حجز موعد جديد في أي وقت بخطوات بسيطة.`,
@@ -2020,17 +2080,39 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       ])
     ).filter(Boolean);
 
-    let reschedCategory = booking.category || 'general';
+    let authoritativeCategory = booking.category || 'general';
     if (booking.serviceId) {
       const s = await Service.findOne({ id: booking.serviceId });
       if (s?.category) {
-        reschedCategory = await mapCategoryCanonical(s.category);
+        authoritativeCategory = await mapCategoryCanonical(s.category);
       }
     }
-    const authoritativeCategory = reschedCategory ? await mapCategoryCanonical(reschedCategory) : 'car';
-    const lockKey = `${newDate}_${authoritativeCategory}`;
+    const compositeList =
+      (Array.isArray((booking.metadata as any)?.services) && (booking.metadata as any).services.length > 0)
+        ? (booking.metadata as any).services
+        : (Array.isArray((booking.serviceSnapshot as any)?.services) && (booking.serviceSnapshot as any).services.length > 0)
+        ? (booking.serviceSnapshot as any).services
+        : undefined;
 
-    await withBookingLock(lockKey, async () => {
+    const allCategoriesInOrder = new Set<string>();
+    allCategoriesInOrder.add(authoritativeCategory);
+    if (compositeList && Array.isArray(compositeList)) {
+      for (const item of compositeList) {
+        const itemCat = normalizeCategory(item.category) || (item.serviceId ? await mapCategoryCanonical(item.serviceId) : undefined) || 'car';
+        allCategoriesInOrder.add(itemCat);
+      }
+    }
+
+    const lockKeys: string[] = Array.from(allCategoriesInOrder).map((c) => `${newDate}_${c}`);
+    const vPlate =
+      (booking.vehicleDetails as any)?.plateNumber ||
+      (booking.metadata as any)?.vehicleDetails?.plateNumber ||
+      (booking.metadata as any)?.plateNumber;
+    if (vPlate) {
+      lockKeys.push(`vehicle_${canonicalizePlateNumber(vPlate)}`);
+    }
+
+    await withBookingLock(lockKeys, async () => {
       // 1. Validate new appointment slot BEFORE releasing old reservation (category-based aware)
       const slotTiming = await assertSlotAvailability({
         dateStr: newDate,
@@ -2039,7 +2121,9 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
         serviceIds: targetServiceIds.length > 0 ? targetServiceIds : [booking.serviceId],
         category: authoritativeCategory,
         customDuration: booking.totalOccupiedMinutes || booking.duration,
+        compositeServices: compositeList,
         excludeBookingId: booking.id,
+        vehiclePlate: vPlate,
       });
 
       const previousTime = `${booking.date} (${booking.time})`;
@@ -2090,7 +2174,7 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       }
 
       const actorName = (req as any).admin?.name || req.user?.name || booking.customerName || (isAdmin ? 'Admin' : 'Customer');
-      booking.timeline.push({
+      appendTimelineEvent(booking, {
         status: booking.status,
         label: isAdmin ? 'تم تعديل الموعد بواسطة الإدارة' : 'تم تعديل الموعد بواسطة العميل',
         labelEn: isAdmin ? 'Rescheduled by Operations' : 'Rescheduled by Customer',
@@ -2128,6 +2212,7 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       try {
         await Notification.create({
           target: 'admin',
+          eventId: `order:reschedule:admin:${booking.id}:${newDate}:${newTimeLabel}`,
           title: `تعديل موعد حجز #${booking.id}`,
           titleEn: `Booking Rescheduled #${booking.id}`,
           message: `تم تغيير موعد الطلب #${booking.id} إلى يوم ${newDate} (${newTimeLabel}) بواسطة (${actorName})`,
@@ -2141,6 +2226,7 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
           await Notification.create({
             target: 'customer',
             userId: booking.customerId.toString(),
+            eventId: `order:reschedule:cust:${booking.id}:${newDate}:${newTimeLabel}`,
             title: `🗓️ تم تحديث موعد حجزك #${booking.id}`,
             titleEn: `🗓️ Booking #${booking.id} Rescheduled`,
             message: `تم تعديل موعد حجزك للطلب #${booking.id} إلى يوم ${newDate} في تمام ${newTimeLabel}. نتطلع لخدمتك بأفضل جودة!`,

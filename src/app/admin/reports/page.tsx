@@ -189,8 +189,9 @@ export default function AdminReportsPage() {
           `${s.price || 0} ج.م`,
           s.bookingsCount || 0,
           s.completedCount || 0,
-          `${(s.revenue || 0).toLocaleString()} ج.م`,
-          `${(s.averageOrderValue || 0).toLocaleString()} ج.م`,
+          s.averageOrderValue !== null && s.averageOrderValue !== undefined
+            ? `${Number(s.averageOrderValue).toLocaleString()} ج.م`
+            : 'لا توجد بيانات',
           s.active ? 'نشطة ومتاحة' : 'معطلة',
         ]);
       } else if (activeTab === 'areas') {
@@ -615,7 +616,11 @@ export default function AdminReportsPage() {
               </div>
               <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
                 <span className="text-[11px] text-slate-400 block mb-1">متوسط قيمة الطلب (AOV)</span>
-                <span className="text-xl font-black text-indigo-600 dark:text-indigo-400">{reportData?.summary?.averageOrderValue || 0} ج.م</span>
+                <span className="text-xl font-black text-indigo-600 dark:text-indigo-400">
+                  {reportData?.summary?.averageOrderValue !== null && reportData?.summary?.averageOrderValue !== undefined
+                    ? `${Number(reportData.summary.averageOrderValue).toLocaleString()} ج.م`
+                    : 'لا توجد بيانات'}
+                </span>
               </div>
             </div>
           )}
@@ -1119,7 +1124,11 @@ export default function AdminReportsPage() {
                         <td className="py-3 px-3 font-bold">{s.bookingsCount}</td>
                         <td className="py-3 px-3 text-emerald-600 font-bold">{s.completedCount}</td>
                         <td className="py-3 px-3 font-bold text-sky-600 dark:text-sky-400">{s.revenue.toLocaleString()} ج.م</td>
-                        <td className="py-3 px-3 font-mono">{s.averageOrderValue} ج.م</td>
+                        <td className="py-3 px-3 font-mono">
+                          {s.averageOrderValue !== null && s.averageOrderValue !== undefined
+                            ? `${Number(s.averageOrderValue).toLocaleString()} ج.م`
+                            : 'لا توجد بيانات'}
+                        </td>
                         <td className="py-3 px-3">
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                             s.active ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'

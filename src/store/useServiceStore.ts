@@ -34,6 +34,16 @@ interface ServiceState {
   toggleCategoryActive: (id: string) => Promise<boolean>;
 }
 
+export function matchesCategory(serviceCat: string, targetCat: string): boolean {
+  if (serviceCat === targetCat) return true;
+  const s = (serviceCat || '').toLowerCase();
+  const t = (targetCat || '').toLowerCase();
+  if (t === 'all') return true;
+  if ((t === 'car' || t === 'cat-mv2vgjo7' || t === 'cat-car') && (s === 'car' || s === 'cat-mv2vgjo7' || s === 'cat-car')) return true;
+  if ((t === 'home' || t === 'cat-mv2vh6ty' || t === 'cat-home') && (s === 'home' || s === 'cat-mv2vh6ty' || s === 'cat-home')) return true;
+  return s === t;
+}
+
 export const useServiceStore = create<ServiceState>()(
   persist(
     (set, get) => ({
@@ -46,25 +56,25 @@ export const useServiceStore = create<ServiceState>()(
         set({ isLoading: true, error: null });
         try {
           const services = await cleanzoApi.services.getServices(category);
-      // Filter out any archived or unavailable services
-      const activeOnly = (services || []).filter((s) => s.available !== false && !(s as any).isArchived);
+          // Filter out any archived or unavailable services
+          const activeOnly = (services || []).filter((s) => s.available !== false && !(s as any).isArchived);
 
-      if (category) {
-        // Retain services of the other category in the local store so components don't lose them
-        const otherCategoryServices = (get().services || []).filter((s) => s.category !== category);
-        const merged = [...otherCategoryServices, ...activeOnly];
-        set({ services: merged, isLoading: false });
-      } else {
-        set({ services: activeOnly, isLoading: false });
-      }
-      return activeOnly;
-    } catch (err: any) {
-      console.error('Failed to fetch services from API:', err);
-      // Clean error state - NO silent fallback to mock data
-      set({ services: [], isLoading: false, error: err.message || 'فشل جلب قائمة الخدمات' });
-      return [];
-    }
-  },
+          if (category) {
+            // Retain services of the other category in the local store so components don't lose them
+            const otherCategoryServices = (get().services || []).filter((s) => !matchesCategory(s.category, category));
+            const merged = [...otherCategoryServices, ...activeOnly];
+            set({ services: merged, isLoading: false });
+          } else {
+            set({ services: activeOnly, isLoading: false });
+          }
+          return activeOnly;
+        } catch (err: any) {
+          console.error('Failed to fetch services from API:', err);
+          // Clean error state - NO silent fallback to mock data
+          set({ services: [], isLoading: false, error: err.message || 'فشل جلب قائمة الخدمات' });
+          return [];
+        }
+      },
 
   fetchAdminServices: async (includeArchived = false, category?: ServiceCategory) => {
     set({ isLoading: true, error: null });
@@ -201,7 +211,7 @@ export const useServiceStore = create<ServiceState>()(
     if (!category || category === 'all') {
       return list;
     }
-    return list.filter((s) => s.category === category);
+    return list.filter((s) => matchesCategory(s.category, category));
   },
 
   addCategory: async (catData) => {

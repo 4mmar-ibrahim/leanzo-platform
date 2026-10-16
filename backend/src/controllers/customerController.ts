@@ -150,7 +150,7 @@ export async function getCustomerDetailsAdmin(req: Request, res: Response): Prom
       .filter((b) => b.status === 'completed')
       .reduce((sum, b) => sum + (Number(b.finalPrice) || 0), 0);
 
-    const averageOrderValue = completedOrders > 0 ? Math.round(totalSpent / completedOrders) : 0;
+    const averageOrderValue = completedOrders > 0 ? Math.round(totalSpent / completedOrders) : null;
 
     // Services breakdown
     const serviceMap = new Map<

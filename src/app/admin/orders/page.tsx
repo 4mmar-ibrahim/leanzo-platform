@@ -41,12 +41,13 @@ import { toast } from 'sonner';
 import { useAdminStore } from '@/store/useAdminStore';
 import { useServiceStore } from '@/store/useServiceStore';
 import { hasPermission } from '@/lib/permissions';
-import { getCategoryDisplayName } from '@/lib/services/categoryUtils';
+import { getCategoryDisplayName, computeOrderCategory } from '@/lib/services/categoryUtils';
+import { doesOrderInvolveCategory } from '@/lib/bookingEngine';
 
 const ORDER_STATUS_OPTIONS: StatusOption[] = [
   { label: 'الكل', value: 'all' },
   { label: 'قيد المراجعة', value: 'pending', colorClass: 'bg-amber-500 text-white' },
-  { label: 'مستلم', value: 'confirmed', colorClass: 'bg-sky-500 text-white' },
+  { label: 'مؤكد', value: 'confirmed', colorClass: 'bg-sky-500 text-white' },
   { label: 'تم تعيين فني', value: 'assigned', colorClass: 'bg-indigo-500 text-white' },
   { label: 'قيد التنفيذ', value: 'in_progress', colorClass: 'bg-blue-600 text-white' },
   { label: 'مكتمل', value: 'completed', colorClass: 'bg-emerald-600 text-white' },
@@ -83,7 +84,7 @@ export default function AdminOrdersPage() {
   }, [fetchCategories]);
 
   const dynamicFields = React.useMemo<DynamicFilterField[]>(() => {
-    const catOptions = (categories && categories.length > 0)
+    const baseCatOptions = (categories && categories.length > 0)
       ? categories.map((c) => ({
           label: `${c.name} (${c.slug})`,
           value: c.slug,
@@ -92,6 +93,11 @@ export default function AdminOrdersPage() {
           { label: 'خدمات غسيل وتنظيف السيارات (Car)', value: 'car' },
           { label: 'خدمات تنظيف المنازل والأثاث (Home)', value: 'home' },
         ];
+
+    const catOptions = [
+      ...baseCatOptions,
+      { label: 'طلبات مدمجة ومختلطة (Mixed)', value: 'mixed' },
+    ];
 
     return [
       {
@@ -225,7 +231,13 @@ export default function AdminOrdersPage() {
   const filtered = orders.filter((o) => {
     const matchStatus = filterValues.status === 'all' || o.status === filterValues.status;
     const cat = filterValues.dynamicFilters.category;
-    const matchCategory = !cat || cat === 'all' || o.category === cat;
+    const computedCat = computeOrderCategory(o);
+    const matchCategory =
+      !cat ||
+      cat === 'all' ||
+      computedCat === cat ||
+      o.category === cat ||
+      doesOrderInvolveCategory(o, cat);
     const q = filterValues.search.trim().toLowerCase();
     const matchSearch =
       !q ||
@@ -384,7 +396,7 @@ export default function AdminOrdersPage() {
       case 'confirmed':
         return (
           <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-500/10 text-sky-600 dark:text-sky-400">
-            مستلم
+            مؤكد
           </span>
         );
       case 'assigned':
@@ -754,7 +766,7 @@ export default function AdminOrdersPage() {
                           )}
                         </div>
                         <span className="text-[10px] text-slate-400">
-                          {getCategoryDisplayName(order.category || (order as any).serviceSnapshot?.category, true)}
+                          {getCategoryDisplayName(computeOrderCategory(order), true)}
                         </span>
                       </td>
                       <td className="py-3.5 px-4">

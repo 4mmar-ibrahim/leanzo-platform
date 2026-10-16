@@ -12,6 +12,7 @@ import { useBookingStore } from '@/store/useBookingStore';
 import { ServiceCategory } from '@/types';
 import { cn } from '@/lib/utils';
 import { resolveCategoryInfo } from '@/lib/services/categoryUtils';
+import { searchServices, normalizeArabicText } from '@/lib/search/arabicSearchUtils';
 
 interface GlobalSearchModalProps {
   isOpen: boolean;
@@ -25,7 +26,10 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
   const faqs = useCMSStore((s) => s.faqs);
   const storeServices = useServiceStore((s) => s.services);
   const categories = useServiceStore((s) => s.categories);
+  const fetchServices = useServiceStore((s) => s.fetchServices);
+  const fetchCategories = useServiceStore((s) => s.fetchCategories);
   const storeOffers = useOfferStore((s) => s.offers);
+  const fetchOffers = useOfferStore((s) => s.fetchOffers);
   const bookingCategory = useBookingStore((s) => s.category);
 
   // Derive initial category filter from current URL context
@@ -39,10 +43,19 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
   const [query, setQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<ServiceCategory | 'all'>('all');
 
-  // Reset category filter to match context whenever modal opens
+  // Reset category filter and ensure store data is hydrated whenever modal opens
   useEffect(() => {
     if (isOpen) {
       setCategoryFilter(getContextualCategory());
+      if (storeServices.length === 0) {
+        fetchServices();
+      }
+      if (categories.length === 0) {
+        fetchCategories();
+      }
+      if (storeOffers.length === 0) {
+        fetchOffers();
+      }
     }
   }, [isOpen, pathname]);
 
@@ -60,47 +73,47 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
 
   if (!isOpen) return null;
 
-  const q = query.trim().toLowerCase();
+  const q = query.trim();
+  const normQ = normalizeArabicText(q);
 
-  // Filter Services (active and not archived only) strictly adhering to selected category
-  const activeServices = (storeServices || []).filter(
-    (s) => s.available !== false && !(s as any).isArchived
-  );
-
+  // Filter Services using Arabic linguistic normalization & scoring
   const matchedServices = q
-    ? activeServices
-        .filter((s) => {
-          if (categoryFilter !== 'all' && s.category !== categoryFilter) return false;
-          return (
-            s.title.toLowerCase().includes(q) ||
-            s.titleEn.toLowerCase().includes(q) ||
-            s.shortDescription.toLowerCase().includes(q) ||
-            s.shortDescriptionEn.toLowerCase().includes(q)
-          );
-        })
+    ? searchServices(storeServices || [], q, categoryFilter)
     : [];
 
-  // Filter Offers (active and not archived only)
+  // Filter Offers (active and not archived only) with Arabic normalization
   const activeOffers = (storeOffers || []).filter(
     (o) => o.active !== false && !(o as any).isArchived
   );
-  const matchedOffers = q
-    ? activeOffers.filter(
-        (o) =>
-          o.title.toLowerCase().includes(q) ||
-          o.code.toLowerCase().includes(q) ||
-          o.description.toLowerCase().includes(q)
-      )
+  const matchedOffers = normQ
+    ? activeOffers.filter((o) => {
+        const titleNorm = normalizeArabicText(o.title);
+        const titleEnNorm = (o.titleEn || '').toLowerCase();
+        const codeNorm = (o.code || '').toLowerCase();
+        const descNorm = normalizeArabicText(o.description);
+        return (
+          titleNorm.includes(normQ) ||
+          titleEnNorm.includes(normQ) ||
+          codeNorm.includes(normQ) ||
+          descNorm.includes(normQ)
+        );
+      })
     : [];
 
-  // Filter FAQs
-  const matchedFaqs = q
-    ? faqs.filter(
-        (f) =>
-          f.question.toLowerCase().includes(q) ||
-          f.questionEn.toLowerCase().includes(q) ||
-          f.answer.toLowerCase().includes(q)
-      )
+  // Filter FAQs with Arabic normalization
+  const matchedFaqs = normQ
+    ? faqs.filter((f) => {
+        const qNorm = normalizeArabicText(f.question);
+        const qEnNorm = (f.questionEn || '').toLowerCase();
+        const aNorm = normalizeArabicText(f.answer);
+        const aEnNorm = (f.answerEn || '').toLowerCase();
+        return (
+          qNorm.includes(normQ) ||
+          qEnNorm.includes(normQ) ||
+          aNorm.includes(normQ) ||
+          aEnNorm.includes(normQ)
+        );
+      })
     : [];
 
   const totalMatches = matchedServices.length + matchedOffers.length + matchedFaqs.length;
@@ -221,52 +234,70 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>الخدمات ({matchedServices.length})</span>
                   </span>
-                      <div className="space-y-1">
+                      <div className="space-y-2">
                     {matchedServices.map((s) => {
                       const cat = resolveCategoryInfo(s.category, categories, isAr);
-                      const targetUrl =
-                        s.category === 'car'
-                          ? `/services/car/${s.id}`
-                          : s.category === 'home'
-                          ? `/services/home/${s.id}`
-                          : `/services/${s.id}`;
+                      const targetUrl = `/services/${s.id}`;
+                      const bookingUrl = `/booking?serviceId=${s.id}&category=${cat.isCar ? 'car' : cat.isHome ? 'home' : s.category}`;
 
                       return (
-                        <Link
+                        <div
                           key={s.id}
-                          href={targetUrl}
-                          onClick={onClose}
-                          className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 hover:bg-sky-500/10 border border-slate-200/60 dark:border-slate-800 flex items-center justify-between gap-3 transition-colors group"
+                          className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 hover:bg-sky-500/5 border border-slate-200/60 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors group"
                         >
-                          <div className="flex items-center gap-2.5">
+                          <Link
+                            href={targetUrl}
+                            onClick={onClose}
+                            className="flex items-center gap-3 flex-1 min-w-0"
+                          >
                             {s.image ? (
-                              <img src={s.image} alt={s.title} className="w-9 h-9 rounded-xl object-cover shrink-0" />
+                              <img src={s.image} alt={s.title} className="w-10 h-10 rounded-xl object-cover shrink-0" />
                             ) : (
-                              <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 shrink-0">
+                              <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 shrink-0">
                                 <Sparkles className="w-4 h-4" />
                               </div>
                             )}
-                            <div>
-                              <p className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-sky-600">
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-sky-600 truncate">
                                 {isAr ? s.title : s.titleEn}
                               </p>
-                              <span
-                                className={cn(
-                                  'text-[10px] font-bold px-1.5 py-0.2 rounded-md',
-                                  cat.isCar
-                                    ? 'bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300'
-                                    : cat.isHome
-                                    ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
-                                    : 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300'
-                                )}
-                              >
-                                {cat.isCar ? '🚗 ' : cat.isHome ? '🏠 ' : '✨ '}
-                                {cat.name}
-                              </span>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span
+                                  className={cn(
+                                    'text-[10px] font-bold px-1.5 py-0.5 rounded-md inline-block',
+                                    cat.isCar
+                                      ? 'bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300'
+                                      : cat.isHome
+                                      ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
+                                      : 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300'
+                                  )}
+                                >
+                                  {cat.isCar ? '🚗 ' : cat.isHome ? '🏠 ' : '✨ '}
+                                  {cat.name}
+                                </span>
+                                <span className="text-xs font-black text-sky-600">{s.price} ج.م</span>
+                              </div>
                             </div>
+                          </Link>
+
+                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                            <Link
+                              href={targetUrl}
+                              onClick={onClose}
+                              className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700/80 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                            >
+                              {isAr ? 'عرض الخدمة' : 'Details'}
+                            </Link>
+                            <Link
+                              href={bookingUrl}
+                              onClick={onClose}
+                              className="px-3 py-1.5 rounded-xl text-[11px] font-bold text-white bg-sky-600 hover:bg-sky-500 shadow-xs transition-colors flex items-center gap-1"
+                            >
+                              <span>{isAr ? 'احجز الآن' : 'Book Now'}</span>
+                              <ArrowRight className="w-3 h-3 rtl:rotate-180" />
+                            </Link>
                           </div>
-                          <span className="text-xs font-black text-sky-600">{s.price} ج.م</span>
-                        </Link>
+                        </div>
                       );
                     })}
                   </div>

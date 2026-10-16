@@ -121,7 +121,9 @@ export async function generateAIAnalyticsInsights(): Promise<AIInsightItem[]> {
       serviceStats[sTitle] = { count: 0, revenue: 0, title: sTitle };
     }
     serviceStats[sTitle].count += 1;
-    serviceStats[sTitle].revenue += Number(b.finalPrice) || 0;
+    if (b.status === 'completed') {
+      serviceStats[sTitle].revenue += Number(b.finalPrice) || 0;
+    }
   }
 
   const sortedServices = Object.values(serviceStats).sort((a, b) => b.count - a.count);

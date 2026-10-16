@@ -15,11 +15,14 @@ import {
   ArrowLeft,
   ArrowRight,
   Layers,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { useCMSStore } from '@/store/useCMSStore';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { FAQAccordion } from '@/components/faq/FAQAccordion';
 import { Button } from '@/components/ui/Button';
+import { CMSPreviewBanner } from '@/components/common/CMSPreviewBanner';
 
 export default function FAQPage() {
   const { locale, direction } = useLocaleStore();
@@ -31,9 +34,27 @@ export default function FAQPage() {
   const fetchFAQs = useCMSStore((s) => s.fetchFAQs);
   const fetchPublishedContent = useCMSStore((s) => s.fetchPublishedContent);
 
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadFaqs = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await Promise.all([
+        fetchFAQs(),
+        fetchPublishedContent(),
+      ]);
+    } catch (err: any) {
+      console.error('Failed to load FAQs:', err);
+      setError(err?.message || (isAr ? 'تعذر تحميل الأسئلة الشائعة' : 'Failed to load FAQs'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   React.useEffect(() => {
-    fetchFAQs();
-    fetchPublishedContent();
+    loadFaqs();
   }, [fetchFAQs, fetchPublishedContent]);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -75,6 +96,7 @@ export default function FAQPage() {
 
   return (
     <div className="flex flex-col w-full min-h-screen">
+      <CMSPreviewBanner pageName={isAr ? 'الأسئلة الشائعة' : 'FAQ'} adminEditUrl="/admin/content/faq" />
       {/* Top Banner / Hero with Living Zo Character */}
       <section className="relative overflow-hidden bg-gradient-to-b from-[#0866C6]/10 via-[#EAF8FC]/60 to-transparent dark:from-[#0866C6]/15 dark:via-[#041728] dark:to-[#041728] py-12 sm:py-16 border-b border-[#DDE7EC] dark:border-[#133B61]">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -169,8 +191,43 @@ export default function FAQPage() {
             </div>
           )}
 
+          {/* Loading Skeletons */}
+          {loading && faqs.length === 0 && (
+            <div className="space-y-3 animate-pulse">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="h-16 rounded-2xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800/60" />
+              ))}
+            </div>
+          )}
+
+          {/* Error Retry Block */}
+          {error && !loading && faqs.length === 0 && (
+            <div className="py-16 text-center space-y-4 rounded-3xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 max-w-lg mx-auto p-6 shadow-sm">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 flex items-center justify-center mx-auto">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                {isAr ? 'تعذر جلب الأسئلة الشائعة' : 'Failed to load FAQ items'}
+              </h3>
+              <p className="text-xs text-slate-500">
+                {isAr ? 'يرجى التحقق من اتصال الشبكة وإعادة المحاولة.' : 'Please check your connection and try again.'}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadFaqs}
+                className="inline-flex items-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>{isAr ? 'إعادة المحاولة' : 'Try Again'}</span>
+              </Button>
+            </div>
+          )}
+
           {/* Accordion Component */}
-          <FAQAccordion items={filteredFaqs} isAr={isAr} defaultOpenId={filteredFaqs[0]?.id} />
+          {!loading && !error && (
+            <FAQAccordion items={filteredFaqs} isAr={isAr} defaultOpenId={filteredFaqs[0]?.id} />
+          )}
 
           {/* Related / Highlighted Questions */}
           {selectedCategory !== 'all' && popularFaqs.length > 0 && (

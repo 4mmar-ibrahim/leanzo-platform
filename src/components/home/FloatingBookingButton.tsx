@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Calendar } from 'lucide-react';
 import { useSettingsStore } from '@/store/useSettingsStore';
+import { useLocaleStore } from '@/store/useLocaleStore';
 import { cn } from '@/lib/utils';
 
 interface FloatingBookingButtonProps {
@@ -10,6 +11,8 @@ interface FloatingBookingButtonProps {
 }
 
 export function FloatingBookingButton({ onClick }: FloatingBookingButtonProps) {
+  const { locale } = useLocaleStore();
+  const isAr = locale === 'ar';
   const [visible, setVisible] = useState(false);
   const showSetting = useSettingsStore((s) => s.settings.mobileExperience?.showFloatingBookingButton ?? true);
 
@@ -40,7 +43,7 @@ export function FloatingBookingButton({ onClick }: FloatingBookingButtonProps) {
         <span className="w-5 h-5 rounded-full bg-white/25 flex items-center justify-center animate-pulse">
           <Sparkles className="w-3 h-3 text-white" />
         </span>
-        <span className="tracking-wide">احجز الآن</span>
+        <span className="tracking-wide">{isAr ? 'احجز الآن' : 'Book Now'}</span>
         <Calendar className="w-3.5 h-3.5 opacity-90" />
       </button>
     </div>

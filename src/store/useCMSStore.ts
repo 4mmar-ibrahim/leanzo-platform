@@ -69,7 +69,7 @@ interface CMSState {
   addReview: (review: Omit<Review, 'id'>) => Promise<Review | null>;
   updateReview: (id: string, updates: Partial<Review>) => Promise<boolean>;
   deleteReview: (id: string) => Promise<boolean>;
-  deleteAllReviews: () => Promise<boolean>;
+  deleteAllReviews: (confirmation?: string) => Promise<boolean>;
   toggleReviewVisibility: (id: string) => Promise<boolean>;
   reorderReviews: (newReviews: Review[]) => Promise<void>;
 
@@ -95,6 +95,19 @@ export const deduplicateReviews = (list: Review[]): Review[] => {
     return true;
   });
 };
+
+function mergeDefined<T extends Record<string, any>>(target: T, source: any): T {
+  if (!source || typeof source !== 'object') return target;
+  const res = { ...target };
+  for (const [k, v] of Object.entries(source)) {
+    if (v !== undefined && v !== null && (typeof v !== 'string' || v.trim() !== '')) {
+      (res as any)[k] = v;
+    } else if (Array.isArray(v) && v.length > 0) {
+      (res as any)[k] = v;
+    }
+  }
+  return res;
+}
 
 export const useCMSStore = create<CMSState>((set, get) => ({
       hero: initialHeroContent,
@@ -190,17 +203,21 @@ export const useCMSStore = create<CMSState>((set, get) => ({
   fetchPublishedContent: async () => {
     set({ isLoading: true });
     try {
+      const isPreview =
+        typeof window !== 'undefined' &&
+        new URLSearchParams(window.location.search).get('preview') === 'true';
+
       const [contentData, faqsData, reviewsData] = await Promise.all([
-        cleanzoApi.content.getPublished().catch(() => null),
+        cleanzoApi.content.getPublished(isPreview).catch(() => null),
         cleanzoApi.faq.getPublic().catch(() => null),
         cleanzoApi.reviews.getPublic().catch(() => null),
       ]);
 
       set((state) => ({
         hero: contentData?.hero ? { ...state.hero, ...contentData.hero } : state.hero,
-        about: contentData?.about !== undefined ? { ...contentData.about } : state.about,
-        contact: contentData?.contact !== undefined ? { ...contentData.contact } : state.contact,
-        social: contentData?.social !== undefined ? { ...contentData.social } : state.social,
+        about: mergeDefined(state.about, contentData?.about),
+        contact: mergeDefined(state.contact, contentData?.contact),
+        social: mergeDefined(state.social, contentData?.social),
         sections: contentData?.sections && contentData.sections.length > 0 ? (contentData.sections as any) : state.sections,
         faqs: Array.isArray(faqsData) ? faqsData : state.faqs,
         reviews: Array.isArray(reviewsData) ? deduplicateReviews(reviewsData) : state.reviews,
@@ -225,15 +242,15 @@ export const useCMSStore = create<CMSState>((set, get) => ({
 
       set((state) => ({
         hero: draftData?.hero ? { ...state.hero, ...draftData.hero } : state.hero,
-        about: draftData?.about !== undefined ? { ...draftData.about } : state.about,
-        contact: draftData?.contact !== undefined ? { ...draftData.contact } : state.contact,
-        social: draftData?.social !== undefined ? { ...draftData.social } : state.social,
+        about: state.hasUnsavedChanges ? state.about : mergeDefined(state.about, draftData?.about),
+        contact: state.hasUnsavedChanges ? state.contact : mergeDefined(state.contact, draftData?.contact),
+        social: state.hasUnsavedChanges ? state.social : mergeDefined(state.social, draftData?.social),
         sections: draftData?.sections && draftData.sections.length > 0 ? (draftData.sections as any) : state.sections,
         faqs: Array.isArray(adminFaqs) ? adminFaqs : state.faqs,
         reviews: Array.isArray(adminReviews) ? deduplicateReviews(adminReviews) : state.reviews,
         lastPublishedAt: draftData?.lastPublishedAt || null,
         isLoading: false,
-        hasUnsavedChanges: false,
+        hasUnsavedChanges: state.hasUnsavedChanges,
       }));
     } catch (err) {
       console.error('Failed to fetch draft CMS content:', err);
@@ -282,12 +299,7 @@ export const useCMSStore = create<CMSState>((set, get) => ({
     });
 
     try {
-      const { hero, about, contact, social } = get();
       await cleanzoApi.content.updateDraft({
-        hero,
-        about,
-        contact,
-        social,
         sections: updatedSections,
       });
       const published = await cleanzoApi.content.publish();
@@ -319,12 +331,7 @@ export const useCMSStore = create<CMSState>((set, get) => ({
     });
 
     try {
-      const { hero, about, contact, social } = get();
       await cleanzoApi.content.updateDraft({
-        hero,
-        about,
-        contact,
-        social,
         sections: updatedSections,
       });
       const published = await cleanzoApi.content.publish();
@@ -564,9 +571,9 @@ export const useCMSStore = create<CMSState>((set, get) => ({
     }
   },
 
-  deleteAllReviews: async () => {
+  deleteAllReviews: async (confirmation = 'مسح التقييمات') => {
     try {
-      await cleanzoApi.reviews.deleteAllAdmin();
+      await cleanzoApi.reviews.deleteAllAdmin(confirmation);
     } catch (err) {
       console.warn('Backend deleteAllReviews error:', err);
     }

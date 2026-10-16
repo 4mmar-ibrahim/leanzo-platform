@@ -48,6 +48,7 @@ export default function AdminReviewsManagementPage() {
   const resetToDefaults = useCMSStore((s) => s.resetToDefaults);
 
   const currentAdmin = useAdminStore((s) => s.currentAdmin);
+  const isOwner = currentAdmin?.role === 'owner' || currentAdmin?.role === 'super_admin';
   const addLog = useActivityLogStore((s) => s.addLog);
 
   React.useEffect(() => {
@@ -58,6 +59,7 @@ export default function AdminReviewsManagementPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [modalOpen, setModalOpen] = useState(false);
   const [clearAllModalOpen, setClearAllModalOpen] = useState(false);
+  const [clearAllConfirmInput, setClearAllConfirmInput] = useState('');
   const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [editingReview, setEditingReview] = useState<Review | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
@@ -240,9 +242,17 @@ export default function AdminReviewsManagementPage() {
   };
 
   const handleClearAllReviews = async () => {
+    if (!isOwner) {
+      toast.error('هذه العملية محصورة بمالك المنصة (Platform Owner) فقط');
+      return;
+    }
+    if (clearAllConfirmInput.trim() !== 'مسح التقييمات' && clearAllConfirmInput.trim() !== 'CLEAR_ALL_REVIEWS') {
+      toast.error('يرجى كتابة عبارة "مسح التقييمات" بدقة للمتابعة');
+      return;
+    }
     try {
       setIsDeletingAll(true);
-      await deleteAllReviews();
+      await deleteAllReviews('مسح التقييمات');
       addLog({
         adminName: currentAdmin?.name || 'Admin',
         adminRole: currentAdmin?.role || 'owner',
@@ -252,6 +262,7 @@ export default function AdminReviewsManagementPage() {
       });
       toast.success('تم مسح جميع التقييمات والصور المرفقة نهائياً من قاعدة البيانات ومن الموقع');
       setClearAllModalOpen(false);
+      setClearAllConfirmInput('');
     } catch (err) {
       toast.error('حدث خطأ أثناء مسح التقييمات');
     } finally {
@@ -336,16 +347,21 @@ export default function AdminReviewsManagementPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Delete All Reviews Button */}
-          <button
-            type="button"
-            onClick={() => setClearAllModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-xs font-black bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-400 dark:hover:bg-rose-600 dark:hover:text-white transition shadow-xs cursor-pointer"
-            title="حذف جميع التقييمات نهائياً من قاعدة البيانات ومن الموقع"
-          >
-            <Trash2 className="w-4 h-4" />
-            <span>مسح جميع التقييمات</span>
-          </button>
+          {/* Delete All Reviews Button (Platform Owner Only) */}
+          {isOwner && (
+            <button
+              type="button"
+              onClick={() => {
+                setClearAllConfirmInput('');
+                setClearAllModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-xs font-black bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-400 dark:hover:bg-rose-600 dark:hover:text-white transition shadow-xs cursor-pointer"
+              title="حذف جميع التقييمات نهائياً من قاعدة البيانات ومن الموقع (مالك المنصة فقط)"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>مسح جميع التقييمات</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -1080,20 +1096,36 @@ export default function AdminReviewsManagementPage() {
               </div>
             </div>
 
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                لتأكيد الحذف النهائي الشامل، اكتب عبارة <span className="font-mono font-black text-rose-600">مسح التقييمات</span> في المربع التالي:
+              </label>
+              <input
+                type="text"
+                value={clearAllConfirmInput}
+                onChange={(e) => setClearAllConfirmInput(e.target.value)}
+                placeholder='اكتب "مسح التقييمات"'
+                className="w-full px-4 py-2.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-hidden focus:border-rose-500 transition-colors text-center font-bold"
+              />
+            </div>
+
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 disabled={isDeletingAll}
-                onClick={() => setClearAllModalOpen(false)}
+                onClick={() => {
+                  setClearAllModalOpen(false);
+                  setClearAllConfirmInput('');
+                }}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer disabled:opacity-50"
               >
                 إلغاء
               </button>
               <button
                 type="button"
-                disabled={isDeletingAll}
+                disabled={isDeletingAll || (clearAllConfirmInput.trim() !== 'مسح التقييمات' && clearAllConfirmInput.trim() !== 'CLEAR_ALL_REVIEWS')}
                 onClick={handleClearAllReviews}
-                className="px-5 py-2.5 rounded-xl text-xs font-black bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/30 transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                className="px-5 py-2.5 rounded-xl text-xs font-black bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white shadow-md shadow-rose-600/30 transition flex items-center gap-2 cursor-pointer"
               >
                 {isDeletingAll ? (
                   <>

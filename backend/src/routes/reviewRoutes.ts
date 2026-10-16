@@ -7,7 +7,7 @@ import {
   deleteReview,
   clearAllReviews,
 } from '../controllers/reviewController.js';
-import { authenticateAdmin, authorize } from '../middleware/adminAuthMiddleware.js';
+import { authenticateAdmin, authorize, requireOwner } from '../middleware/adminAuthMiddleware.js';
 import { recordAuditLog } from '../middleware/auditMiddleware.js';
 
 const router = Router();
@@ -24,9 +24,9 @@ router.post('/', authenticateAdmin, authorize('content', 'create'), recordAuditL
 router.put('/admin/:id', authenticateAdmin, authorize('content', 'edit'), recordAuditLog('update_review', 'content'), updateReview);
 router.put('/:id', authenticateAdmin, authorize('content', 'edit'), recordAuditLog('update_review', 'content'), updateReview);
 
-// Bulk delete all reviews
-router.delete('/admin/all', authenticateAdmin, authorize('content', 'delete'), recordAuditLog('clear_all_reviews', 'content'), clearAllReviews);
-router.delete('/all', authenticateAdmin, authorize('content', 'delete'), recordAuditLog('clear_all_reviews', 'content'), clearAllReviews);
+// Bulk delete all reviews (Restricted to platform owner)
+router.delete('/admin/all', authenticateAdmin, requireOwner, recordAuditLog('clear_all_reviews', 'content'), clearAllReviews);
+router.delete('/all', authenticateAdmin, requireOwner, recordAuditLog('clear_all_reviews', 'content'), clearAllReviews);
 
 router.delete('/admin/:id', authenticateAdmin, authorize('content', 'delete'), recordAuditLog('delete_review', 'content'), deleteReview);
 router.delete('/:id', authenticateAdmin, authorize('content', 'delete'), recordAuditLog('delete_review', 'content'), deleteReview);

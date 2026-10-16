@@ -44,6 +44,8 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
   const [selectedSlotTime, setSelectedSlotTime] = useState<string>('');
   const [reason, setReason] = useState<string>('');
   const [isLoadingSlots, setIsLoadingSlots] = useState<boolean>(false);
+  const [slotFetchError, setSlotFetchError] = useState<string | null>(null);
+  const [reloadTrigger, setReloadTrigger] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [availableSlots, setAvailableSlots] = useState<any[]>([]);
   const [isDayAvailable, setIsDayAvailable] = useState<boolean>(true);
@@ -53,7 +55,7 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
     fetchPublicSettings();
   }, [fetchPublicSettings]);
 
-  // Extract multi-service IDs
+  // Extract multi-service IDs and stabilize as string key
   const serviceIds = useMemo(() => {
     const list: string[] = [];
     if (order.serviceId) list.push(order.serviceId);
@@ -62,7 +64,9 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
       list.push(...(order as any).serviceSnapshot.services.map((s: any) => s.id));
     }
     return Array.from(new Set(list)).filter(Boolean);
-  }, [order]);
+  }, [order.serviceId, (order as any).metadata?.serviceIds, (order as any).serviceSnapshot?.services]);
+
+  const serviceIdsKey = serviceIds.join(',');
 
   const duration =
     order.totalOccupiedMinutes ||
@@ -79,23 +83,29 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
   // Initialize selected date
   useEffect(() => {
     if (isOpen) {
-      const firstAvailable = dateOptions.find((d) => d.isAvailable);
-      if (firstAvailable) {
-        setSelectedDate(firstAvailable.dateString);
-      } else if (dateOptions.length > 0) {
-        setSelectedDate(dateOptions[0].dateString);
+      if (!selectedDate || !dateOptions.some((d) => d.dateString === selectedDate)) {
+        const firstAvailable = dateOptions.find((d) => d.isAvailable);
+        if (firstAvailable) {
+          setSelectedDate(firstAvailable.dateString);
+        } else if (dateOptions.length > 0) {
+          setSelectedDate(dateOptions[0].dateString);
+        }
       }
-      setSelectedSlotTime('');
-      setReason('');
     }
-  }, [isOpen, dateOptions]);
+  }, [isOpen, dateOptions, selectedDate]);
 
-  // Fetch live slots whenever selected date changes
+  // Fetch live slots whenever selected date or reload changes
   useEffect(() => {
     if (!isOpen || !selectedDate) return;
 
     let isMounted = true;
+    const abortCtrl = new AbortController();
+    const timeoutTimer = setTimeout(() => {
+      abortCtrl.abort();
+    }, 10000);
+
     setIsLoadingSlots(true);
+    setSlotFetchError(null);
     setSelectedSlotTime('');
 
     const targetServiceId = order.serviceId || order.service?.id || (order as any).serviceSnapshot?.id;
@@ -118,17 +128,24 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
         if (!isMounted) return;
         console.warn('Failed to load slots for reschedule:', err);
         setIsDayAvailable(false);
-        setDayReason(isAr ? 'تعذر تحميل المواعيد لهذا اليوم' : 'Failed to load slots');
+        const errText = err?.message || (isAr ? 'تعذر تحميل المواعيد لهذا اليوم' : 'Failed to load slots');
+        setDayReason(errText);
+        setSlotFetchError(errText);
         setAvailableSlots([]);
       })
       .finally(() => {
-        if (isMounted) setIsLoadingSlots(false);
+        clearTimeout(timeoutTimer);
+        if (isMounted) {
+          setIsLoadingSlots(false);
+        }
       });
 
     return () => {
       isMounted = false;
+      clearTimeout(timeoutTimer);
+      abortCtrl.abort();
     };
-  }, [isOpen, selectedDate, order.id, order.serviceId, duration, serviceIds, isAr]);
+  }, [isOpen, selectedDate, order.id, order.serviceId, duration, serviceIdsKey, isAr, reloadTrigger]);
 
   const handleConfirmReschedule = async () => {
     if (!selectedDate || !selectedSlotTime) {
@@ -262,9 +279,20 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
           </div>
 
           {!isDayAvailable ? (
-            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-300">
-              <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
-              <span>{dayReason || (isAr ? 'هذا اليوم غير متاح للحجز' : 'This day is not available')}</span>
+            <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 flex items-center justify-between gap-2.5 text-xs text-amber-800 dark:text-amber-300">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
+                <span>{dayReason || (isAr ? 'هذا اليوم غير متاح للحجز' : 'This day is not available')}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReloadTrigger((p) => p + 1)}
+                disabled={isLoadingSlots}
+                className="px-2.5 py-1 rounded-lg bg-amber-200/80 dark:bg-amber-900/60 text-amber-950 dark:text-amber-100 hover:bg-amber-300 transition-colors font-bold flex items-center gap-1 cursor-pointer shrink-0"
+              >
+                <RotateCcw className={cn('w-3 h-3', isLoadingSlots && 'animate-spin')} />
+                <span>{isAr ? 'إعادة المحاولة' : 'Retry'}</span>
+              </button>
             </div>
           ) : (
             <div className="relative">
@@ -327,7 +355,7 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
                 {isAr ? 'الموعد الجديد المعتمد: ' : 'New scheduled time: '}
               </span>
               <span>
-                {selectedDate} في تمام {formatTimeTo12Hour(selectedSlotTime)}
+                {selectedDate} في تمام <bdi dir="ltr" className="inline-block font-mono">{formatTimeTo12Hour(selectedSlotTime)}</bdi>
               </span>
             </div>
           </div>
@@ -349,7 +377,7 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
             variant="primary"
             size="sm"
             onClick={handleConfirmReschedule}
-            disabled={!selectedDate || !selectedSlotTime || isSubmitting || !isDayAvailable}
+            disabled={!selectedDate || !selectedSlotTime || isSubmitting || !isDayAvailable || isLoadingSlots}
             className="text-xs flex items-center gap-1.5 min-w-[140px] justify-center bg-[#0866C6] hover:bg-[#0759B0] text-white"
           >
             {isSubmitting ? (

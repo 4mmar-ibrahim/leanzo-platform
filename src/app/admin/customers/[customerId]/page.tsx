@@ -71,7 +71,7 @@ interface SummaryData {
   pendingOrders: number;
   inProgressOrders: number;
   totalSpent: number;
-  averageOrderValue: number;
+  averageOrderValue: number | null;
   servicesCount: number;
   servicesBreakdown: Array<{
     id: string;
@@ -210,7 +210,7 @@ export default function AdminCustomerDetailPage() {
       .filter((b) => b.status === 'completed')
       .reduce((sum, b) => sum + (Number(b.finalPrice) || 0), 0);
 
-    const averageOrderValue = completedOrders > 0 ? Math.round(totalSpent / completedOrders) : 0;
+    const averageOrderValue = completedOrders > 0 ? Math.round(totalSpent / completedOrders) : null;
 
     const serviceMap = new Map<string, any>();
     orders.forEach((b) => {
@@ -921,7 +921,7 @@ export default function AdminCustomerDetailPage() {
               </h3>
             </div>
             <span className="text-xs text-slate-400">
-              متوسط قيمة الطلب: <strong className="text-sky-500">{computedSummary.averageOrderValue} ج.م</strong>
+              متوسط قيمة الطلب: <strong className="text-sky-500">{computedSummary.averageOrderValue !== null ? `${computedSummary.averageOrderValue.toLocaleString()} ج.م` : 'لا توجد بيانات'}</strong>
             </span>
           </div>
 

@@ -2,13 +2,14 @@
 
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Tag, Sparkles, Clock, Copy, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Check, AlertCircle } from 'lucide-react';
+import { Tag, Sparkles, Clock, Copy, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Check, AlertCircle, RefreshCw } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useBookingStore } from '@/store/useBookingStore';
 import { useOfferStore, OfferExtended } from '@/store/useOfferStore';
 import { SectionHeader } from '@/components/common/SectionHeader';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Button } from '@/components/ui/Button';
+import { CMSPreviewBanner } from '@/components/common/CMSPreviewBanner';
 import { toast } from 'sonner';
 
 export default function OffersPage() {
@@ -21,6 +22,7 @@ export default function OffersPage() {
   const storeOffers = useOfferStore((s) => s.offers);
   const fetchOffers = useOfferStore((s) => s.fetchOffers);
   const isLoading = useOfferStore((s) => s.isLoading);
+  const error = useOfferStore((s) => s.error);
 
   const carouselRef = useRef<HTMLDivElement>(null);
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
@@ -97,12 +99,49 @@ export default function OffersPage() {
 
   return (
     <div className="py-12 bg-[#EAF8FC] dark:bg-[#041728] min-h-screen space-y-12">
+      <CMSPreviewBanner pageName={isAr ? 'العروض الترويجية' : 'Promotional Offers'} adminEditUrl="/admin/marketing/offers" />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
         <SectionHeader
           badge={isAr ? 'عروض حصرية' : 'Exclusive Offers'}
           title={isAr ? 'خصومات وباقات موسمية استثنائية' : 'Seasonal Discounts & Bundle Deals'}
           subtitle={isAr ? 'استفد من أفضل أسعار العناية المتكاملة بسيارتك ومنزلك مع كوبونات حصرية محدودة.' : 'Maximize value with exclusive coupons and bundle promotions for vehicle & home cleaning.'}
         />
+
+        {/* Loading Skeletons */}
+        {isLoading && (!storeOffers || storeOffers.length === 0) && (
+          <div className="space-y-8 animate-pulse">
+            <div className="w-full h-48 sm:h-64 rounded-[36px] bg-slate-200/80 dark:bg-slate-800/80" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
+              {[1, 2].map((i) => (
+                <div key={i} className="h-80 rounded-3xl bg-slate-200/80 dark:bg-slate-800/80" />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Error Retry State */}
+        {error && !isLoading && (!storeOffers || storeOffers.length === 0) && (
+          <div className="p-8 text-center rounded-3xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 max-w-lg mx-auto space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              {isAr ? 'تعذر تحميل العروض الترويجية' : 'Failed to load offers'}
+            </h3>
+            <p className="text-xs text-slate-500">
+              {isAr ? 'يرجى التحقق من اتصال الشبكة وإعادة المحاولة.' : 'Please check your connection and try again.'}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchOffers()}
+              className="inline-flex items-center gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>{isAr ? 'إعادة المحاولة' : 'Try Again'}</span>
+            </Button>
+          </div>
+        )}
 
         {/* ================= VIP PROMO HERO BANNERS (SIDE-BY-SIDE ON MOBILE) ================= */}
         {heroBanners.length > 0 && (
@@ -333,7 +372,7 @@ export default function OffersPage() {
               </div>
             ))}
           </div>
-        ) : (
+        ) : !isLoading && !error ? (
           <EmptyState
             icon={Tag}
             title={isAr ? 'لا توجد عروض حالية' : 'No Active Offers'}
@@ -343,7 +382,7 @@ export default function OffersPage() {
                 : 'Check back soon for exciting limited-time discounts and packages!'
             }
           />
-        )}
+        ) : null}
       </div>
     </div>
   );

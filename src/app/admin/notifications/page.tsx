@@ -32,6 +32,8 @@ export default function AdminNotificationsPage() {
   const deleteNotification = useNotificationStore((s) => s.deleteNotification);
   const resetToDefaults = useNotificationStore((s) => s.resetToDefaults);
   const addNotification = useNotificationStore((s) => s.addNotification);
+  const cleanupDuplicates = useNotificationStore((s) => s.cleanupDuplicates);
+  const [isCleaning, setIsCleaning] = useState(false);
 
   useEffect(() => {
     fetchNotifications();
@@ -42,6 +44,13 @@ export default function AdminNotificationsPage() {
     await fetchNotifications();
     setIsRefreshing(false);
     toast.success('تم تحديث قائمة الإشعارات بنجاح');
+  };
+
+  const handleCleanupDuplicates = async () => {
+    setIsCleaning(true);
+    await cleanupDuplicates();
+    setIsCleaning(false);
+    toast.success('تم فحص وتنظيف أي إشعارات مكررة بنجاح');
   };
 
   const handleCreateTestNotification = (type: 'order' | 'technician' | 'customer' | 'system') => {
@@ -139,6 +148,16 @@ export default function AdminNotificationsPage() {
           >
             <RotateCw className={cn('w-3.5 h-3.5 text-sky-500', isRefreshing && 'animate-spin')} />
             <span>تحديث</span>
+          </button>
+
+          <button
+            onClick={handleCleanupDuplicates}
+            disabled={isCleaning}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-[#072540] border border-slate-200 dark:border-[#0E3A64] text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#0A2E50] transition shadow-2xs"
+            title="فحص وإزالة أي إشعارات مكررة"
+          >
+            <Sparkles className={cn('w-3.5 h-3.5 text-amber-500', isCleaning && 'animate-spin')} />
+            <span>تنظيف المكررات</span>
           </button>
 
           {unreadCount > 0 && (

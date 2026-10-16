@@ -52,8 +52,18 @@ export default function AdminServicesPage() {
     fetchCategories();
   }, [fetchAdminServices, fetchCategories]);
 
+  const isSameCategory = (serviceCat: string, targetCat: string) => {
+    if (serviceCat === targetCat) return true;
+    const s = (serviceCat || '').toLowerCase();
+    const t = (targetCat || '').toLowerCase();
+    if (t === 'all') return true;
+    if ((t === 'car' || t === 'cat-mv2vgjo7' || t === 'cat-car') && (s === 'car' || s === 'cat-mv2vgjo7' || s === 'cat-car')) return true;
+    if ((t === 'home' || t === 'cat-mv2vh6ty' || t === 'cat-home') && (s === 'home' || s === 'cat-mv2vh6ty' || s === 'cat-home')) return true;
+    return s === t;
+  };
+
   const filtered = services.filter((s) => {
-    const matchCat = selectedCategory === 'all' || s.category === selectedCategory;
+    const matchCat = selectedCategory === 'all' || isSameCategory(s.category, selectedCategory);
     const q = search.trim().toLowerCase();
     const matchSearch =
       !q ||
@@ -174,14 +184,15 @@ export default function AdminServicesPage() {
           {categories.length > 0 ? (
             <>
               {categories.map((cat) => {
-                const count = services.filter((s) => s.category === cat.slug).length;
+                const count = services.filter((s) => isSameCategory(s.category, cat.slug) || isSameCategory(s.category, cat.id)).length;
+                const isSelected = selectedCategory === cat.slug || isSameCategory(selectedCategory, cat.slug);
                 return (
                   <button
                     key={cat.id || cat.slug}
                     onClick={() => setSelectedCategory(cat.slug as ServiceCategory)}
                     className={cn(
                       'px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5',
-                      selectedCategory === cat.slug
+                      isSelected
                         ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-xs'
                         : 'text-slate-500'
                     )}
@@ -198,9 +209,9 @@ export default function AdminServicesPage() {
                   </button>
                 );
               })}
-              {/* Orphan category tabs (if services exist with a slug not in categories table) */}
+              {/* Orphan category tabs (only if services exist with a slug completely unrecognized) */}
               {Array.from(new Set(services.map((s) => s.category)))
-                .filter((catSlug) => catSlug && !categories.some((c) => c.slug === catSlug))
+                .filter((catSlug) => catSlug && !categories.some((c) => isSameCategory(catSlug, c.slug) || isSameCategory(catSlug, c.id)))
                 .map((orphanSlug) => {
                   const count = services.filter((s) => s.category === orphanSlug).length;
                   const orphanName =

@@ -32,11 +32,14 @@ import { formatTimeTo12Hour } from '@/lib/timeUtils';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { AdminTour } from '@/components/admin/AdminTour';
+import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { SubscriptionDashboardOverview } from '@/components/admin/subscriptions/SubscriptionDashboardOverview';
 import { getCategoryDisplayName } from '@/lib/services/categoryUtils';
 
 export default function AdminDashboardPage() {
   const [dateFilter, setDateFilter] = useState<'today' | '7days' | '30days' | 'year'>('30days');
+  const [kpiData, setKpiData] = useState<any>(null);
+  const [isLoadingKPIs, setIsLoadingKPIs] = useState<boolean>(true);
 
   const orders = useOrderStore((s) => s.orders);
   const customers = useCustomerStore((s) => s.customers);
@@ -46,55 +49,81 @@ export default function AdminDashboardPage() {
   const fetchAdminOrders = useOrderStore((s) => s.fetchAdminOrders);
   const isCleared = useAnalyticsResetStore((s) => s.isCleared);
 
+  const periodMapping: Record<'today' | '7days' | '30days' | 'year', string> = React.useMemo(() => ({
+    today: 'today',
+    '7days': 'last_7_days',
+    '30days': 'last_30_days',
+    year: 'this_year',
+  }), []);
+
+  const fetchDashboardKPIs = React.useCallback(async () => {
+    setIsLoadingKPIs(true);
+    try {
+      const period = periodMapping[dateFilter];
+      const res = await cleanzoApi.admin.getDashboardKPIs(period);
+      if (res) {
+        setKpiData(res);
+      }
+    } catch (err) {
+      console.error('Failed to fetch dashboard KPIs from backend:', err);
+    } finally {
+      setIsLoadingKPIs(false);
+    }
+  }, [dateFilter, periodMapping]);
+
   React.useEffect(() => {
     fetchAdminOrders();
   }, [fetchAdminOrders]);
 
-  // Computed Real Dynamic KPIs
-  const isZeroed = isCleared && orders.length === 0;
-  const totalCustomers = customers.length;
-  const totalOrders = orders.length;
-  const newOrders = orders.filter((o) => o.status === 'pending').length;
-  const completedOrders = orders.filter((o) => o.status === 'completed').length;
-  const cancelledOrders = orders.filter((o) => o.status === 'cancelled').length;
+  React.useEffect(() => {
+    fetchDashboardKPIs();
+  }, [fetchDashboardKPIs]);
 
-  const totalRevenue = orders
-    .filter((o) => o.status === 'completed' || o.status === 'in_progress' || o.status === 'assigned')
+  // Listen to global data refresh events
+  React.useEffect(() => {
+    const handleRefresh = () => {
+      fetchAdminOrders();
+      fetchDashboardKPIs();
+    };
+    window.addEventListener('cleanzo:refresh-data', handleRefresh);
+    return () => window.removeEventListener('cleanzo:refresh-data', handleRefresh);
+  }, [fetchAdminOrders, fetchDashboardKPIs]);
+
+  // Authoritative Dynamic KPIs (from backend single source of truth with fallback)
+  const isZeroed = isCleared && (kpiData ? kpiData.totalOrders === 0 : orders.length === 0);
+  const totalCustomers = kpiData?.totalCustomers ?? customers.length;
+  const totalOrders = kpiData?.totalOrders ?? orders.length;
+  const newOrders = kpiData?.newOrders ?? orders.filter((o) => o.status === 'pending').length;
+  const completedOrders = kpiData?.completedOrders ?? orders.filter((o) => o.status === 'completed').length;
+  const cancelledOrders = kpiData?.cancelledOrders ?? orders.filter((o) => o.status === 'cancelled').length;
+
+  // Recognized Revenue: strictly from completed orders
+  const totalRevenue = kpiData?.totalRevenue ?? orders
+    .filter((o) => o.status === 'completed')
     .reduce((acc, o) => acc + (o.finalPrice || 0), 0);
 
-  const averageOrderValue = completedOrders > 0
-    ? Math.round(totalRevenue / completedOrders)
-    : (orders.length > 0 ? Math.round(totalRevenue / orders.length) : 0);
+  // Average Order Value: only from completed eligible orders; null if no eligible orders
+  const averageOrderValue: number | null = kpiData
+    ? kpiData.averageOrderValue
+    : (completedOrders > 0 ? Math.round(totalRevenue / completedOrders) : null);
 
   // Popular service calculation
-  const serviceCounts: Record<string, number> = {};
-  orders.forEach((o) => {
-    const title = o.service?.title || 'خدمة كلينزو';
-    serviceCounts[title] = (serviceCounts[title] || 0) + 1;
-  });
-  let popularServiceName = orders.length > 0 ? (services[0]?.title || 'غسيل وتلميع واكس VIP') : 'لا توجد طلبات مسجلة';
-  let maxServiceCount = 0;
-  Object.entries(serviceCounts).forEach(([title, count]) => {
-    if (count > maxServiceCount) {
-      maxServiceCount = count;
-      popularServiceName = title;
-    }
-  });
-  const popularServicePct = orders.length > 0 ? Math.round((maxServiceCount / orders.length) * 100) : 0;
+  const popularServiceName = kpiData?.popularServiceName || (services[0]?.title || 'غسيل وتلميع واكس VIP');
+  const popularServicePct = kpiData?.popularServicePct || (orders.length > 0 ? Math.round((completedOrders / orders.length) * 100) : 0);
 
-  // Real Dynamic KPIs
+  // Real Authoritative Dynamic KPIs
   const kpis = [
     {
       title: 'إجمالي العملاء',
-      value: totalCustomers,
-      change: totalCustomers > 0 ? `${totalCustomers} مسجل` : '0 عملاء',
+      value: isLoadingKPIs ? '...' : totalCustomers,
+      change: totalCustomers > 0 ? `${totalCustomers} مسجل بالنظام` : '0 عملاء',
       positive: true,
       icon: Users,
       color: 'text-[#0866C6] bg-sky-50 dark:bg-sky-950/60',
     },
     {
       title: 'إجمالي الطلبات',
-      value: totalOrders,
+      value: isLoadingKPIs ? '...' : totalOrders,
       change: totalOrders > 0 ? `${completedOrders} مكتمل` : '0 طلبات',
       positive: true,
       icon: ShoppingBag,
@@ -102,7 +131,7 @@ export default function AdminDashboardPage() {
     },
     {
       title: 'طلبات جديدة معلقة',
-      value: newOrders,
+      value: isLoadingKPIs ? '...' : newOrders,
       change: newOrders > 0 ? 'يتطلب اتخاذ إجراء' : 'لا توجد معلقات',
       positive: newOrders === 0,
       icon: Clock,
@@ -110,7 +139,7 @@ export default function AdminDashboardPage() {
     },
     {
       title: 'طلبات مكتملة',
-      value: completedOrders,
+      value: isLoadingKPIs ? '...' : completedOrders,
       change: totalOrders > 0 ? `${Math.round((completedOrders / totalOrders) * 100)}% إنجاز` : '0.0%',
       positive: true,
       icon: CheckCircle2,
@@ -118,31 +147,31 @@ export default function AdminDashboardPage() {
     },
     {
       title: 'طلبات ملغاة',
-      value: cancelledOrders,
+      value: isLoadingKPIs ? '...' : cancelledOrders,
       change: totalOrders > 0 ? `${((cancelledOrders / totalOrders) * 100).toFixed(1)}% إلغاء` : '0.0%',
       positive: cancelledOrders === 0,
       icon: XCircle,
       color: 'text-[#F0444C] bg-red-50 dark:bg-red-950/60',
     },
     {
-      title: 'إجمالي الإيرادات',
-      value: `${totalRevenue.toLocaleString()} ج.م`,
-      change: totalRevenue > 0 ? 'إيراد فعلي محقق' : '0.0 ج.م',
+      title: 'الإيرادات المحققة',
+      value: isLoadingKPIs ? '...' : `${totalRevenue.toLocaleString()} ج.م`,
+      change: totalRevenue > 0 ? 'إيراد معترف به (المكتملة)' : '0.0 ج.م',
       positive: true,
       icon: Banknote,
       color: 'text-[#07345C] dark:text-sky-400 bg-slate-100 dark:bg-slate-800',
     },
     {
       title: 'متوسط قيمة الطلب',
-      value: `${averageOrderValue} ج.م`,
-      change: averageOrderValue > 0 ? 'لكل طلب' : '0 ج.م',
-      positive: true,
+      value: isLoadingKPIs ? '...' : (averageOrderValue !== null ? `${averageOrderValue.toLocaleString()} ج.م` : 'لا توجد بيانات'),
+      change: averageOrderValue !== null ? 'للطلبات المكتملة' : 'لا توجد طلبات مؤهلة',
+      positive: averageOrderValue !== null,
       icon: TrendingUp,
       color: 'text-purple-600 bg-purple-50 dark:bg-purple-950/60',
     },
     {
       title: 'الخدمة الأكثر طلباً',
-      value: popularServiceName,
+      value: isLoadingKPIs ? '...' : popularServiceName,
       change: popularServicePct > 0 ? `${popularServicePct}% من الحجوزات` : '0 طلبات',
       positive: true,
       icon: Sparkles,
@@ -203,7 +232,7 @@ export default function AdminDashboardPage() {
   const maxDailyRev = Math.max(...Object.values(daysMap).map((d) => d.rev), 1);
   const maxDailyOrd = Math.max(...Object.values(daysMap).map((d) => d.ord), 1);
 
-  const dailyChart = [
+  const fallbackDailyChart = [
     { day: 'السبت', rev: orders.length > 0 ? Math.round((daysMap[6].rev / maxDailyRev) * 100) : 0, ord: orders.length > 0 ? Math.round((daysMap[6].ord / maxDailyOrd) * 100) : 0 },
     { day: 'الأحد', rev: orders.length > 0 ? Math.round((daysMap[0].rev / maxDailyRev) * 100) : 0, ord: orders.length > 0 ? Math.round((daysMap[0].ord / maxDailyOrd) * 100) : 0 },
     { day: 'الاثنين', rev: orders.length > 0 ? Math.round((daysMap[1].rev / maxDailyRev) * 100) : 0, ord: orders.length > 0 ? Math.round((daysMap[1].ord / maxDailyOrd) * 100) : 0 },
@@ -212,6 +241,8 @@ export default function AdminDashboardPage() {
     { day: 'الخميس', rev: orders.length > 0 ? Math.round((daysMap[4].rev / maxDailyRev) * 100) : 0, ord: orders.length > 0 ? Math.round((daysMap[4].ord / maxDailyOrd) * 100) : 0 },
     { day: 'الجمعة', rev: orders.length > 0 ? Math.round((daysMap[5].rev / maxDailyRev) * 100) : 0, ord: orders.length > 0 ? Math.round((daysMap[5].ord / maxDailyOrd) * 100) : 0 },
   ];
+
+  const dailyChart = kpiData?.dailyChart || fallbackDailyChart;
 
   const carOrders = orders.filter((o) => o.category === 'car').length;
   const carPct = orders.length > 0 ? Math.round((carOrders / orders.length) * 100) : 60;
@@ -313,7 +344,7 @@ export default function AdminDashboardPage() {
 
           {/* Bar Chart Visualization */}
           <div className="h-56 flex items-end gap-3 sm:gap-6 pt-6 pb-2 border-b border-slate-100 dark:border-[#133B61]/80">
-            {dailyChart.map((item, idx) => (
+            {dailyChart.map((item: { day: string; rev: number; ord: number }, idx: number) => (
               <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
                 <div className="w-full flex items-end justify-center gap-1 h-full">
                   <div

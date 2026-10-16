@@ -3,6 +3,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 export interface INotification extends Document {
   target: 'admin' | 'customer';
   userId?: string; // If customer specific
+  eventId?: string; // Idempotent event identifier
   title: string;
   titleEn: string;
   message: string;
@@ -18,6 +19,7 @@ const NotificationSchema = new Schema<INotification>(
   {
     target: { type: String, enum: ['admin', 'customer'], required: true, index: true },
     userId: { type: String, index: true },
+    eventId: { type: String, index: true },
     title: { type: String, required: true },
     titleEn: { type: String, required: true },
     message: { type: String, required: true },

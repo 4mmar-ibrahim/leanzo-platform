@@ -28,8 +28,8 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
       icon: Clock,
     },
     confirmed: {
-      labelAr: 'مستلم',
-      labelEn: 'Received',
+      labelAr: 'مؤكد',
+      labelEn: 'Confirmed',
       bg: 'bg-[#F0F6FC] dark:bg-[#082845]',
       text: 'text-[#0866C6] dark:text-[#7CB5F0]',
       border: 'border-[#0866C6]/20 dark:border-[#0866C6]/40',
