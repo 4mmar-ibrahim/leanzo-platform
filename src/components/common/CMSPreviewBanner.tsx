@@ -12,7 +12,7 @@ interface CMSPreviewBannerProps {
   adminEditUrl?: string;
 }
 
-export function CMSPreviewBanner({ pageName, section, adminEditUrl }: CMSPreviewBannerProps) {
+function CMSPreviewBannerContent({ pageName, section, adminEditUrl }: CMSPreviewBannerProps) {
   const searchParams = useSearchParams();
   const isPreview = searchParams.get('preview') === 'true';
   const { locale } = useLocaleStore();
@@ -46,5 +46,13 @@ export function CMSPreviewBanner({ pageName, section, adminEditUrl }: CMSPreview
         )}
       </div>
     </div>
+  );
+}
+
+export function CMSPreviewBanner(props: CMSPreviewBannerProps) {
+  return (
+    <React.Suspense fallback={null}>
+      <CMSPreviewBannerContent {...props} />
+    </React.Suspense>
   );
 }

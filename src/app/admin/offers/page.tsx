@@ -37,7 +37,7 @@ import { ImageUploader } from '@/components/admin/ImageUploader';
 type LifecycleFilter = 'all' | 'active' | 'scheduled' | 'expired' | 'disabled';
 type CategoryFilter = 'all' | 'car' | 'home';
 
-export default function AdminOffersPage() {
+function AdminOffersContent() {
   const currentAdmin = useAdminStore((s) => s.currentAdmin);
   const canCreate = hasPermission(currentAdmin, 'offers.create');
   const canEdit = hasPermission(currentAdmin, 'offers.edit');
@@ -1446,5 +1446,19 @@ export default function AdminOffersPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AdminOffersPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="py-24 flex items-center justify-center min-h-[60vh] text-slate-400">
+          <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
+        </div>
+      }
+    >
+      <AdminOffersContent />
+    </React.Suspense>
   );
 }

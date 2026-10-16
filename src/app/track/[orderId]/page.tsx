@@ -13,7 +13,7 @@ import { OrderReviewModal } from '@/components/reviews/OrderReviewModal';
 import { Button } from '@/components/ui/Button';
 import { validateEgyptianPhone } from '@/lib/validation/phoneValidation';
 
-export default function DirectOrderTrackPage() {
+function DirectOrderTrackContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -295,5 +295,19 @@ export default function DirectOrderTrackPage() {
         onClose={() => setReviewOpen(false)}
       />
     </div>
+  );
+}
+
+export default function DirectOrderTrackPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="min-h-screen py-16 flex items-center justify-center text-slate-400">
+          <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
+        </div>
+      }
+    >
+      <DirectOrderTrackContent />
+    </React.Suspense>
   );
 }

@@ -31,7 +31,7 @@ import { toast } from 'sonner';
 import { ImageUploader } from '@/components/admin/ImageUploader';
 import { PriceDisplay } from '@/components/common/PriceDisplay';
 
-export default function AdminServiceEditPage() {
+function AdminServiceEditContent() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1553,5 +1553,19 @@ export default function AdminServiceEditPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AdminServiceEditPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="py-24 flex items-center justify-center min-h-[60vh] text-slate-400">
+          <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
+        </div>
+      }
+    >
+      <AdminServiceEditContent />
+    </React.Suspense>
   );
 }

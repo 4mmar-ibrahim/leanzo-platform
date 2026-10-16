@@ -44,7 +44,7 @@ import { TechnicianExtended } from '@/types';
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
-export default function AdminTechniciansPage() {
+function AdminTechniciansContent() {
   const technicians = useTechnicianStore((s) => s.technicians);
   const fetchTechnicians = useTechnicianStore((s) => s.fetchTechnicians);
   const addTechnician = useTechnicianStore((s) => s.addTechnician);
@@ -847,5 +847,19 @@ export default function AdminTechniciansPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AdminTechniciansPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="py-24 flex items-center justify-center min-h-[60vh] text-slate-400">
+          <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
+        </div>
+      }
+    >
+      <AdminTechniciansContent />
+    </React.Suspense>
   );
 }
