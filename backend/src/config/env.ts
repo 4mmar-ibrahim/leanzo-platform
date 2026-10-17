@@ -40,3 +40,7 @@ export const ENV = {
   API_PREFIX: process.env.API_PREFIX || '/api',
   IS_PRODUCTION: isProduction,
 };
+
+if (!process.env.DATABASE_URL && ENV.DATABASE_URL) {
+  process.env.DATABASE_URL = ENV.DATABASE_URL;
+}

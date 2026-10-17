@@ -294,12 +294,16 @@ export default function AdminSettingsHubPage() {
 
             {/* Current Status Badge */}
             <div className="flex items-center gap-2 self-start md:self-auto">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-500/20 border border-emerald-500/40 text-emerald-300">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
+                encryptionStatus.isEncrypted
+                  ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                  : 'bg-sky-500/20 border-sky-500/40 text-sky-300'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${encryptionStatus.isEncrypted ? 'bg-emerald-400 animate-pulse' : 'bg-sky-400'}`} />
                 <span>
                   {encryptionStatus.isEncrypted
                     ? `تشفير AES-256-GCM مفعّل (${encryptionStatus.totalRecordsEncrypted} سجل)`
-                    : 'حماية متعددة الطبقات نشطة (Bcrypt + TLS + JWT)'}
+                    : 'حماية المصادقة والجلسات نشطة — تشفير الحقول غير مفعّل (0 سجل)'}
                 </span>
               </span>
             </div>
@@ -333,15 +337,17 @@ export default function AdminSettingsHubPage() {
 
           {/* Action Buttons Row */}
           <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            {/* Encrypt All Button */}
-            <button
-              type="button"
-              onClick={() => setShowEncryptModal(true)}
-              className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold bg-gradient-to-r from-sky-500 via-indigo-600 to-purple-600 hover:from-sky-600 hover:to-purple-700 text-white shadow-lg shadow-sky-500/20 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
-            >
-              <Key className="w-4 h-4" />
-              <span>تشفير جميع بيانات البرنامج (Encrypt All)</span>
-            </button>
+            {/* Encrypt All Button (Owner Only) */}
+            {isOwner && (
+              <button
+                type="button"
+                onClick={() => setShowEncryptModal(true)}
+                className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold bg-gradient-to-r from-sky-500 via-indigo-600 to-purple-600 hover:from-sky-600 hover:to-purple-700 text-white shadow-lg shadow-sky-500/20 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+              >
+                <Key className="w-4 h-4" />
+                <span>تشفير حقول البيانات (مالك المنصة)</span>
+              </button>
+            )}
 
             {/* Wipe Platform Data Button (Owner Only) */}
             {isOwner && (

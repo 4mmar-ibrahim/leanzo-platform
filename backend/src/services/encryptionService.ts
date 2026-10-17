@@ -8,7 +8,11 @@ import { EncryptionLog } from '../models/EncryptionLog.js';
 import { ENV } from '../config/env.js';
 
 // Secret key derivation (AES-256 requires 32 bytes)
-const ENCRYPTION_SECRET = process.env.DATA_ENCRYPTION_KEY || ENV.JWT_SECRET || 'cleanzo-platform-master-encryption-key-2026';
+const isExplicitKeyConfigured = Boolean(process.env.DATA_ENCRYPTION_KEY);
+if (ENV.NODE_ENV === 'production' && !process.env.DATA_ENCRYPTION_KEY) {
+  console.warn('⚠️ [SECURITY WARNING] DATA_ENCRYPTION_KEY is not set in production. Field encryption should use a dedicated secure key.');
+}
+const ENCRYPTION_SECRET = process.env.DATA_ENCRYPTION_KEY || ENV.JWT_SECRET || (ENV.NODE_ENV === 'production' ? 'cleanzo-production-fallback-key-requires-env' : 'cleanzo-dev-encryption-key-local');
 const KEY = crypto.createHash('sha256').update(String(ENCRYPTION_SECRET)).digest();
 const ALGORITHM = 'aes-256-gcm';
 const PREFIX = 'enc:v1:';
@@ -74,6 +78,33 @@ export interface EncryptionStats {
     orders: number;
     messages: number;
     addresses: number;
+  };
+  fieldLevel: {
+    status: 'active' | 'inactive' | 'partial';
+    isEncrypted: boolean;
+    totalRecordsEncrypted: number;
+    transparentDecryptionReady: boolean;
+    blindIndexingReady: boolean;
+    notes: string;
+  };
+  authSecurity: {
+    passwordHashing: string;
+    jwtSigning: string;
+    status: 'active';
+  };
+  inTransit: {
+    status: 'active' | 'unverifiable';
+    tlsProtocol: string;
+    notes: string;
+  };
+  atRest: {
+    status: 'unverifiable_via_app';
+    scope: string;
+    notes: string;
+  };
+  keyStatus: {
+    configured: boolean;
+    keySource: 'env' | 'fallback_dev';
   };
 }
 
@@ -234,8 +265,8 @@ export async function encryptAllDatabaseData(adminExecutingName = 'Super Admin')
       initiatedBy: adminExecutingName,
     });
 
-    return {
-      isEncrypted: true,
+    const statsObj: EncryptionStats = {
+      isEncrypted: total > 0,
       algorithm: ALGORITHM,
       totalRecordsEncrypted: total,
       lastEncryptedAt: now,
@@ -245,7 +276,38 @@ export async function encryptAllDatabaseData(adminExecutingName = 'Super Admin')
         messages: messagesCount,
         addresses: addressesCount,
       },
+      fieldLevel: {
+        status: total > 0 ? 'active' : 'inactive',
+        isEncrypted: total > 0,
+        totalRecordsEncrypted: total,
+        transparentDecryptionReady: false,
+        blindIndexingReady: false,
+        notes: total > 0
+          ? 'تم تشفير السجلات بنجاح'
+          : 'لم يتم العثور على سجلات لتشفيرها',
+      },
+      authSecurity: {
+        passwordHashing: 'Bcrypt Salted Hash (10 Rounds)',
+        jwtSigning: 'HMAC-SHA256 Cryptographic Signature',
+        status: 'active',
+      },
+      inTransit: {
+        status: 'active',
+        tlsProtocol: 'TLS 1.2 / TLS 1.3',
+        notes: 'مشفر أثناء النقل في بيئة الإنتاج السحابية',
+      },
+      atRest: {
+        status: 'unverifiable_via_app',
+        scope: 'نظام التشغيل والتخزين السحابي',
+        notes: 'تشفير القرص على مستوى البنية التحتية غير قابل للتحقق برمجياً من التطبيق',
+      },
+      keyStatus: {
+        configured: isExplicitKeyConfigured,
+        keySource: isExplicitKeyConfigured ? 'env' : 'fallback_dev',
+      },
     };
+
+    return statsObj;
   } catch (err: any) {
     // Record failed log
     try {
@@ -266,30 +328,80 @@ export async function encryptAllDatabaseData(adminExecutingName = 'Super Admin')
 }
 
 /**
- * Returns the current platform encryption status.
+ * Returns the current platform encryption status based on actual, verified database records.
  */
 export async function getEncryptionStatus(): Promise<EncryptionStats> {
   const settings = await SystemSettings.findOne({ key: 'global_settings' });
   const sec = (settings as any)?.security || {};
 
-  // Count if any encrypted records exist in DB
-  const [encCustomer, encBooking] = await Promise.all([
-    User.findOne({ phone: { $regex: '^enc:v1:' } }),
-    Booking.findOne({ customerPhone: { $regex: '^enc:v1:' } }),
+  // Accurately scan existing collections for records carrying the encryption prefix enc:v1:
+  const [users, bookings, addresses, messages] = await Promise.all([
+    User.find({}),
+    Booking.find({}),
+    CustomerAddress.find({}),
+    ContactMessage.find({}),
   ]);
 
-  const hasEncrypted = Boolean(encCustomer || encBooking || sec.isEncrypted);
+  const encCustomers = users.filter((u: any) => typeof u.phone === 'string' && u.phone.startsWith(PREFIX)).length;
+  const encOrders = bookings.filter((b: any) => typeof b.customerPhone === 'string' && b.customerPhone.startsWith(PREFIX)).length;
+  const encAddresses = addresses.filter((a: any) => typeof a.customerPhone === 'string' && a.customerPhone.startsWith(PREFIX)).length;
+  const encMessages = messages.filter((m: any) => typeof m.phone === 'string' && m.phone.startsWith(PREFIX)).length;
+
+  const actualTotal = encCustomers + encOrders + encAddresses + encMessages;
+  const isTrulyEncrypted = actualTotal > 0;
+
+  // Read lastEncryptedAt only if records exist or from verified success logs
+  let lastEncryptedAt: Date | null = isTrulyEncrypted && sec.lastEncryptedAt ? new Date(sec.lastEncryptedAt) : null;
+  if (!lastEncryptedAt && isTrulyEncrypted) {
+    try {
+      const latestLog = await EncryptionLog.findOne({ status: 'success' }).sort({ timestamp: -1 });
+      if (latestLog && latestLog.timestamp) {
+        lastEncryptedAt = new Date(latestLog.timestamp);
+      }
+    } catch {
+      // Optional fallback
+    }
+  }
 
   return {
-    isEncrypted: hasEncrypted,
-    algorithm: sec.algorithm || ALGORITHM,
-    totalRecordsEncrypted: sec.totalRecordsEncrypted || 0,
-    lastEncryptedAt: sec.lastEncryptedAt || null,
-    breakdown: sec.breakdown || {
-      customers: 0,
-      orders: 0,
-      messages: 0,
-      addresses: 0,
+    isEncrypted: isTrulyEncrypted,
+    algorithm: ALGORITHM,
+    totalRecordsEncrypted: actualTotal,
+    lastEncryptedAt,
+    breakdown: {
+      customers: encCustomers,
+      orders: encOrders,
+      messages: encMessages,
+      addresses: encAddresses,
+    },
+    fieldLevel: {
+      status: isTrulyEncrypted ? 'active' : 'inactive',
+      isEncrypted: isTrulyEncrypted,
+      totalRecordsEncrypted: actualTotal,
+      transparentDecryptionReady: false,
+      blindIndexingReady: false,
+      notes: isTrulyEncrypted
+        ? 'توجد سجلات مشفرة في قاعدة البيانات، ولكن لا توجد طبقة فك تشفير شفافة أو فهارس بحث عمياء'
+        : 'تشفير حقول البيانات غير مفعّل حالياً (0 سجل مشفر). التطبيق يحتاج لطبقة فك تشفير تلقائية وفهارس بحث عمياء قبل تطبيقه لتفادي تعطل الدخول والبحث',
+    },
+    authSecurity: {
+      passwordHashing: 'Bcrypt Salted Hash (10 Rounds)',
+      jwtSigning: 'HMAC-SHA256 Cryptographic Signature',
+      status: 'active',
+    },
+    inTransit: {
+      status: 'active',
+      tlsProtocol: 'TLS 1.2 / TLS 1.3 (مفعّل عبر البروكسي العكسي في بيئة الإنتاج السحابية)',
+      notes: 'مشفر أثناء النقل في بيئة الإنتاج السحابية. في بيئة التطوير المحلية يعمل عبر HTTP.',
+    },
+    atRest: {
+      status: 'unverifiable_via_app',
+      scope: 'نظام التشغيل والتخزين السحابي (Disk / Storage Engine)',
+      notes: 'يتم تشفير القرص والتخزين على مستوى البنية التحتية ونظام التشغيل (مثل LUKS أو BitLocker أو AWS EBS Encryption)، ولا يمكن لتطبيق Node.js استجواب وسائط التخزين الفيزيائية برمجياً.',
+    },
+    keyStatus: {
+      configured: isExplicitKeyConfigured,
+      keySource: isExplicitKeyConfigured ? 'env' : 'fallback_dev',
     },
   };
 }

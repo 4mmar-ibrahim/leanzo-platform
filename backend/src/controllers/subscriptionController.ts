@@ -86,8 +86,6 @@ function getBookingTimeInterval(b: any): { startMin: number; endMin: number; dis
 
     if (endMin <= startMin) {
       endMin = startMin + fullDuration;
-    } else {
-      endMin = Math.max(endMin, startMin + fullDuration);
     }
 
     return {
@@ -102,8 +100,6 @@ function getBookingTimeInterval(b: any): { startMin: number; endMin: number; dis
   let endMin = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : startMin + fullDuration;
   if (endMin <= startMin) {
     endMin = startMin + fullDuration;
-  } else {
-    endMin = Math.max(endMin, startMin + fullDuration);
   }
 
   const display = timeStr || `${Math.floor(startMin / 60).toString().padStart(2, '0')}:${(startMin % 60).toString().padStart(2, '0')}`;

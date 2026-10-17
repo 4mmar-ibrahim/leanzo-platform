@@ -173,3 +173,56 @@ export function computeOrderCategory(order: any): 'car' | 'home' | 'mixed' | str
   return rawCat || normalizeCategory(order.serviceSnapshot?.category) || 'car';
 }
 
+/**
+ * Universal Canonical Service Title Resolver for Notifications and Summaries
+ * Accurately extracts composite services, packages, and direct snapshots.
+ */
+export function getCanonicalBookingServiceTitle(booking: any, isEn: boolean = false): string {
+  if (!booking) return isEn ? 'Cleanzo Service' : 'خدمة كلينزو';
+
+  // 1. Check composite services array
+  const snapServices = Array.isArray(booking.serviceSnapshot?.services) && booking.serviceSnapshot.services.length > 0
+    ? booking.serviceSnapshot.services
+    : Array.isArray(booking.metadata?.services) && booking.metadata.services.length > 0
+    ? booking.metadata.services
+    : Array.isArray(booking.selectedServices) && booking.selectedServices.length > 0
+    ? booking.selectedServices
+    : [];
+
+  if (snapServices.length > 0) {
+    const titles = snapServices
+      .map((s: any) => isEn
+        ? (s.titleEn || s.service?.titleEn || s.title || s.service?.title || s.nameEn || s.name)
+        : (s.title || s.service?.title || s.titleEn || s.service?.titleEn || s.name || s.nameEn)
+      )
+      .filter(Boolean);
+    if (titles.length > 0) {
+      return titles.join(' + ');
+    }
+  }
+
+  // 2. Check packageSnapshot
+  const pkgName = isEn
+    ? (booking.packageSnapshot?.nameEn || booking.packageSnapshot?.name)
+    : (booking.packageSnapshot?.name || booking.packageSnapshot?.nameEn);
+  if (pkgName) return pkgName;
+
+  // 3. Check serviceSnapshot.title
+  const snapTitle = isEn
+    ? (booking.serviceSnapshot?.titleEn || booking.serviceSnapshot?.title)
+    : (booking.serviceSnapshot?.title || booking.serviceSnapshot?.titleEn);
+  if (snapTitle) return snapTitle;
+
+  // 4. Check direct serviceTitle
+  if (booking.serviceTitle) return booking.serviceTitle;
+
+  // 5. Check populated service object
+  const srvObjTitle = isEn
+    ? (booking.service?.titleEn || booking.service?.title)
+    : (booking.service?.title || booking.service?.titleEn);
+  if (srvObjTitle) return srvObjTitle;
+
+  return isEn ? 'Cleanzo Service' : 'خدمة كلينزو';
+}
+
+

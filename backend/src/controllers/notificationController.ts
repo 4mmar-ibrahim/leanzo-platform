@@ -5,13 +5,24 @@ import { AuthenticatedRequest } from '../middleware/authMiddleware.js';
 
 export async function getCustomerNotifications(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
-    const userId = req.user?._id?.toString();
-    const notifications = await Notification.find({
+    const userId = req.user?._id?.toString() || req.user?.id?.toString();
+    const rawNotifications = await Notification.find({
       target: 'customer',
       $or: [{ userId }, { userId: { $exists: false } }],
-    }).sort({ createdAt: -1 }).limit(30);
+    }).sort({ createdAt: -1 }).limit(50);
 
-    sendSuccess(res, notifications);
+    // Deduplicate in memory as authoritative safety net
+    const seen = new Set<string>();
+    const deduplicated: any[] = [];
+    for (const notif of (rawNotifications || [])) {
+      const key = notif.eventId || `${notif.title}__${notif.message}__${notif.link || ''}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduplicated.push(notif);
+      }
+    }
+
+    sendSuccess(res, deduplicated.slice(0, 30));
   } catch (err: any) {
     sendError(res, err.message, 500);
   }

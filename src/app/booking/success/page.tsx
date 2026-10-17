@@ -473,10 +473,18 @@ function SuccessContent() {
                   <span>{isAr ? 'وقت الزيارة والمدة' : 'Time & Duration'}</span>
                 </div>
                 <div className="font-bold text-slate-900 dark:text-white ps-5 flex items-center gap-2">
-                  <TimeRangeDisplay time={order.time} locale={locale} format12 />
-                  {order.duration ? (
+                  <TimeRangeDisplay
+                    time={
+                      order.scheduledStart && order.scheduledEnd
+                        ? `${order.scheduledStart} – ${order.scheduledEnd}`
+                        : order.time
+                    }
+                    locale={locale}
+                    format12
+                  />
+                  {(order.totalOccupiedMinutes || order.duration || (order as any).serviceSnapshot?.duration) ? (
                     <span className="text-[11px] text-slate-400 font-normal">
-                      ({order.duration} {isAr ? 'دقيقة' : 'min'})
+                      ({order.totalOccupiedMinutes || order.duration || (order as any).serviceSnapshot?.duration} {isAr ? 'دقيقة' : 'min'})
                     </span>
                   ) : null}
                 </div>

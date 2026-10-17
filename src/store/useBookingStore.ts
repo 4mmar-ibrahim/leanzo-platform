@@ -35,6 +35,8 @@ export interface ItemizedServiceBreakdown {
   selectedAddons: ServiceAddon[];
   addonsTotal: number;
   durationMinutes: number;
+  travelTimeMinutes?: number;
+  totalOccupiedMinutes?: number;
   itemSubtotal: number;
   itemOriginalTotal: number;
 }
@@ -240,10 +242,14 @@ export const useBookingStore = create<BookingState>()(
           get().clearServices();
           return;
         }
-        if (get().selectedService?.id === service.id) {
+        if (get().selectedService?.id === service.id && get().selectedServices.length > 0) {
           return;
         }
-        const updated = [{ service, selectedPackage: null, selectedAddons: [] }];
+        const updated = [{
+          service,
+          selectedPackage: get().selectedPackage?.serviceId === service.id ? get().selectedPackage : null,
+          selectedAddons: (get().selectedAddons || []).filter((a) => a.serviceId === service.id),
+        }];
         set({
           category: service.category,
           ...syncLegacy(updated),
@@ -439,11 +445,26 @@ export const useBookingStore = create<BookingState>()(
       },
 
       getItemizedServicesList: () => {
-        const items = get().selectedServices || [];
+        let items = get().selectedServices || [];
+        if (items.length === 0 && get().selectedService) {
+          items = [
+            {
+              service: get().selectedService!,
+              selectedPackage: get().selectedPackage,
+              selectedAddons: get().selectedAddons || [],
+            },
+          ];
+        }
+
         return items.map((item) => {
           const s = item.service;
-          const pkg = item.selectedPackage;
-          const addons = item.selectedAddons || [];
+          const pkg = item.selectedPackage || (get().selectedService?.id === s.id ? get().selectedPackage : null);
+          const addons =
+            item.selectedAddons && item.selectedAddons.length > 0
+              ? item.selectedAddons
+              : get().selectedService?.id === s.id
+              ? get().selectedAddons || []
+              : [];
 
           const baseSelling = pkg ? Number(pkg.price) || 0 : Number(s.price) || 0;
           const baseOriginal = pkg
@@ -546,8 +567,17 @@ export const useBookingStore = create<BookingState>()(
 
       getTotalDuration: () => {
         const list = get().getItemizedServicesList();
-        if (list.length === 0) return 45;
-        return list.reduce((sum, i) => sum + i.durationMinutes, 0);
+        if (list.length === 0) {
+          const s = get().selectedService;
+          if (!s) return 45;
+          const travel = Number(s.travelTimeMinutes || 0);
+          const base = get().selectedPackage
+            ? Number(get().selectedPackage?.durationMinutes) || 45
+            : Number(s.serviceDurationMinutes || s.duration) || 30;
+          const addonsDur = (get().selectedAddons || []).reduce((sum, a) => sum + (Number(a.durationMinutes) || 0), 0);
+          return base + addonsDur + travel;
+        }
+        return list.reduce((sum, i) => sum + (i.totalOccupiedMinutes || i.durationMinutes), 0);
       },
 
       getOriginalPrice: () => {

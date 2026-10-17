@@ -276,6 +276,9 @@ function attachDocHelpers(doc: any, delegate?: any) {
         delete data.cancellationReason;
         delete data.rescheduledAt;
       }
+      if (delegate === prisma.systemSettings) {
+        delete data.contact;
+      }
       const updated = await delegate.update({
         where: { id: targetId },
         data,
@@ -415,9 +418,7 @@ export function createPrismaRepository(prismaDelegateName: keyof typeof prisma) 
         delete cleanData.role;
       }
 
-      if (modelName === 'notification' && cleanData.eventId !== undefined) {
-        delete cleanData.eventId;
-      }
+      // Preserving cleanData.eventId for notifications ensures idempotent deduplication in PostgreSQL
 
       if (modelName === 'customerAddress' && cleanData.userId !== undefined && cleanData.customerId === undefined) {
         cleanData.customerId = cleanData.userId;
@@ -539,8 +540,20 @@ export function createPrismaRepository(prismaDelegateName: keyof typeof prisma) 
         cleanData.password = await bcrypt.hash(cleanData.password, salt);
       }
 
-      const res = await delegate.create({ data: cleanData });
-      return attachDocHelpers(res, delegate);
+      try {
+        const res = await delegate.create({ data: cleanData });
+        return attachDocHelpers(res, delegate);
+      } catch (createErr: any) {
+        if (modelName === 'notification' && cleanData.eventId) {
+          try {
+            const existing = await delegate.findFirst({ where: { eventId: cleanData.eventId } });
+            if (existing) {
+              return attachDocHelpers(existing, delegate);
+            }
+          } catch {}
+        }
+        throw createErr;
+      }
     },
 
     async insertMany(docs: any[]): Promise<any[]> {

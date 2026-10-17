@@ -45,6 +45,7 @@ export function CustomerNotificationCenter({
   const getUserNotifications = useCustomerNotificationStore((s) => s.getUserNotifications);
   const markAsRead = useCustomerNotificationStore((s) => s.markAsRead);
   const markAllAsRead = useCustomerNotificationStore((s) => s.markAllAsRead);
+  const syncRemoteNotifications = useCustomerNotificationStore((s) => s.syncRemoteNotifications);
 
   // Directly derive reactive unread counter scoped to the active customer
   const notifications = React.useMemo(() => {
@@ -59,7 +60,10 @@ export function CustomerNotificationCenter({
 
   useEffect(() => {
     setMounted(true);
-  }, []);
+    if (user?.id) {
+      syncRemoteNotifications().catch(() => {});
+    }
+  }, [user?.id, syncRemoteNotifications]);
 
   // Lock body scroll when open on mobile
   useEffect(() => {

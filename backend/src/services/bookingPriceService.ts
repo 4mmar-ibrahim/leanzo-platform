@@ -27,6 +27,9 @@ export interface PriceCalculationResult {
   totalDiscount: number;
   serviceFee: number;
   finalPrice: number;
+  serviceDurationMinutes: number;
+  travelTimeMinutes: number;
+  totalOccupiedMinutes: number;
   totalServiceDuration: number;
   packageId?: string;
   packageSnapshot?: {
@@ -59,6 +62,12 @@ export interface PriceCalculationResult {
     originalPrice: number;
     finalPrice: number;
   };
+}
+
+export interface AuthoritativeDurationResult {
+  serviceDurationMinutes: number;
+  travelTimeMinutes: number;
+  totalOccupiedMinutes: number;
 }
 
 /**
@@ -99,7 +108,7 @@ export async function calculateBookingPrice(
 
   const srvDur = Number(service.serviceDurationMinutes || service.duration) || 30;
   const travelDur = Number(service.travelTimeMinutes) || 0;
-  let totalServiceDuration = service.totalOccupiedMinutes || (srvDur + travelDur);
+  let baseWorkDuration = srvDur;
   let packageSnapshot: PriceCalculationResult['packageSnapshot'] = undefined;
   let resolvedPackageId: string | undefined = undefined;
   let selectedPackageForCalc: any = null;
@@ -119,7 +128,7 @@ export async function calculateBookingPrice(
       throw new Error('الباقة المحددة غير متاحة حالياً');
     }
 
-    totalServiceDuration = (Number(pkg.durationMinutes) || 45) + travelDur;
+    baseWorkDuration = Number(pkg.durationMinutes) || 45;
     resolvedPackageId = pkg.id;
     selectedPackageForCalc = {
       id: pkg.id,
@@ -142,6 +151,7 @@ export async function calculateBookingPrice(
   // 2. Authoritative Add-ons Validation
   const addonsSnapshot: PriceCalculationResult['addons'] = [];
   const addonsForCalc: Array<{ id: string; name: string; price: number }> = [];
+  let addonsWorkDuration = 0;
 
   if (Array.isArray(addonIds) && addonIds.length > 0) {
     // Deduplicate addonIds to prevent malicious or accidental duplicate submission
@@ -164,7 +174,7 @@ export async function calculateBookingPrice(
       const addonPrice = Number(addon.price) || 0;
       const addonDuration = Number(addon.durationMinutes) || 0;
 
-      totalServiceDuration += addonDuration;
+      addonsWorkDuration += addonDuration;
 
       addonsForCalc.push({
         id: addon.id,
@@ -242,6 +252,10 @@ export async function calculateBookingPrice(
     serviceFee: 0,
   });
 
+  const serviceDurationMinutes = baseWorkDuration + addonsWorkDuration;
+  const travelTimeMinutes = travelDur;
+  const totalOccupiedMinutes = serviceDurationMinutes + travelTimeMinutes;
+
   return {
     originalPrice: finalCalc.originalTotal,
     baseOriginalPrice: finalCalc.baseOriginalPrice,
@@ -257,7 +271,10 @@ export async function calculateBookingPrice(
     totalDiscount: finalCalc.totalDiscount,
     serviceFee: finalCalc.serviceFee,
     finalPrice: finalCalc.finalPrice,
-    totalServiceDuration,
+    serviceDurationMinutes,
+    travelTimeMinutes,
+    totalOccupiedMinutes,
+    totalServiceDuration: totalOccupiedMinutes,
     packageId: resolvedPackageId,
     packageSnapshot,
     addons: addonsSnapshot,
@@ -307,7 +324,8 @@ export async function calculateMultiServiceBookingPrice(
   }
 
   const items: ItemizedServicePriceResult[] = [];
-  let combinedDuration = 0;
+  let combinedServiceDuration = 0;
+  let combinedTravelDuration = 0;
   let combinedSubtotal = 0;
   let combinedOriginalTotal = 0;
   let combinedCatalogDiscount = 0;
@@ -352,12 +370,15 @@ export async function calculateMultiServiceBookingPrice(
       itemCatalogDiscount,
     });
 
-    combinedDuration += singleResult.totalServiceDuration;
+    combinedServiceDuration += singleResult.serviceDurationMinutes;
+    combinedTravelDuration = Math.max(combinedTravelDuration, singleResult.travelTimeMinutes);
     combinedSubtotal += itemPrice;
     combinedOriginalTotal += itemOriginalPrice;
     combinedCatalogDiscount += itemCatalogDiscount;
     combinedAddonsTotal += singleResult.addonsTotal;
   }
+
+  const combinedDuration = combinedServiceDuration + combinedTravelDuration;
 
   // Validate coupon against combined subtotal
   let couponSnapshot: PriceCalculationResult['couponSnapshot'] = undefined;
@@ -402,11 +423,109 @@ export async function calculateMultiServiceBookingPrice(
     totalDiscount,
     serviceFee: 0,
     finalPrice,
+    serviceDurationMinutes: combinedServiceDuration,
+    travelTimeMinutes: combinedTravelDuration,
+    totalOccupiedMinutes: combinedDuration,
     totalServiceDuration: combinedDuration,
     packageId: items[0]?.packageId,
     packageSnapshot: items[0]?.packageSnapshot,
     addons: items.flatMap((i) => i.addons),
     promoCode: appliedCode,
     couponSnapshot,
+  };
+}
+
+/**
+ * Authoritative Server-Side Duration Calculator
+ * Determines the true service work duration, travel duration, and total occupied duration.
+ */
+export async function calculateAuthoritativeDuration(params: {
+  serviceId?: string;
+  packageId?: string;
+  addonIds?: string[];
+  servicesInput?: ServiceBookingItemInput[];
+}): Promise<AuthoritativeDurationResult> {
+  const { serviceId, packageId, addonIds, servicesInput } = params;
+
+  if (Array.isArray(servicesInput) && servicesInput.length > 0) {
+    let sumWorkMinutes = 0;
+    let maxTravelMinutes = 0;
+
+    for (const item of servicesInput) {
+      const srv = await Service.findOne({ id: item.serviceId });
+      if (!srv) continue;
+      const srvDur = Number(srv.serviceDurationMinutes || srv.duration) || 30;
+      const travelDur = Number(srv.travelTimeMinutes) || 0;
+      let baseWork = srvDur;
+
+      if (item.packageId) {
+        const pkg = await ServicePackage.findOne({ id: String(item.packageId).trim() });
+        if (pkg && pkg.serviceId === srv.id && pkg.active !== false) {
+          baseWork = Number(pkg.durationMinutes) || 45;
+        }
+      }
+
+      let addonsDur = 0;
+      if (Array.isArray(item.addonIds) && item.addonIds.length > 0) {
+        const uniqueAddonIds = Array.from(new Set(item.addonIds.map((id) => String(id).trim()).filter(Boolean)));
+        for (const aId of uniqueAddonIds) {
+          const addon = await ServiceAddon.findOne({ id: aId });
+          if (addon && addon.serviceId === srv.id && addon.active !== false) {
+            addonsDur += Number(addon.durationMinutes) || 0;
+          }
+        }
+      }
+
+      sumWorkMinutes += baseWork + addonsDur;
+      maxTravelMinutes = Math.max(maxTravelMinutes, travelDur);
+    }
+
+    const totalOccupiedMinutes = sumWorkMinutes + maxTravelMinutes;
+    return {
+      serviceDurationMinutes: sumWorkMinutes,
+      travelTimeMinutes: maxTravelMinutes,
+      totalOccupiedMinutes,
+    };
+  }
+
+  if (serviceId) {
+    const srv = await Service.findOne({ id: serviceId });
+    if (srv) {
+      const srvDur = Number(srv.serviceDurationMinutes || srv.duration) || 30;
+      const travelDur = Number(srv.travelTimeMinutes) || 0;
+      let baseWork = srvDur;
+
+      if (packageId) {
+        const pkg = await ServicePackage.findOne({ id: String(packageId).trim() });
+        if (pkg && pkg.serviceId === srv.id && pkg.active !== false) {
+          baseWork = Number(pkg.durationMinutes) || 45;
+        }
+      }
+
+      let addonsDur = 0;
+      if (Array.isArray(addonIds) && addonIds.length > 0) {
+        const uniqueAddonIds = Array.from(new Set(addonIds.map((id) => String(id).trim()).filter(Boolean)));
+        for (const aId of uniqueAddonIds) {
+          const addon = await ServiceAddon.findOne({ id: aId });
+          if (addon && addon.serviceId === srv.id && addon.active !== false) {
+            addonsDur += Number(addon.durationMinutes) || 0;
+          }
+        }
+      }
+
+      const serviceDurationMinutes = baseWork + addonsDur;
+      const totalOccupiedMinutes = serviceDurationMinutes + travelDur;
+      return {
+        serviceDurationMinutes,
+        travelTimeMinutes: travelDur,
+        totalOccupiedMinutes,
+      };
+    }
+  }
+
+  return {
+    serviceDurationMinutes: 45,
+    travelTimeMinutes: 0,
+    totalOccupiedMinutes: 45,
   };
 }

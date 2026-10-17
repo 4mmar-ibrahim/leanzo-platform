@@ -109,7 +109,7 @@ export function getBookingTimeInterval(b?: {
     if (sMin > 0 && eMin > sMin) {
       return {
         startMin: sMin,
-        endMin: Math.max(eMin, sMin + fullDuration),
+        endMin: eMin,
         display: timeStr || `${b.scheduledStart} – ${b.scheduledEnd}`,
       };
     }
@@ -125,10 +125,10 @@ export function getBookingTimeInterval(b?: {
       if (min1 > 0 && min2 > 0) {
         // Robust against both LTR and RTL string ordering:
         const startMin = Math.min(min1, min2);
-        const endMin = Math.max(Math.max(min1, min2), startMin + fullDuration);
+        const endMin = Math.max(min1, min2);
         return {
           startMin,
-          endMin,
+          endMin: endMin > startMin ? endMin : startMin + fullDuration,
           display: timeStr,
         };
       } else if (min1 > 0) {
@@ -528,14 +528,14 @@ export function isSameCategory(order: any, targetCategory?: string): boolean {
 }
 
 /**
- * Extracts the specific execution interval occupied by a category within an order.
- * In composite orders, services execute sequentially, so each category only occupies its sub-service window.
+ * Extracts all specific execution intervals occupied by a category within an order.
+ * In composite orders, services execute sequentially, so each category only occupies its sub-service windows.
  */
-export function getOrderCategoryInterval(
+export function getOrderCategoryIntervals(
   order: any,
   targetCategory: string
-): { startMin: number; endMin: number } | null {
-  if (!order) return null;
+): Array<{ startMin: number; endMin: number }> {
+  if (!order) return [];
   const targetNorm = normalizeCategory(targetCategory);
   const fullInterval = getBookingTimeInterval(order);
 
@@ -546,6 +546,7 @@ export function getOrderCategoryInterval(
   ];
 
   if (servicesList.length > 1) {
+    const results: Array<{ startMin: number; endMin: number }> = [];
     let cursor = fullInterval.startMin;
     for (const item of servicesList) {
       const itemDuration = Number(item.duration || item.service?.duration || 30);
@@ -554,16 +555,31 @@ export function getOrderCategoryInterval(
       cursor = itemEnd;
       const itemCat = normalizeCategory(item.category || item.service?.category) || 'car';
       if (itemCat === targetNorm) {
-        return { startMin: itemStart, endMin: itemEnd };
+        results.push({ startMin: itemStart, endMin: itemEnd });
       }
     }
-    return null;
+    return results;
   }
 
   if (doesOrderInvolveCategory(order, targetCategory)) {
-    return fullInterval;
+    return [fullInterval];
   }
-  return null;
+  return [];
+}
+
+/**
+ * Extracts the bounding execution interval occupied by a category within an order.
+ */
+export function getOrderCategoryInterval(
+  order: any,
+  targetCategory: string
+): { startMin: number; endMin: number } | null {
+  const intervals = getOrderCategoryIntervals(order, targetCategory);
+  if (intervals.length === 0) return null;
+  if (intervals.length === 1) return intervals[0];
+  const startMin = Math.min(...intervals.map((i) => i.startMin));
+  const endMin = Math.max(...intervals.map((i) => i.endMin));
+  return { startMin, endMin };
 }
 
 /**
@@ -630,6 +646,23 @@ export function getTimeSlotsForDate(
 
   if (isBlocked || holiday) {
     return [];
+  }
+
+  if (Array.isArray(settings?.workingDays) && settings.workingDays.length > 0) {
+    const parts = dateString.split('-').map(Number);
+    let dayOfWeek = 0;
+    try {
+      const dt = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0));
+      const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Cairo', weekday: 'short' });
+      const weekday = formatter.format(dt);
+      const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+      dayOfWeek = dayMap[weekday] !== undefined ? dayMap[weekday] : dt.getDay();
+    } catch {
+      dayOfWeek = new Date(parts[0], parts[1] - 1, parts[2]).getDay();
+    }
+    if (!settings.workingDays.includes(dayOfWeek)) {
+      return [];
+    }
   }
 
   const startStr = settings?.workingHoursStart || '09:00';

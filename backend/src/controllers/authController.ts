@@ -92,8 +92,11 @@ export async function registerCustomer(req: Request, res: Response): Promise<voi
 
     // Automatic Notifications for Customer Registration
     try {
+      const custId = (newUser._id || newUser.id).toString();
+
       await Notification.create({
         target: 'admin',
+        eventId: `customer:registered:admin:${custId}`,
         title: 'عميل جديد مسجل',
         titleEn: 'New Customer Registered',
         message: `انضم عميل جديد إلى المنصة: ${newUser.name} (${newUser.phone})`,
@@ -105,7 +108,8 @@ export async function registerCustomer(req: Request, res: Response): Promise<voi
 
       await Notification.create({
         target: 'customer',
-        userId: newUser._id.toString(),
+        userId: custId,
+        eventId: `customer:registered:cust:${custId}`,
         title: '🎉 أهلاً بك في كلينزو!',
         titleEn: 'Welcome to Cleanzo!',
         message: `مرحباً بك يا ${newUser.name}! نسعد بانضمامك لعائلة كلينزو لخدمات العناية المتكاملة.`,

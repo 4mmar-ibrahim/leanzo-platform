@@ -3,10 +3,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { CustomerNotification } from '@/types';
+import { cleanzoApi } from '@/lib/api/cleanzoApi';
 
 interface CustomerNotificationState {
   notifications: CustomerNotification[];
   addNotification: (notif: Omit<CustomerNotification, 'id' | 'timestamp' | 'read'>) => void;
+  syncRemoteNotifications: () => Promise<void>;
   markAsRead: (id: string) => void;
   markAllAsRead: (userId?: string, phone?: string) => void;
   getUnreadCount: (userId?: string, phone?: string) => number;
@@ -21,6 +23,15 @@ export const useCustomerNotificationStore = create<CustomerNotificationState>()(
       notifications: [],
 
       addNotification: (notif) => {
+        const existing = get().notifications;
+        if (notif.eventId && existing.some((n) => n.eventId === notif.eventId)) {
+          return;
+        }
+        const signature = `${notif.title}__${notif.message}__${notif.link || ''}`;
+        if (!notif.eventId && existing.some((n) => `${n.title}__${n.message}__${n.link || ''}` === signature)) {
+          return;
+        }
+
         const newNotif: CustomerNotification = {
           ...notif,
           id: `cnotif-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -30,6 +41,49 @@ export const useCustomerNotificationStore = create<CustomerNotificationState>()(
         set((state) => ({
           notifications: [newNotif, ...state.notifications],
         }));
+      },
+
+      syncRemoteNotifications: async () => {
+        try {
+          const res = await cleanzoApi.notifications.getCustomer();
+          const remoteList = Array.isArray(res) ? res : [];
+          if (remoteList.length === 0) return;
+
+          set((state) => {
+            const seen = new Set<string>();
+            const merged: CustomerNotification[] = [];
+
+            for (const n of state.notifications) {
+              const key = n.eventId || `${n.title}__${n.message}__${n.link || ''}`;
+              if (!seen.has(key)) {
+                seen.add(key);
+                merged.push(n);
+              }
+            }
+
+            for (const item of remoteList) {
+              const key = item.eventId || `${item.title}__${item.message}__${item.link || ''}`;
+              if (!seen.has(key)) {
+                seen.add(key);
+                merged.push({
+                  id: item.id || `cnotif-${Date.now()}`,
+                  eventId: item.eventId,
+                  userId: item.userId,
+                  title: item.title,
+                  titleEn: item.titleEn || item.title,
+                  message: item.message,
+                  messageEn: item.messageEn || item.message,
+                  type: item.type === 'offer' ? 'offer' : 'order',
+                  read: Boolean(item.read),
+                  link: item.link,
+                  timestamp: 'مؤخراً',
+                });
+              }
+            }
+
+            return { notifications: merged };
+          });
+        } catch {}
       },
 
       getUserNotifications: (userId?: string, phone?: string) => {

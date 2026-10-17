@@ -8,6 +8,7 @@ import { useCustomerStore } from './useCustomerStore';
 import { useNotificationStore } from './useNotificationStore';
 import { useCustomerNotificationStore } from './useCustomerNotificationStore';
 import { findConflictingOrder } from '@/lib/bookingEngine';
+import { getCanonicalBookingServiceTitle } from '@/lib/services/categoryUtils';
 
 interface OrderState {
   orders: Order[];
@@ -181,14 +182,16 @@ export const useOrderStore = create<OrderState>()(
 
         // Automatically dispatch notifications to Admin and Customer
         try {
-          const serviceTitle = newOrder.service?.title || 'خدمة كلينزو';
+          const serviceTitleAr = getCanonicalBookingServiceTitle(newOrder, false);
+          const serviceTitleEn = getCanonicalBookingServiceTitle(newOrder, true);
           const custName = newOrder.customerName || (newOrder as any).guestName || 'عميل كلينزو';
 
           useNotificationStore.getState().addNotification({
+            eventId: `order:created:admin:${newOrder.id}`,
             title: 'طلب حجز جديد',
             titleEn: 'New Booking Created',
-            message: `طلب جديد برقم #${newOrder.id} لخدمة ${serviceTitle} للعميل ${custName} بقيمة ${newOrder.finalPrice || 0} ج.م`,
-            messageEn: `New booking #${newOrder.id} for ${serviceTitle} by ${custName}`,
+            message: `طلب جديد برقم #${newOrder.id} لخدمة ${serviceTitleAr} للعميل ${custName} بقيمة ${newOrder.finalPrice || 0} ج.م`,
+            messageEn: `New booking #${newOrder.id} for ${serviceTitleEn} by ${custName}`,
             type: 'order',
             link: `/admin/orders/${newOrder.id}`,
           });
@@ -197,12 +200,13 @@ export const useOrderStore = create<OrderState>()(
           const targetPhone = newOrder.customerPhone || (newOrder as any).guestPhone || (newOrder as any).phone;
 
           useCustomerNotificationStore.getState().addNotification({
+            eventId: `order:created:cust:${newOrder.id}`,
             userId: targetUserId,
             customerPhone: targetPhone,
             title: '⏳ تم استلام طلبك وبانتظار المراجعة',
             titleEn: '⏳ Booking Received & Under Review',
-            message: `تم استلام طلبك رقم #${newOrder.id} لخدمة (${serviceTitle}) بنجاح. فريق العمليات يراجع التفاصيل لتأكيد الموعد (${newOrder.date}${newOrder.time ? ` - ${newOrder.time}` : ''}). سنوافيك بالتأكيد قريباً.`,
-            messageEn: `Your booking #${newOrder.id} for (${serviceTitle}) was received. Our team is reviewing details for (${newOrder.date}${newOrder.time ? ` at ${newOrder.time}` : ''}). We will confirm shortly.`,
+            message: `تم استلام طلبك رقم #${newOrder.id} لخدمة (${serviceTitleAr}) بنجاح. فريق العمليات يراجع التفاصيل لتأكيد الموعد (${newOrder.date}${newOrder.time ? ` - ${newOrder.time}` : ''}). سنوافيك بالتأكيد قريباً.`,
+            messageEn: `Your booking #${newOrder.id} for (${serviceTitleEn}) was received. Our team is reviewing details for (${newOrder.date}${newOrder.time ? ` at ${newOrder.time}` : ''}). We will confirm shortly.`,
             type: 'order',
             link: `/track/${newOrder.id}`,
           });
@@ -372,30 +376,32 @@ export const useOrderStore = create<OrderState>()(
         try {
           const order = get().getOrderById(orderId);
           const custName = order?.customerName || 'العميل';
-          const srvTitle = order?.service?.title || 'الخدمة';
+          const srvTitleAr = getCanonicalBookingServiceTitle(order, false);
+          const srvTitleEn = getCanonicalBookingServiceTitle(order, true);
 
           useNotificationStore.getState().addNotification({
+            eventId: `order:status:admin:${orderId}:${status}`,
             title: `تحديث حالة الطلب #${orderId}`,
             titleEn: `Order #${orderId} Status Updated`,
-            message: `تم تحديث حالة طلب ${custName} لخدمة ${srvTitle} إلى: (${info.ar})`,
+            message: `تم تحديث حالة طلب ${custName} لخدمة ${srvTitleAr} إلى: (${info.ar})`,
             messageEn: `Order #${orderId} status changed to ${info.en}`,
             type: 'order',
             link: `/admin/orders/${orderId}`,
           });
 
           const notifMeta = statusLabels[status] || statusLabels.pending;
-          const srvTitleEn = (order?.service as any)?.titleEn || srvTitle;
           const addressArea = typeof order?.address === 'object' ? order?.address?.area || order?.address?.city : undefined;
 
           const targetUserId = order?.userId || (order as any)?.customerId;
           const targetPhone = order?.customerPhone || (order as any)?.guestPhone || (order as any)?.phone;
 
           useCustomerNotificationStore.getState().addNotification({
+            eventId: `order:status:cust:${orderId}:${status}`,
             userId: targetUserId,
             customerPhone: targetPhone,
             title: notifMeta.titleAr,
             titleEn: notifMeta.titleEn,
-            message: notifMeta.getMsgAr(orderId, srvTitle, {
+            message: notifMeta.getMsgAr(orderId, srvTitleAr, {
               date: order?.date,
               time: order?.time,
               techName: order?.technician?.name,
@@ -467,11 +473,15 @@ export const useOrderStore = create<OrderState>()(
 
         // Dispatch notification for technician assignment
         try {
+          const srvTitleAr = getCanonicalBookingServiceTitle(currentOrder, false);
+          const srvTitleEn = getCanonicalBookingServiceTitle(currentOrder, true);
+
           useNotificationStore.getState().addNotification({
+            eventId: `order:assign:admin:${orderId}:${technician.id || technician.name}`,
             title: 'إسناد فني لميدان العمل',
             titleEn: 'Technician Assigned',
-            message: `تم إسناد الطلب #${orderId} إلى الفني الكابتن ${technician.name} (${technician.specialty || 'فني ميداني'}).`,
-            messageEn: `Order #${orderId} assigned to ${technician.name}`,
+            message: `تم إسناد الطلب #${orderId} لخدمة (${srvTitleAr}) إلى الفني الكابتن ${technician.name} (${technician.specialty || 'فني ميداني'}).`,
+            messageEn: `Order #${orderId} for (${srvTitleEn}) assigned to ${technician.name}`,
             type: 'technician',
             link: `/admin/orders/${orderId}`,
           });
@@ -480,12 +490,13 @@ export const useOrderStore = create<OrderState>()(
           const targetPhone = currentOrder?.customerPhone || (currentOrder as any)?.guestPhone || (currentOrder as any)?.phone;
 
           useCustomerNotificationStore.getState().addNotification({
+            eventId: `order:assign:cust:${orderId}:${technician.id || technician.name}`,
             userId: targetUserId,
             customerPhone: targetPhone,
             title: '👷‍♂️ تم تعيين الفني المختص لخدمتك',
             titleEn: '👷‍♂️ Specialist Assigned to Your Booking',
-            message: `تم إسناد طلبك #${orderId} إلى الكابتن (${technician.name}). تم تجهيز سيارة الخدمة المتنقلة بأحدث معدات ومواد النظافة والتعقيم الفندقية لزيارتك.`,
-            messageEn: `Captain (${technician.name}) has been assigned to your booking #${orderId}. The mobile unit is equipped with top cleaning and sanitization gear for your visit.`,
+            message: `تم إسناد طلبك #${orderId} لخدمة (${srvTitleAr}) إلى الكابتن (${technician.name}). تم تجهيز سيارة الخدمة المتنقلة بأحدث معدات ومواد النظافة والتعقيم الفندقية لزيارتك.`,
+            messageEn: `Captain (${technician.name}) has been assigned to your booking #${orderId} for (${srvTitleEn}). The mobile unit is equipped with top cleaning and sanitization gear for your visit.`,
             type: 'order',
             link: `/track/${orderId}`,
           });

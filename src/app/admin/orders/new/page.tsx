@@ -33,7 +33,7 @@ import { toast } from 'sonner';
 import { validateEgyptianPhone } from '@/lib/validation/phoneValidation';
 import { validateCustomerName } from '@/lib/validation/nameValidation';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
-import { isSameService, isSameTime, getBookingTimeInterval, isTimeIntervalOverlapping, timeStringToMinutes, getOrderCategoryInterval } from '@/lib/bookingEngine';
+import { isSameService, isSameTime, getBookingTimeInterval, isTimeIntervalOverlapping, timeStringToMinutes, getOrderCategoryInterval, getOrderCategoryIntervals } from '@/lib/bookingEngine';
 import { isSameCategory } from '@/lib/services/categoryUtils';
 
 function AdminNewBookingContent() {
@@ -223,8 +223,8 @@ function AdminNewBookingContent() {
       if (o.date !== selectedDate) return false;
 
       for (const proposed of proposedCategoryIntervals) {
-        const orderCatInterval = getOrderCategoryInterval(o, proposed.category);
-        if (orderCatInterval && isTimeIntervalOverlapping(proposed, orderCatInterval)) {
+        const orderCatIntervals = getOrderCategoryIntervals(o, proposed.category);
+        if (orderCatIntervals.some((oInt) => isTimeIntervalOverlapping(proposed, oInt))) {
           conflictCategory = proposed.category;
           return true;
         }

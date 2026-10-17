@@ -36,7 +36,57 @@ const DEFAULT_CONTACT = {
   supportNoteEn: 'Customer support replies on WhatsApp within 10 minutes.',
 };
 
-async function getAuthoritativeContact(settingsContact?: any): Promise<any> {
+/**
+ * Canonical generator for bilingual working hours description text
+ * derived strictly from authoritative workingHoursStart, workingHoursEnd, and workingDays.
+ */
+export function formatWorkingHoursText(
+  startStr: string = '09:00',
+  endStr: string = '22:00',
+  workingDays?: number[]
+): { workingHours: string; workingHoursEn: string } {
+  const formatTime12 = (time24: string) => {
+    const [hStr, mStr] = String(time24 || '09:00').trim().split(':');
+    let h = parseInt(hStr, 10);
+    if (isNaN(h)) h = 9;
+    const m = mStr ? mStr.padStart(2, '0') : '00';
+    const isPm = h >= 12;
+    if (h === 0) h = 12;
+    else if (h > 12) h -= 12;
+
+    const arSuffix = isPm ? 'م' : 'ص';
+    const enSuffix = isPm ? 'PM' : 'AM';
+    const minSuffix = m === '00' ? ':00' : `:${m}`;
+
+    return {
+      ar: `${h}${minSuffix} ${arSuffix}`,
+      en: `${h}${minSuffix} ${enSuffix}`,
+    };
+  };
+
+  const startFmt = formatTime12(startStr);
+  const endFmt = formatTime12(endStr);
+
+  const isDaily =
+    !Array.isArray(workingDays) ||
+    workingDays.length === 7 ||
+    workingDays.length === 0 ||
+    [0, 1, 2, 3, 4, 5, 6].every((d) => workingDays.includes(d));
+
+  if (isDaily) {
+    return {
+      workingHours: `يومياً من ${startFmt.ar} حتى ${endFmt.ar}`,
+      workingHoursEn: `Daily ${startFmt.en} – ${endFmt.en}`,
+    };
+  }
+
+  return {
+    workingHours: `طوال أيام العمل من ${startFmt.ar} حتى ${endFmt.ar}`,
+    workingHoursEn: `Business Days ${startFmt.en} – ${endFmt.en}`,
+  };
+}
+
+async function getAuthoritativeContact(settingsContact?: any, bookingSettings?: any): Promise<any> {
   let cmsContact: any = null;
   try {
     const published = await CMSContent.findOne({ status: 'published' });
@@ -46,9 +96,25 @@ async function getAuthoritativeContact(settingsContact?: any): Promise<any> {
   }
 
   const base: any = { ...DEFAULT_CONTACT };
+
+  // If authoritative booking settings are supplied, derive official workingHours text dynamically
+  if (bookingSettings && (bookingSettings.workingHoursStart || bookingSettings.workingHoursEnd)) {
+    const derived = formatWorkingHoursText(
+      bookingSettings.workingHoursStart || '09:00',
+      bookingSettings.workingHoursEnd || '22:00',
+      bookingSettings.workingDays
+    );
+    base.workingHours = derived.workingHours;
+    base.workingHoursEn = derived.workingHoursEn;
+  }
+
   if (cmsContact && typeof cmsContact === 'object') {
     for (const [k, v] of Object.entries(cmsContact)) {
       if (v !== undefined && v !== null && (typeof v !== 'string' || v.trim() !== '')) {
+        // Prevent static CMS text from overriding dynamically derived authoritative working hours
+        if (bookingSettings?.workingHoursStart && (k === 'workingHours' || k === 'workingHoursEn')) {
+          continue;
+        }
         base[k] = v;
       }
     }
@@ -56,6 +122,9 @@ async function getAuthoritativeContact(settingsContact?: any): Promise<any> {
   if (settingsContact && typeof settingsContact === 'object') {
     for (const [k, v] of Object.entries(settingsContact)) {
       if (v !== undefined && v !== null && (typeof v !== 'string' || v.trim() !== '')) {
+        if (bookingSettings?.workingHoursStart && (k === 'workingHours' || k === 'workingHoursEn')) {
+          continue;
+        }
         base[k] = v;
       }
     }
@@ -116,7 +185,7 @@ export async function getPublicSettings(req: Request, res: Response): Promise<vo
     }
 
     const authoritativeSocial = await getAuthoritativeSocial(settings.social);
-    const authoritativeContact = await getAuthoritativeContact((settings as any).contact);
+    const authoritativeContact = await getAuthoritativeContact((settings as any).contact, safeBooking);
 
     sendSuccess(res, {
       general: settings.general,
@@ -184,7 +253,7 @@ export async function getAllSettingsAdmin(req: Request, res: Response): Promise<
     const adminSettingsObj = typeof (settings as any).toObject === 'function' ? (settings as any).toObject() : { ...settings };
     adminSettingsObj.booking = safeBookingAdmin;
     adminSettingsObj.social = await getAuthoritativeSocial(settings.social);
-    adminSettingsObj.contact = await getAuthoritativeContact((settings as any).contact);
+    adminSettingsObj.contact = await getAuthoritativeContact((settings as any).contact, safeBookingAdmin);
     sendSuccess(res, adminSettingsObj);
   } catch (err: any) {
     sendError(res, err.message, 500);
@@ -210,6 +279,28 @@ export async function updateSettingsAdmin(req: Request, res: Response): Promise<
         }
         if (updates.booking.breakEnd === undefined || updates.booking.breakEnd === null) {
           delete (settings.booking as any).breakEnd;
+        }
+        // Dynamically keep contact workingHours synchronized with booking settings
+        const derived = formatWorkingHoursText(
+          settings.booking.workingHoursStart || '09:00',
+          settings.booking.workingHoursEnd || '22:00',
+          settings.booking.workingDays
+        );
+        (settings as any).contact = {
+          ...((settings as any).contact || {}),
+          workingHours: derived.workingHours,
+          workingHoursEn: derived.workingHoursEn,
+        };
+        settings.markModified('contact');
+        try {
+          await CMSContent.updateMany({}, {
+            $set: {
+              'contact.workingHours': derived.workingHours,
+              'contact.workingHoursEn': derived.workingHoursEn,
+            }
+          });
+        } catch (cmsErr) {
+          console.warn('Non-critical: CMS working hours sync error:', cmsErr);
         }
         settings.markModified('booking');
       }

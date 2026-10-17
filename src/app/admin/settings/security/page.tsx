@@ -78,6 +78,14 @@ export default function SecurityAndEncryptionPage() {
   const [showWipeModal, setShowWipeModal] = useState(false);
   const [wipeConfirmInput, setWipeConfirmInput] = useState('');
 
+  const [isHttps, setIsHttps] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsHttps(window.location.protocol === 'https:');
+    }
+  }, []);
+
   // Format Date to localized Arabic format
   const formatDateTime = (dateStr: string | null | undefined) => {
     if (!dateStr) return 'لا يوجد تشفير سابق';
@@ -132,6 +140,10 @@ export default function SecurityAndEncryptionPage() {
 
   // Execute full encryption
   const handleEncryptAll = async () => {
+    if (!isOwner) {
+      toast.error('عملية التشفير الشامل محصورة بمالك المنصة (Platform Owner) فقط');
+      return;
+    }
     setIsEncrypting(true);
     setEncryptionError(null);
     try {
@@ -145,7 +157,7 @@ export default function SecurityAndEncryptionPage() {
       const nowIso = res.lastEncryptedAt || new Date().toISOString();
 
       setEncryptionStatus({
-        isEncrypted: true,
+        isEncrypted: totalCalculated > 0,
         algorithm: res.algorithm || 'AES-256-GCM',
         totalRecordsEncrypted: totalCalculated,
         lastEncryptedAt: nowIso,
@@ -166,7 +178,7 @@ export default function SecurityAndEncryptionPage() {
       });
 
       toast.success(
-        `تم تشفير جميع بيانات البرنامج بنجاح (${totalCalculated} سجل مشفر بتقنية AES-256-GCM)`
+        `تم تشفير بيانات البرنامج بنجاح (${totalCalculated} سجل مشفر بتقنية AES-256-GCM)`
       );
       setShowEncryptModal(false);
       await fetchStatusAndLogs();
@@ -263,7 +275,7 @@ export default function SecurityAndEncryptionPage() {
             <span>مركز الأمان وتشفير جميع بيانات البرنامج</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            تشفير فعلي شامل للبيانات الحساسة بخوارزمية AES-256-GCM، ومسح شامل لجميع أقسام الموقع
+            تدقيق فعلي متعدد الطبقات: تشفير كلمات المرور، الاتصال المشفر، تشفير القرص، وحقول البيانات
           </p>
         </div>
 
@@ -312,27 +324,35 @@ export default function SecurityAndEncryptionPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-xl font-black text-white">
-                    حالة تشفير بيانات المنصة
+                    حالة تدقيق وتشفير بيانات المنصة
                   </h2>
                   <Sparkles className="w-5 h-5 text-amber-400 animate-pulse" />
                 </div>
                 <p className="text-xs text-slate-300 mt-0.5">
-                  خوارزمية التشفير القياسية: <span className="font-mono text-sky-300 font-bold">AES-256-GCM</span>
+                  خوارزمية تشفير الحقول: <span className="font-mono text-sky-300 font-bold">AES-256-GCM</span>
                 </p>
               </div>
             </div>
 
             {/* Status Badge */}
             <div className="flex items-center gap-2 self-start md:self-auto">
-              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold shadow-sm bg-emerald-500/20 border border-emerald-500/40 text-emerald-300">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>منظومة الحماية متعددة الطبقات نشطة ومؤمنة</span>
-              </span>
+              {encryptionStatus.isEncrypted ? (
+                <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold shadow-sm bg-emerald-500/20 border border-emerald-500/40 text-emerald-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>تشفير حقول البيانات مفعّل ({encryptionStatus.totalRecordsEncrypted} حقل مشفر)</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold shadow-sm bg-sky-500/20 border border-sky-500/40 text-sky-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-sky-400" />
+                  <span>أمان المصادقة والجلسات نشط — تشفير الحقول غير مفعّل (0 سجل)</span>
+                </span>
+              )}
             </div>
           </div>
 
           {/* Multi-Layer Security Overview (Bcrypt, TLS, JWT, AES-256-GCM) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+            {/* 1. Passwords */}
             <div className="p-3.5 rounded-2xl bg-white/10 border border-white/15 space-y-1 backdrop-blur-xs">
               <div className="flex items-center gap-2 text-emerald-300 font-bold">
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
@@ -340,46 +360,68 @@ export default function SecurityAndEncryptionPage() {
               </div>
               <p className="text-[11px] text-slate-300">Bcrypt Salted Hash (10 Rounds)</p>
               <span className="inline-block text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                مؤمن بنسبة 100%
+                فعّال ومؤمن 100%
               </span>
             </div>
 
+            {/* 2. In-Transit */}
             <div className="p-3.5 rounded-2xl bg-white/10 border border-white/15 space-y-1 backdrop-blur-xs">
               <div className="flex items-center gap-2 text-emerald-300 font-bold">
                 <Lock className="w-4 h-4 text-emerald-400" />
-                <span>تشفير الاتصال والبيانات</span>
+                <span>تشفير الاتصال (In-Transit)</span>
               </div>
-              <p className="text-[11px] text-slate-300">TLS 1.3 / HTTPS In-Transit</p>
-              <span className="inline-block text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                مشفر نشط 100%
+              <p className="text-[11px] text-slate-300">
+                {isHttps ? 'TLS 1.2 / 1.3 (HTTPS مشفر)' : 'بروتوكول HTTP محلي'}
+              </p>
+              <span className={`inline-block text-[10px] font-black px-2 py-0.5 rounded-md border ${
+                isHttps
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                  : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+              }`}>
+                {isHttps ? 'فعّال (اتصال مشفر HTTPS)' : 'غير مفعّل (اتصال محلي HTTP)'}
               </span>
             </div>
 
+            {/* 3. At-Rest */}
             <div className="p-3.5 rounded-2xl bg-white/10 border border-white/15 space-y-1 backdrop-blur-xs">
-              <div className="flex items-center gap-2 text-emerald-300 font-bold">
-                <Key className="w-4 h-4 text-emerald-400" />
-                <span>جلسات المشرفين</span>
+              <div className="flex items-center gap-2 text-indigo-300 font-bold">
+                <Database className="w-4 h-4 text-indigo-400" />
+                <span>تشفير القرص (At-Rest)</span>
               </div>
-              <p className="text-[11px] text-slate-300">JWT Cryptographically Signed</p>
-              <span className="inline-block text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                موقّع ومحمي 100%
+              <p className="text-[11px] text-slate-300">على مستوى البنية التحتية/السيرفر</p>
+              <span className="inline-block text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                غير قابل للتحقق برمجيًا
               </span>
             </div>
 
+            {/* 4. Field-Level */}
             <div className="p-3.5 rounded-2xl bg-white/10 border border-white/15 space-y-1 backdrop-blur-xs">
               <div className="flex items-center gap-2 text-sky-300 font-bold">
-                <Database className="w-4 h-4 text-sky-400" />
+                <Key className="w-4 h-4 text-sky-400" />
                 <span>تشفير حقول البيانات</span>
               </div>
               <p className="text-[11px] text-slate-300">AES-256-GCM Column Level</p>
               <span className={`inline-block text-[10px] font-black px-2 py-0.5 rounded-md border ${
                 encryptionStatus.isEncrypted
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                  : 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+                  : 'bg-slate-500/20 text-slate-300 border-slate-500/30'
               }`}>
-                {encryptionStatus.isEncrypted ? `مفعّل (${encryptionStatus.totalRecordsEncrypted} حقل)` : 'جاهز للتطبيق عند الطلب'}
+                {encryptionStatus.isEncrypted
+                  ? `فعّال (${encryptionStatus.totalRecordsEncrypted} حقل مشفر)`
+                  : 'غير مفعّل (0 سجل مشفر)'}
               </span>
             </div>
+          </div>
+
+          {/* Architectural Transparency Notice */}
+          <div className="p-4 rounded-2xl bg-white/5 border border-white/15 text-xs text-slate-300 space-y-1 backdrop-blur-xs">
+            <div className="flex items-center gap-2 text-amber-300 font-bold">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>معايير الشفافية والمصداقية الأمنية في Cleanzo.net:</span>
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-300">
+              تشفير حقول البيانات (مثل أرقام الهواتف) بخوارزمية AES-GCM يتطلب معمارية فك تشفير شفافة (Transparent Middleware) وفهارس بحث عمياء (HMAC Blind Indexing) لمنع تعطل تسجيل الدخول والبحث بالمطابقة. المؤشرات أعلاه تعكس التنفيذ الفعلي المثبت برمجياً دون تضليل.
+            </p>
           </div>
 
           {/* Last Encrypted Date Banner */}
@@ -390,7 +432,7 @@ export default function SecurityAndEncryptionPage() {
               <span className="font-bold text-sky-300">{formatDateTime(encryptionStatus.lastEncryptedAt)}</span>
             </div>
             <div className="text-slate-300 text-[11px]">
-              إجمالي السجلات المشفرة: <span className="font-bold font-mono text-emerald-300">{encryptionStatus.totalRecordsEncrypted.toLocaleString()} سجل</span>
+              إجمالي السجلات المشفرة فعلياً: <span className="font-bold font-mono text-emerald-300">{encryptionStatus.totalRecordsEncrypted.toLocaleString()} سجل</span>
             </div>
           </div>
 
@@ -434,27 +476,29 @@ export default function SecurityAndEncryptionPage() {
             </div>
           </div>
 
-          {/* Action Trigger Buttons */}
+          {/* Action Trigger Buttons (Owner Only) */}
           <div className="pt-2 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setShowEncryptModal(true)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold text-xs sm:text-sm bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white shadow-lg shadow-sky-500/25 transition-all transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
-            >
-              <Key className="w-4 h-4" />
-              <span>تشفير حقول البيانات (AES-256-GCM)</span>
-            </button>
-
             {isOwner && (
-              <button
-                type="button"
-                onClick={() => setShowWipeModal(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl font-semibold text-xs sm:text-sm bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 transition-colors cursor-pointer"
-                title="خاص بمالك المنصة فقط"
-              >
-                <Trash2 className="w-4 h-4 text-rose-400" />
-                <span>حذف جميع بيانات الموقع بالكامل (مالك المنصة فقط)</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowEncryptModal(true)}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold text-xs sm:text-sm bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white shadow-lg shadow-sky-500/25 transition-all transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+                >
+                  <Key className="w-4 h-4" />
+                  <span>تشفير حقول البيانات (AES-256-GCM) — مالك المنصة</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowWipeModal(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl font-semibold text-xs sm:text-sm bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 transition-colors cursor-pointer"
+                  title="خاص بمالك المنصة فقط"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-400" />
+                  <span>حذف جميع بيانات الموقع بالكامل (مالك المنصة فقط)</span>
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -560,13 +604,16 @@ export default function SecurityAndEncryptionPage() {
               </div>
             </div>
 
-            <div className="text-xs text-slate-600 dark:text-slate-300 space-y-2 bg-slate-50 dark:bg-slate-800/50 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700/50">
-              <p>
-                سيقوم النظام بمسح قاعدة البيانات وتشفير جميع البيانات الحساسة فعلياً
-                (أرقام هواتف العملاء، تفاصيل العناوين، معلومات الطلبات، وسجلات الرسائل).
+            <div className="text-xs text-slate-600 dark:text-slate-300 space-y-2 bg-amber-500/10 p-3.5 rounded-2xl border border-amber-500/30">
+              <p className="font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>تنبيه تقني حاسم قبل المتابعة:</span>
               </p>
-              <p className="font-semibold text-emerald-600 dark:text-emerald-400">
-                ✓ سيتم حفظ تاريخ وتوقيت العملية في سجل التشفير الموثق.
+              <p className="text-[11px] leading-relaxed">
+                تشفير أرقام الهواتف مباشرة بخوارزمية AES-GCM دون توفير فهارس بحث عمياء (HMAC Blind Indexing) وطبقة فك تشفير شفافة سيعطل تسجيل دخول العملاء بمطابقة الأرقام. يُنصح بعدم تشغيلها إلا بعد استكمال النسخ الاحتياطي وتفعيل معمارية فك التشفير.
+              </p>
+              <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                ✓ خاص بمالك المنصة وموثق في سجل العمليات.
               </p>
             </div>
 

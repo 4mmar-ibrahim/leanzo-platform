@@ -784,7 +784,9 @@ async function runMasterMatrix() {
   await recordTest('BUG-12', 'Zo 3D mascot approved artwork dimensions and published endpoint', async () => {
     const zoRes = await request('GET', '/zo/published');
     assert(zoRes.status === 200, 'GET /zo/published returns 200');
-    const zoAssetPath = path.join(process.cwd(), 'public/brand/zo/zo-approved.png');
+    const localAssetPath = path.join(process.cwd(), 'public/brand/zo/zo-approved.png');
+    const rootAssetPath = path.join(process.cwd(), '../public/brand/zo/zo-approved.png');
+    const zoAssetPath = fs.existsSync(localAssetPath) ? localAssetPath : rootAssetPath;
     assert(fs.existsSync(zoAssetPath), `Approved Zo mascot asset exists at ${zoAssetPath}`);
     const buf = fs.readFileSync(zoAssetPath);
     const width = buf.readUInt32BE(16);

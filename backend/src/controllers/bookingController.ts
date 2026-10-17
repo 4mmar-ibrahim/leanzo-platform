@@ -67,7 +67,7 @@ function timeStringToMinutes(timeStr: string): number {
   return hours * 60 + (isNaN(minutes) ? 0 : minutes);
 }
 
-function getBookingTimeInterval(b: any): { startMin: number; endMin: number; display: string } {
+export function getBookingTimeInterval(b: any): { startMin: number; endMin: number; display: string } {
   if (!b) return { startMin: 0, endMin: 60, display: '—' };
 
   const timeStr = String(b.time || '').trim();
@@ -85,7 +85,7 @@ function getBookingTimeInterval(b: any): { startMin: number; endMin: number; dis
     if (sMin > 0 && eMin > sMin) {
       return {
         startMin: sMin,
-        endMin: Math.max(eMin, sMin + fullDuration),
+        endMin: eMin,
         display: timeStr || `${b.scheduledStart} – ${b.scheduledEnd}`,
       };
     }
@@ -101,10 +101,10 @@ function getBookingTimeInterval(b: any): { startMin: number; endMin: number; dis
       if (min1 > 0 && min2 > 0) {
         // Robust against both LTR and RTL string ordering:
         const startMin = Math.min(min1, min2);
-        const endMin = Math.max(Math.max(min1, min2), startMin + fullDuration);
+        const endMin = Math.max(min1, min2);
         return {
           startMin,
-          endMin,
+          endMin: endMin > startMin ? endMin : startMin + fullDuration,
           display: timeStr,
         };
       } else if (min1 > 0) {
@@ -129,7 +129,7 @@ function getBookingTimeInterval(b: any): { startMin: number; endMin: number; dis
   };
 }
 
-function isTimeIntervalOverlapping(
+export function isTimeIntervalOverlapping(
   intA: { startMin: number; endMin: number },
   intB: { startMin: number; endMin: number }
 ): boolean {
@@ -166,22 +166,56 @@ interface StatusNotificationContent {
   messageEn: string;
 }
 
+export function getCanonicalBookingServiceTitle(booking: any, lang: 'ar' | 'en' = 'ar'): string {
+  if (!booking) return lang === 'en' ? 'Cleanzo Service' : 'خدمة كلينزو';
+
+  // 1. Check composite services array in serviceSnapshot.services or metadata.services
+  const snapServices = Array.isArray(booking.serviceSnapshot?.services) && booking.serviceSnapshot.services.length > 0
+    ? booking.serviceSnapshot.services
+    : Array.isArray(booking.metadata?.services) && booking.metadata.services.length > 0
+    ? booking.metadata.services
+    : [];
+
+  if (snapServices.length > 0) {
+    const titles = snapServices
+      .map((s: any) => lang === 'en' ? (s.titleEn || s.title || s.nameEn || s.name) : (s.title || s.titleEn || s.name || s.nameEn))
+      .filter(Boolean);
+    if (titles.length > 0) {
+      return titles.join(' + ');
+    }
+  }
+
+  // 2. Check packageSnapshot
+  const pkgName = lang === 'en'
+    ? (booking.packageSnapshot?.nameEn || booking.packageSnapshot?.name)
+    : (booking.packageSnapshot?.name || booking.packageSnapshot?.nameEn);
+  if (pkgName) return pkgName;
+
+  // 3. Check serviceSnapshot.title
+  const snapTitle = lang === 'en'
+    ? (booking.serviceSnapshot?.titleEn || booking.serviceSnapshot?.title)
+    : (booking.serviceSnapshot?.title || booking.serviceSnapshot?.titleEn);
+  if (snapTitle) return snapTitle;
+
+  // 4. Check direct serviceTitle
+  if (booking.serviceTitle) return booking.serviceTitle;
+
+  // 5. Check populated service object
+  const srvObjTitle = lang === 'en'
+    ? (booking.service?.titleEn || booking.service?.title)
+    : (booking.service?.title || booking.service?.titleEn);
+  if (srvObjTitle) return srvObjTitle;
+
+  return lang === 'en' ? 'Cleanzo Service' : 'خدمة كلينزو';
+}
+
 export function getCustomerNotificationContentForStatus(
   status: BookingStatus,
-  booking: {
-    id: string;
-    customerName?: string;
-    serviceSnapshot?: { title?: string; titleEn?: string };
-    date?: string;
-    time?: string;
-    assignedTechnicianName?: string;
-    technician?: { name?: string };
-    address?: { area?: string; city?: string; governorate?: string };
-  },
+  booking: any,
   note?: string
 ): StatusNotificationContent {
-  const serviceTitle = booking.serviceSnapshot?.title || 'خدمة كلينزو';
-  const serviceTitleEn = booking.serviceSnapshot?.titleEn || booking.serviceSnapshot?.title || 'Cleanzo Service';
+  const serviceTitle = getCanonicalBookingServiceTitle(booking, 'ar');
+  const serviceTitleEn = getCanonicalBookingServiceTitle(booking, 'en');
   const customerName = booking.customerName || 'عميلنا العزيز';
   const date = booking.date || '';
   const time = booking.time || '';
@@ -651,8 +685,8 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
             addons: pricing.addons || [],
             category: finalOrderCategory,
             date,
-            time,
-            timeSlotStart: time,
+            time: `${slotTiming.scheduledStart} – ${slotTiming.scheduledEnd}`,
+            timeSlotStart: slotTiming.scheduledStart,
             scheduledStart: slotTiming.scheduledStart,
             scheduledEnd: slotTiming.scheduledEnd,
             serviceDurationMinutes: slotTiming.serviceDurationMinutes,
@@ -688,16 +722,43 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
         }
       });
     } catch (availOrLockErr: any) {
+      if (availOrLockErr.code === 'DURATION_INSUFFICIENT' || availOrLockErr.status === 422 || availOrLockErr.statusCode === 422) {
+        sendError(
+          res,
+          availOrLockErr.message,
+          422,
+          'DURATION_INSUFFICIENT',
+          availOrLockErr.details
+        );
+        return;
+      }
+
       if (
         availOrLockErr.code === 'OFFICIAL_HOLIDAY' ||
+        availOrLockErr.code === 'BLOCKED_DATE' ||
+        availOrLockErr.code === 'OUTSIDE_WORKING_DAYS' ||
         availOrLockErr.message?.includes('عطلة') ||
-        availOrLockErr.message?.includes('مغلق بالكامل')
+        availOrLockErr.message?.includes('مغلق بالكامل') ||
+        availOrLockErr.message?.includes('خارج أيام العمل')
       ) {
         sendError(
           res,
-          availOrLockErr.message || 'التاريخ المحدد عطلة رسمية وغير متاح للحجز',
-          400,
-          'OFFICIAL_HOLIDAY'
+          availOrLockErr.message || 'التاريخ المحدد عطلة رسمية أو غير متاح للحجز',
+          availOrLockErr.statusCode || 422,
+          availOrLockErr.code || 'OFFICIAL_HOLIDAY'
+        );
+        return;
+      }
+
+      if (
+        availOrLockErr.code === 'TIME_BEFORE_WORK_HOURS' ||
+        availOrLockErr.code === 'TIME_EXCEEDS_WORK_HOURS'
+      ) {
+        sendError(
+          res,
+          availOrLockErr.message,
+          409,
+          availOrLockErr.code
         );
         return;
       }
@@ -780,13 +841,16 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
 
     // Automatic Notification Dispatches
     try {
+      const canonicalTitleAr = getCanonicalBookingServiceTitle(newBooking, 'ar');
+      const canonicalTitleEn = getCanonicalBookingServiceTitle(newBooking, 'en');
+
       await Notification.create({
         target: 'admin',
         eventId: `order:created:admin:${newBooking.id}`,
         title: 'طلب حجز جديد',
         titleEn: 'New Booking Created',
-        message: `طلب جديد برقم #${newBooking.id} لخدمة ${newBooking.serviceSnapshot?.title || 'كلينزو'} للعميل ${newBooking.customerName} بقيمة ${newBooking.finalPrice} ج.م`,
-        messageEn: `New booking #${newBooking.id} received from ${newBooking.customerName}`,
+        message: `طلب جديد برقم #${newBooking.id} لخدمة ${canonicalTitleAr} للعميل ${newBooking.customerName} بقيمة ${newBooking.finalPrice} ج.م`,
+        messageEn: `New booking #${newBooking.id} for ${canonicalTitleEn} from ${newBooking.customerName}`,
         type: 'order',
         read: false,
         link: `/admin/orders/${newBooking.id}`,
@@ -1529,13 +1593,16 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
 
     // Automatic Notification Dispatches for Order Status Change
     try {
+      const canonicalTitleAr = getCanonicalBookingServiceTitle(booking, 'ar');
+      const canonicalTitleEn = getCanonicalBookingServiceTitle(booking, 'en');
+
       await Notification.create({
         target: 'admin',
         eventId: `order:status:admin:${booking.id}:${statusKey}`,
         title: `تحديث حالة الطلب #${booking.id}`,
         titleEn: `Order Status #${booking.id}`,
-        message: `تم تغيير حالة طلب العميل ${booking.customerName} إلى (${statusLabelsAr[statusKey]})`,
-        messageEn: `Order #${booking.id} status changed to ${statusLabelsEn[statusKey]}`,
+        message: `تم تغيير حالة طلب العميل ${booking.customerName} لخدمة (${canonicalTitleAr}) إلى (${statusLabelsAr[statusKey]})`,
+        messageEn: `Order #${booking.id} (${canonicalTitleEn}) status changed to ${statusLabelsEn[statusKey]}`,
         type: 'order',
         read: false,
         link: `/admin/orders/${booking.id}`,
@@ -1958,13 +2025,16 @@ export async function cancelBookingCustomer(req: AuthenticatedRequest, res: Resp
 
     // Automatic Notification Dispatches
     try {
+      const canonicalTitleAr = getCanonicalBookingServiceTitle(booking, 'ar');
+      const canonicalTitleEn = getCanonicalBookingServiceTitle(booking, 'en');
+
       await Notification.create({
         target: 'admin',
         eventId: `order:cancel:admin:${booking.id}`,
         title: `إلغاء حجز #${booking.id}`,
         titleEn: `Booking Cancelled #${booking.id}`,
-        message: `قام العميل ${booking.customerName} بإلغاء الطلب #${booking.id}. السبب: ${booking.cancellationReason}`,
-        messageEn: `Customer ${booking.customerName} cancelled order #${booking.id}`,
+        message: `قام العميل ${booking.customerName} بإلغاء حجز (${canonicalTitleAr}) للطلب #${booking.id}. السبب: ${booking.cancellationReason || 'إلغاء بواسطة العميل'}`,
+        messageEn: `Customer ${booking.customerName} cancelled booking (${canonicalTitleEn}) #${booking.id}`,
         type: 'order',
         read: false,
         link: `/admin/orders/${booking.id}`,
@@ -1977,8 +2047,8 @@ export async function cancelBookingCustomer(req: AuthenticatedRequest, res: Resp
           eventId: `order:cancel:cust:${booking.id}`,
           title: `❌ تم تأكيد إلغاء حجز الطلب #${booking.id}`,
           titleEn: `❌ Booking #${booking.id} Cancelled`,
-          message: `تم إلغاء طلبك #${booking.id} بنجاح بناءً على طلبك. نأمل أن نراك مجدداً قريباً ويمكنك حجز موعد جديد في أي وقت بخطوات بسيطة.`,
-          messageEn: `Your booking #${booking.id} has been cancelled upon your request. We look forward to serving you again anytime!`,
+          message: `تم إلغاء حجزك لخدمة (${canonicalTitleAr}) للطلب #${booking.id} بنجاح بناءً على طلبك. نأمل أن نراك مجدداً قريباً ويمكنك حجز موعد جديد في أي وقت بخطوات بسيطة.`,
+          messageEn: `Your booking #${booking.id} for (${canonicalTitleEn}) has been cancelled upon your request. We look forward to serving you again anytime!`,
           type: 'order',
           read: false,
           link: `/account/orders/${booking.id}`,
@@ -2113,6 +2183,13 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
     }
 
     await withBookingLock(lockKeys, async () => {
+      // Authoritative calculation of total required duration
+      const authoritativeDuration =
+        booking.totalOccupiedMinutes ||
+        booking.serviceSnapshot?.duration ||
+        (Number(booking.serviceDurationMinutes || booking.duration || 0) + Number(booking.travelTimeMinutes || 0)) ||
+        45;
+
       // 1. Validate new appointment slot BEFORE releasing old reservation (category-based aware)
       const slotTiming = await assertSlotAvailability({
         dateStr: newDate,
@@ -2120,7 +2197,7 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
         serviceId: booking.serviceId,
         serviceIds: targetServiceIds.length > 0 ? targetServiceIds : [booking.serviceId],
         category: authoritativeCategory,
-        customDuration: booking.totalOccupiedMinutes || booking.duration,
+        customDuration: authoritativeDuration,
         compositeServices: compositeList,
         excludeBookingId: booking.id,
         vehiclePlate: vPlate,
@@ -2135,6 +2212,10 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       booking.timeSlotStart = slotTiming.scheduledStart;
       booking.scheduledStart = slotTiming.scheduledStart;
       booking.scheduledEnd = slotTiming.scheduledEnd;
+      booking.serviceDurationMinutes = slotTiming.serviceDurationMinutes;
+      booking.travelTimeMinutes = slotTiming.travelTimeMinutes;
+      booking.totalOccupiedMinutes = slotTiming.totalOccupiedMinutes;
+      booking.duration = slotTiming.serviceDurationMinutes;
       booking.rescheduledFrom = previousTime;
       booking.rescheduledAt = new Date();
       booking.metadata = {
@@ -2210,13 +2291,16 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       }
 
       try {
+        const canonicalTitleAr = getCanonicalBookingServiceTitle(booking, 'ar');
+        const canonicalTitleEn = getCanonicalBookingServiceTitle(booking, 'en');
+
         await Notification.create({
           target: 'admin',
           eventId: `order:reschedule:admin:${booking.id}:${newDate}:${newTimeLabel}`,
           title: `تعديل موعد حجز #${booking.id}`,
           titleEn: `Booking Rescheduled #${booking.id}`,
-          message: `تم تغيير موعد الطلب #${booking.id} إلى يوم ${newDate} (${newTimeLabel}) بواسطة (${actorName})`,
-          messageEn: `Order #${booking.id} was rescheduled to ${newDate} (${newTimeLabel}) by ${actorName}`,
+          message: `تم تغيير موعد حجز (${canonicalTitleAr}) للطلب #${booking.id} إلى يوم ${newDate} (${newTimeLabel}) بواسطة (${actorName})`,
+          messageEn: `Booking #${booking.id} (${canonicalTitleEn}) was rescheduled to ${newDate} (${newTimeLabel}) by ${actorName}`,
           type: 'order',
           read: false,
           link: `/admin/orders/${booking.id}`,
@@ -2229,8 +2313,8 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
             eventId: `order:reschedule:cust:${booking.id}:${newDate}:${newTimeLabel}`,
             title: `🗓️ تم تحديث موعد حجزك #${booking.id}`,
             titleEn: `🗓️ Booking #${booking.id} Rescheduled`,
-            message: `تم تعديل موعد حجزك للطلب #${booking.id} إلى يوم ${newDate} في تمام ${newTimeLabel}. نتطلع لخدمتك بأفضل جودة!`,
-            messageEn: `Your booking #${booking.id} has been rescheduled to ${newDate} at ${newTimeLabel}. Looking forward to serving you!`,
+            message: `تم تعديل موعد حجزك لخدمة (${canonicalTitleAr}) للطلب #${booking.id} إلى يوم ${newDate} في تمام ${newTimeLabel}. نتطلع لخدمتك بأفضل جودة!`,
+            messageEn: `Your booking #${booking.id} for (${canonicalTitleEn}) has been rescheduled to ${newDate} at ${newTimeLabel}. Looking forward to serving you!`,
             type: 'order',
             read: false,
             link: `/account/orders/${booking.id}`,
@@ -2241,7 +2325,8 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       sendSuccess(res, booking, 'تم إعادة جدولة الحجز بنجاح وتحديث بيانات الطلب');
     });
   } catch (err: any) {
-    sendError(res, err.message, err.statusCode || 500, err.code);
+    const statusCode = err.status || err.statusCode || (err.code === 'DURATION_INSUFFICIENT' ? 422 : 400);
+    sendError(res, err.message, statusCode, err.code, err.details);
   }
 }
 

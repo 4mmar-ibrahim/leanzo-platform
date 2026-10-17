@@ -91,6 +91,50 @@ export function getCairoDateFromDate(date: Date): string {
 }
 
 /**
+ * Returns day-of-week index (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
+ * in Africa/Cairo timezone for a given date string ("YYYY-MM-DD") or Date.
+ * Prevents UTC day-of-week shifting.
+ */
+export function getCairoDayOfWeek(dateInput: string | Date): number {
+  try {
+    let dt: Date;
+    if (typeof dateInput === 'string') {
+      const parts = dateInput.split('-').map(Number);
+      if (parts.length === 3) {
+        // Noon UTC is guaranteed to fall on the exact same calendar day in Africa/Cairo (UTC+2 / UTC+3)
+        dt = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0));
+      } else {
+        dt = new Date(dateInput);
+      }
+    } else {
+      dt = dateInput;
+    }
+
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Africa/Cairo',
+      weekday: 'short',
+    });
+    const weekday = formatter.format(dt);
+    const dayMap: Record<string, number> = {
+      Sun: 0,
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+      Sat: 6,
+    };
+    return dayMap[weekday] !== undefined ? dayMap[weekday] : dt.getDay();
+  } catch {
+    if (typeof dateInput === 'string') {
+      const parts = dateInput.split('-').map(Number);
+      return new Date(parts[0], parts[1] - 1, parts[2]).getDay();
+    }
+    return dateInput.getDay();
+  }
+}
+
+/**
  * Converts "13:00", "13:00 – 13:30", "10:00 AM", "02:30 PM" to minutes from midnight (0..1439).
  * If a range is provided (e.g. "13:00 – 13:30"), extracts the start time.
  */
@@ -153,6 +197,13 @@ export function minutesToDisplayTime(totalMinutes: number): {
   const time12En = `${hours12Str}:${minsStr} ${periodEn}`;
 
   return { time12, time24, time12Ar, time12En };
+}
+
+/**
+ * Converts minutes from midnight to "HH:mm" 24-hour string.
+ */
+export function minutesToTimeString(totalMinutes: number): string {
+  return minutesToDisplayTime(totalMinutes).time24;
 }
 
 /**
@@ -226,8 +277,16 @@ export async function resolveServiceTiming(
           ? customDuration
           : totalOccupied;
 
+      // When customDuration is provided (e.g. 105 min calculated from packages/addons or composite services),
+      // serviceDurationMinutes must be the actual work duration (effectiveOccupied - srvTravel),
+      // preventing the 105 min collapse down to the base service duration (75 min)!
+      const calculatedServiceDur =
+        customDuration !== undefined && customDuration !== null && customDuration > 0
+          ? Math.max(1, effectiveOccupied - srvTravel)
+          : srvDur;
+
       return {
-        serviceDurationMinutes: srvDur,
+        serviceDurationMinutes: calculatedServiceDur,
         travelTimeMinutes: srvTravel,
         totalOccupiedMinutes: effectiveOccupied,
       };
@@ -328,6 +387,8 @@ export function extractBookingResourceIntervals(
 
   const bDuration =
     record.totalOccupiedMinutes ||
+    record.packageSnapshot?.durationMinutes ||
+    record.serviceSnapshot?.packageSnapshot?.durationMinutes ||
     (record.serviceDurationMinutes
       ? record.serviceDurationMinutes + (record.travelTimeMinutes || 0)
       : record.duration) ||
@@ -778,9 +839,8 @@ export async function getAvailableSlots(
     };
   }
 
-  // 2. Check day of week
-  const dateObj = new Date(dateStr);
-  const dayOfWeek = dateObj.getDay();
+  // 2. Check day of week in Africa/Cairo timezone
+  const dayOfWeek = getCairoDayOfWeek(dateStr);
   if (!settings.workingDays.includes(dayOfWeek)) {
     return {
       date: dateStr,
@@ -1144,16 +1204,59 @@ export async function assertSlotAvailability(params: {
 
   // 1. Blocked dates, holidays, working days validation
   if (settings.blockedDates.includes(dateStr)) {
-    throw new Error('هذا اليوم مغلق بالكامل ومحجوب للصيانة');
+    const err: any = new Error('هذا اليوم مغلق بالكامل ومحجوب للصيانة');
+    err.code = 'BLOCKED_DATE';
+    err.status = 422;
+    err.statusCode = 422;
+    throw err;
   }
   const holiday = settings.holidays.find((h: any) => h.date === dateStr);
   if (holiday) {
-    throw new Error(`عطلة رسمية: ${holiday.name}`);
+    const err: any = new Error(`عطلة رسمية: ${holiday.name}`);
+    err.code = 'OFFICIAL_HOLIDAY';
+    err.status = 422;
+    err.statusCode = 422;
+    throw err;
   }
-  const dateObj = new Date(dateStr);
-  const dayOfWeek = dateObj.getDay();
+  const dayOfWeek = getCairoDayOfWeek(dateStr);
   if (!settings.workingDays.includes(dayOfWeek)) {
-    throw new Error('هذا اليوم يقع خارج أيام العمل المتاحة للحجز');
+    const err: any = new Error('هذا اليوم يقع خارج أيام العمل المتاحة للحجز');
+    err.code = 'OUTSIDE_WORKING_DAYS';
+    err.status = 422;
+    err.statusCode = 422;
+    throw err;
+  }
+
+  // 1.5. Validate requested slot interval sufficiency
+  // If timeStr specifies an explicit range (e.g. "10:00 – 10:45" or "14:00 - 14:45"),
+  // verify that the interval is not shorter than the required duration!
+  let explicitIntervalMinutes: number | null = null;
+  if (timeStr.includes('–') || timeStr.includes('-') || timeStr.includes('—')) {
+    const parts = timeStr.split(/[-–—]/).map((p) => p.trim());
+    if (parts.length >= 2) {
+      const min1 = timeStringToMinutes(parts[0]);
+      const min2 = timeStringToMinutes(parts[1]);
+      if (min1 > 0 && min2 > 0) {
+        const span = Math.abs(min2 - min1);
+        if (span > 0) {
+          explicitIntervalMinutes = span;
+        }
+      }
+    }
+  }
+
+  if (explicitIntervalMinutes !== null && explicitIntervalMinutes < timing.totalOccupiedMinutes) {
+    const err: any = new Error(
+      `الفترة الزمنية المختارة (${explicitIntervalMinutes} دقيقة) أقصر من المدة الفعلية المطلوبة للخدمة (${timing.totalOccupiedMinutes} دقيقة)`
+    );
+    err.code = 'DURATION_INSUFFICIENT';
+    err.status = 422;
+    err.statusCode = 422;
+    err.details = {
+      requestedSpanMinutes: explicitIntervalMinutes,
+      requiredDurationMinutes: timing.totalOccupiedMinutes,
+    };
+    throw err;
   }
 
   // Snap the requested time to the nearest clean 15-minute boundary
@@ -1165,9 +1268,27 @@ export async function assertSlotAvailability(params: {
   const workEndMin = timeStringToMinutes(settings.workingHoursEnd);
 
   // 2. Working Hours & Day Boundary Check (allow 1440 for 23:59 end-of-day)
+  if (slotStartMin < workStartMin) {
+    const startStr = minutesToTimeString(slotStartMin);
+    const err: any = new Error(
+      `الموعد المحدد (${startStr}) يقع قبل بداية ساعات العمل الرسمية (${settings.workingHoursStart})`
+    );
+    err.code = 'TIME_BEFORE_WORK_HOURS';
+    err.status = 409;
+    err.statusCode = 409;
+    throw err;
+  }
+
   const completionLimit = workEndMin === 1439 ? 1440 : workEndMin;
-  if (slotStartMin < workStartMin || (slotStartMin + timing.totalOccupiedMinutes) > completionLimit) {
-    throw new Error('الوقت المحدد يقع خارج ساعات العمل الرسمية لسيارات الخدمة');
+  if ((slotStartMin + timing.totalOccupiedMinutes) > completionLimit) {
+    const endStr = minutesToTimeString(slotStartMin + timing.totalOccupiedMinutes);
+    const err: any = new Error(
+      `الموعد المحدد ينتهي (${endStr}) بعد نهاية ساعات العمل الرسمية (${settings.workingHoursEnd})`
+    );
+    err.code = 'TIME_EXCEEDS_WORK_HOURS';
+    err.status = 409;
+    err.statusCode = 409;
+    throw err;
   }
 
   // 3. Break time check
@@ -1255,7 +1376,7 @@ export async function assertSlotAvailability(params: {
       // Check against bookings
       for (const b of existingBookings) {
         if (b.status === 'cancelled') continue;
-        if (excludeBookingId && (b.id === excludeBookingId || String(b._id) === excludeBookingId)) continue;
+        if (excludeBookingId && (b.id === excludeBookingId || String(b._id) === excludeBookingId || (b as any).bookingNumber === excludeBookingId)) continue;
         const occupieds = extractBookingResourceIntervals(b, itemCategory, assertServiceCatMap);
         for (const occ of occupieds) {
           if (doIntervalsOverlap(itemStart, itemEnd, occ.start, occ.end)) {
@@ -1296,7 +1417,7 @@ export async function assertSlotAvailability(params: {
     // Single service / homogeneous category
     for (const b of existingBookings) {
       if (b.status === 'cancelled') continue;
-      if (excludeBookingId && (b.id === excludeBookingId || String(b._id) === excludeBookingId)) continue;
+      if (excludeBookingId && (b.id === excludeBookingId || String(b._id) === excludeBookingId || (b as any).bookingNumber === excludeBookingId)) continue;
 
       const isSameTechnician = Boolean(technicianId && b.assignedTechnicianId && b.assignedTechnicianId === technicianId);
       if (isSameTechnician) {
@@ -1376,8 +1497,8 @@ export async function assertSlotAvailability(params: {
     scheduledStart,
     scheduledEnd,
     serviceDurationMinutes: timing.serviceDurationMinutes,
-    travelTimeMinutes: 0,
-    totalOccupiedMinutes: timing.serviceDurationMinutes,
+    travelTimeMinutes: timing.travelTimeMinutes || 0,
+    totalOccupiedMinutes: timing.totalOccupiedMinutes,
   };
 }
 

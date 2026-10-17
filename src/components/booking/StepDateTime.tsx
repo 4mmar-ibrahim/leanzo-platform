@@ -14,6 +14,7 @@ import {
   isSameCategory,
   getOrderCategory,
   getOrderCategoryInterval,
+  getOrderCategoryIntervals,
 } from '@/lib/bookingEngine';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { cn } from '@/lib/utils';
@@ -189,9 +190,8 @@ export function StepDateTime() {
           const isConflict = existingOrders.some((o) => {
             if (o.status === 'cancelled') return false;
             if (o.date !== selectedDate) return false;
-            const oInterval = getOrderCategoryInterval(o, effectiveCategory);
-            if (!oInterval) return false;
-            return isTimeIntervalOverlapping(requestedInterval, oInterval);
+            const oIntervals = getOrderCategoryIntervals(o, effectiveCategory);
+            return oIntervals.some((oInt) => isTimeIntervalOverlapping(requestedInterval, oInt));
           });
 
           return !isConflict;

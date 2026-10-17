@@ -100,6 +100,15 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   },
 
   addNotification: (item) => {
+    const existing = get().notifications;
+    if (item.eventId && existing.some((n) => n.eventId === item.eventId)) {
+      return;
+    }
+    const signature = `${item.title}__${item.message}__${item.link || ''}`;
+    if (!item.eventId && existing.some((n) => `${n.title}__${n.message}__${n.link || ''}` === signature)) {
+      return;
+    }
+
     const newNotif: AdminNotificationItem = {
       ...item,
       id: `notif-${Date.now()}`,

@@ -56,15 +56,17 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
   }, [fetchPublicSettings]);
 
   // Extract multi-service IDs and stabilize as string key
+  const orderMetadata = (order as any).metadata;
+  const orderSnapshot = (order as any).serviceSnapshot;
   const serviceIds = useMemo(() => {
     const list: string[] = [];
     if (order.serviceId) list.push(order.serviceId);
-    if ((order as any).metadata?.serviceIds) list.push(...(order as any).metadata.serviceIds);
-    if ((order as any).serviceSnapshot?.services) {
-      list.push(...(order as any).serviceSnapshot.services.map((s: any) => s.id));
+    if (orderMetadata?.serviceIds) list.push(...orderMetadata.serviceIds);
+    if (orderSnapshot?.services) {
+      list.push(...orderSnapshot.services.map((s: any) => s.id));
     }
     return Array.from(new Set(list)).filter(Boolean);
-  }, [order.serviceId, (order as any).metadata?.serviceIds, (order as any).serviceSnapshot?.services]);
+  }, [order.serviceId, orderMetadata?.serviceIds, orderSnapshot?.services]);
 
   const serviceIdsKey = serviceIds.join(',');
 

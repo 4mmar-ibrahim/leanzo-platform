@@ -854,6 +854,7 @@ export interface CustomerNotification {
   id: string;
   userId?: string;
   customerPhone?: string;
+  eventId?: string;
   title: string;
   titleEn: string;
   message: string;
