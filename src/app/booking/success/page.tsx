@@ -1,11 +1,13 @@
 'use client';
 
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle2, Calendar, Clock, MapPin, Sparkles, ArrowLeft, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
-import { useOrderStore } from '@/store/useOrderStore';
+import { useAuthStore } from '@/store/useAuthStore';
+import { cleanzoApi } from '@/lib/api/cleanzoApi';
+import type { Order } from '@/types';
 import { useServiceStore } from '@/store/useServiceStore';
 import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { Button } from '@/components/ui/Button';
@@ -14,18 +16,39 @@ import { formatTimeTo12Hour } from '@/lib/timeUtils';
 function SuccessContent() {
   const searchParams = useSearchParams();
   const { t, locale, direction } = useLocaleStore();
-  const { getOrderById } = useOrderStore();
+  const authStatus = useAuthStore(state => state.authStatus);
   const getServiceById = useServiceStore((s) => s.getServiceById);
   const isAr = locale === 'ar';
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
 
-  const orderId = searchParams.get('orderId') || 'CLZ-2026-000124';
-  const order = getOrderById(orderId);
+  const orderId = searchParams.get('orderId')?.trim() || '';
+  const [result, setResult] = useState<{ id: string; order: Order | null } | null>(null);
+  useEffect(() => {
+    if (!orderId || authStatus === 'AUTH_LOADING') return;
+    let active = true;
+    cleanzoApi.bookings.trackOrder(orderId)
+      .then(order => { if (active) setResult({ id: orderId, order: order?.id === orderId ? order : null }); })
+      .catch(() => { if (active) setResult({ id: orderId, order: null }); });
+    return () => { active = false; };
+  }, [orderId, authStatus]);
+
+  if (orderId && (authStatus === 'AUTH_LOADING' || result?.id !== orderId)) {
+    return <p role="status" className="py-20 text-center">{isAr ? 'جارٍ التحقق من الطلب…' : 'Verifying the booking…'}</p>;
+  }
+  const order = orderId ? result?.order : null;
+  if (!order) {
+    return (
+      <div className="py-20 px-4 space-y-4 text-center">
+        <h1>{isAr ? 'تعذر التحقق من الطلب' : 'Could not verify the booking'}</h1>
+        <Link href="/track" className="text-sky-600 underline">{isAr ? 'تتبّع طلبًا' : 'Track a booking'}</Link>
+      </div>
+    );
+  }
 
   const resolvedService = order?.service || (order?.serviceId ? getServiceById(order.serviceId) : undefined);
   const serviceTitle = isAr
-    ? resolvedService?.title || (order as any)?.serviceSnapshot?.title || (order as any)?.serviceName || 'خدمة كلينزو المتميزة'
-    : resolvedService?.titleEn || (order as any)?.serviceSnapshot?.titleEn || (order as any)?.serviceNameEn || resolvedService?.title || 'Cleanzo Premium Service';
+    ? resolvedService?.title || order.serviceSnapshot?.title || (order as any)?.serviceName || 'خدمة كلينزو المتميزة'
+    : resolvedService?.titleEn || order.serviceSnapshot?.titleEn || (order as any)?.serviceNameEn || resolvedService?.title || 'Cleanzo Premium Service';
 
   const addressText = order?.address
     ? `${order.address.governorate || ''} — ${order.address.city || ''}${order.address.area ? `, ${order.address.area}` : ''}`.trim()
@@ -43,10 +66,10 @@ function SuccessContent() {
 
         <div className="space-y-1.5">
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-            {t.success.title}
+            {isAr ? 'تم تسجيل طلبك' : 'Your booking was received'}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
-            {t.success.subtitle}
+            {isAr ? 'تقدر تتابع حالة طلبك من صفحة التتبع.' : 'You can follow its status on the tracking page.'}
           </p>
         </div>
       </div>
@@ -65,7 +88,7 @@ function SuccessContent() {
 
           <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-sky-50 dark:bg-sky-950 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
             <Sparkles className="w-3.5 h-3.5" />
-            {isAr ? 'حجز مسجل ومؤكد' : 'Confirmed Booking'}
+            {isAr ? 'طلب مسجّل' : 'Booking received'}
           </span>
         </div>
 
@@ -128,7 +151,7 @@ function SuccessContent() {
 
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-        <Link href={`/account/orders/${orderId}`} className="w-full sm:w-auto">
+        <Link href={`/track/${encodeURIComponent(orderId)}`} className="w-full sm:w-auto">
           <Button variant="primary" size="md" className="w-full sm:w-auto shadow-lg shadow-sky-500/25">
             <span>{t.success.viewOrder}</span>
             <ArrowIcon className="w-4 h-4" />

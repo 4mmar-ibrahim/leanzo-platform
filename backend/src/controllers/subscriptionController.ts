@@ -19,7 +19,7 @@ import { AuditLog } from '../models/AuditLog.js';
 import { Notification } from '../models/Notification.js';
 import { Booking } from '../models/Booking.js';
 import { validateEgyptianPhone, CANONICAL_PHONE_ERROR_MESSAGE, CANONICAL_PHONE_ERROR_CODE } from '../utils/phoneValidator.js';
-import { withBookingLock } from '../services/availabilityService.js';
+import { SCHEDULE_LOCK, withBookingLock } from '../services/availabilityService.js';
 
 function timeStringToMinutes(timeStr: string): number {
   if (!timeStr) return 0;
@@ -189,22 +189,14 @@ export async function createCustomerSubscription(req: AuthenticatedRequest, res:
 export async function getMySubscriptions(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const customerId = req.user?._id?.toString() || req.user?.id;
-    const customerPhone = req.user?.phone;
 
-    if (!customerId && !customerPhone) {
+    if (!customerId) {
       sendError(res, 'غير مصرح بالدخول', 401, 'UNAUTHORIZED');
       return;
     }
 
-    const where: any = {
-      OR: [
-        ...(customerId ? [{ customerId }] : []),
-        ...(customerPhone ? [{ customerPhone }] : []),
-      ],
-    };
-
     const subscriptions = await prisma.subscription.findMany({
-      where,
+      where: { customerId },
       orderBy: { createdAt: 'desc' },
       include: {
         plan: true,
@@ -240,7 +232,6 @@ export async function getMySubscriptionById(req: AuthenticatedRequest, res: Resp
   try {
     const id = req.params.id as string;
     const customerId = req.user?._id?.toString() || req.user?.id;
-    const customerPhone = req.user?.phone;
 
     const subscription = await prisma.subscription.findUnique({
       where: { id },
@@ -263,9 +254,7 @@ export async function getMySubscriptionById(req: AuthenticatedRequest, res: Resp
     }
 
     // IDOR Check
-    const isOwner =
-      (customerId && subscription.customerId === customerId) ||
-      (customerPhone && subscription.customerPhone === customerPhone);
+    const isOwner = Boolean(customerId && subscription.customerId === customerId);
 
     if (!isOwner) {
       sendError(res, 'غير مصرح لك باستعراض بيانات هذا الاشتراك', 403, 'FORBIDDEN_SUBSCRIPTION');
@@ -284,10 +273,10 @@ export async function getMySubscriptionById(req: AuthenticatedRequest, res: Resp
 export async function cancelVisitCustomer(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const visitId = req.params.visitId as string;
-    const { reason, customerPhone } = req.body || {};
+    const { reason } = req.body || {};
 
     const actorId = req.user?._id?.toString() || req.user?.id;
-    const phone = req.user?.phone || customerPhone;
+    const phone = req.user?.phone;
 
     const updatedVisit = await cancelSubscriptionVisit({
       visitId,
@@ -311,10 +300,10 @@ export async function cancelVisitCustomer(req: AuthenticatedRequest, res: Respon
 export async function rescheduleVisitCustomer(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const visitId = req.params.visitId as string;
-    const { newDate, newTime, reason, customerPhone } = req.body || {};
+    const { newDate, newTime, reason } = req.body || {};
 
     const actorId = req.user?._id?.toString() || req.user?.id;
-    const phone = req.user?.phone || customerPhone;
+    const phone = req.user?.phone;
 
     const updatedVisit = await rescheduleSubscriptionVisit({
       visitId,
@@ -683,7 +672,7 @@ export async function assignTechnicianToVisitAdmin(req: AuthenticatedAdminReques
 
       const cleanDate = String(visit.date || '').split('T')[0].trim();
 
-      await withBookingLock(`tech_assign_${tech.id}_${cleanDate}`, async () => {
+      const updatedVisit = await withBookingLock(SCHEDULE_LOCK, async () => {
         // Schedule overlap prevention check
         const currentInterval = getBookingTimeInterval(visit);
 
@@ -781,7 +770,7 @@ export async function assignTechnicianToVisitAdmin(req: AuthenticatedAdminReques
         });
 
         const updated = await prisma.subscriptionVisit.update({
-          where: { id: visitId },
+          where: { id: visitId, updatedAt: visit.updatedAt },
           data: {
             assignedTechnicianId: tech.id,
             technician: techSnapshot,
@@ -802,8 +791,9 @@ export async function assignTechnicianToVisitAdmin(req: AuthenticatedAdminReques
           details: `تم إسناد الفني ${techSnapshot.name} للزيارة #${visitId}`,
         });
 
-        sendSuccess(res, updated, 'تم تعيين الفني للزيارة بنجاح');
+        return updated;
       });
+      if (updatedVisit) sendSuccess(res, updatedVisit, 'تم تعيين الفني للزيارة بنجاح');
     } else {
       let newStatus = visit.status;
       if (visit.status === 'assigned') {
@@ -822,7 +812,7 @@ export async function assignTechnicianToVisitAdmin(req: AuthenticatedAdminReques
       });
 
       const updated = await prisma.subscriptionVisit.update({
-        where: { id: visitId },
+        where: { id: visitId, updatedAt: visit.updatedAt },
         data: {
           assignedTechnicianId: null,
           technician: Prisma.DbNull,
@@ -897,7 +887,7 @@ export async function updateVisitStatusAdmin(req: AuthenticatedAdminRequest, res
     });
 
     const updated = await prisma.subscriptionVisit.update({
-      where: { id: visitId },
+      where: { id: visitId, updatedAt: visit.updatedAt },
       data: {
         status,
         ...(notes ? { notes: String(notes) } : {}),

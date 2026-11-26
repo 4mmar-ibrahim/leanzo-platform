@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { X, Star, CheckCircle2, MessageSquare } from 'lucide-react';
 import { Order } from '@/types';
 import { toast } from 'sonner';
+import { cleanzoApi } from '@/lib/api/cleanzoApi';
 
 interface OrderReviewModalProps {
   order: Order;
@@ -17,21 +18,33 @@ export function OrderReviewModal({ order, isOpen, onClose }: OrderReviewModalPro
   const [comment, setComment] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (!comment.trim()) {
       toast.error('يرجى كتابة كلمة أو ملاحظة قصيرة عن رأيك بالخدمة.');
       return;
     }
 
-    setSubmitted(true);
-    toast.success('شكرًا لتقييمك! نسعد بخدمتك دائماً.');
-    setTimeout(() => {
-      onClose();
-      setSubmitted(false);
-    }, 1800);
+    setIsSubmitting(true);
+    try {
+      const saved = await cleanzoApi.bookings.submitReview(order.id, rating, comment.trim());
+      if (!saved?.id) throw new Error('تعذر تأكيد حفظ التقييم');
+      setSubmitted(true);
+      toast.success('تم حفظ تقييمك للمراجعة');
+      setTimeout(() => {
+        onClose();
+        setSubmitted(false);
+      }, 1800);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'تعذر إرسال التقييم');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -124,6 +137,7 @@ export function OrderReviewModal({ order, isOpen, onClose }: OrderReviewModalPro
                 </button>
                 <button
                   type="submit"
+                  disabled={isSubmitting}
                   className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md shadow-amber-500/25 transition-all"
                 >
                   إرسال التقييم

@@ -1,3 +1,4 @@
+import { ENV } from '../config/env.js';
 import { Response } from 'express';
 
 export interface ApiResponse<T = any> {
@@ -17,6 +18,13 @@ export function sendSuccess<T>(res: Response, data: T, message?: string, statusC
 }
 
 export function sendError(res: Response, message: string, statusCode = 400, code?: string, errors?: any): Response {
+  if (ENV.IS_PRODUCTION && statusCode >= 500) {
+    return res.status(statusCode).json({
+      success: false,
+      message: 'حدث خطأ في الخادم، يرجى المحاولة لاحقاً',
+      code: 'INTERNAL_SERVER_ERROR',
+    });
+  }
   return res.status(statusCode).json({
     success: false,
     message,

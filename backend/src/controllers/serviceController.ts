@@ -1,3 +1,4 @@
+import { inDatabaseTransaction } from '../config/prisma.js';
 import { Request, Response } from 'express';
 import { Service } from '../models/Service.js';
 import { Offer } from '../models/Offer.js';
@@ -318,6 +319,10 @@ export async function updateService(req: Request, res: Response): Promise<void> 
 export async function deleteService(req: Request, res: Response): Promise<void> {
   try {
     const { id } = req.params;
+    if (typeof id !== 'string' || !id) {
+      sendError(res, 'معرّف الخدمة غير صالح', 400, 'INVALID_SERVICE_ID');
+      return;
+    }
     const existing = await Service.findOne({ id });
     if (!existing) {
       sendError(res, 'الخدمة غير موجودة', 404);
@@ -325,25 +330,29 @@ export async function deleteService(req: Request, res: Response): Promise<void> 
     }
     (req as any).auditBefore = existing.toObject ? existing.toObject() : existing;
 
-    // 1. Delete all packages belonging to this service
-    await ServicePackage.deleteMany({ serviceId: id });
-
-    // 2. Delete all add-ons belonging to this service
-    await ServiceAddon.deleteMany({ serviceId: id });
-
-    // 3. Unlink any offers pointing directly to this service
-    await Offer.updateMany(
-      { serviceId: id },
-      { serviceId: '', active: false }
-    );
-
-    // 4. Hard delete the service itself from PostgreSQL database
-    await Service.deleteOne({ id });
+    const deleted = await inDatabaseTransaction(async (tx) => {
+      if (await tx.subscriptionPlan.count({ where: { serviceId: id } }) ||
+          await tx.subscription.count({ where: { serviceId: id } }) ||
+          await tx.subscriptionVisit.count({ where: { serviceId: id } })) {
+        return false;
+      }
+      await tx.offer.updateMany({ where: { serviceId: id }, data: { serviceId: '', active: false } });
+      await tx.service.delete({ where: { id } });
+      return true;
+    });
+    if (!deleted) {
+      sendError(res, 'الخدمة مرتبطة باشتراكات. عطّلها من إعدادات الخدمة لإيقاف الحجوزات الجديدة.', 409, 'SERVICE_HAS_SUBSCRIPTIONS');
+      return;
+    }
 
     (req as any).auditAfter = { deleted: true, id };
 
     sendSuccess(res, { id, deleted: true }, 'تم حذف الخدمة وجميع باقاتها وإضافاتها نهائياً بنجاح');
   } catch (err: any) {
+    if (err.code === 'P2003') {
+      sendError(res, 'الخدمة مرتبطة بسجلات أخرى ولا يمكن حذفها', 409, 'SERVICE_IN_USE');
+      return;
+    }
     sendError(res, err.message, 500);
   }
 }

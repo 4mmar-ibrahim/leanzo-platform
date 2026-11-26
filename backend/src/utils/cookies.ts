@@ -1,3 +1,4 @@
+import { ENV } from '../config/env.js';
 import { Request, Response } from 'express';
 import { CookieOptions } from 'express';
 
@@ -42,7 +43,7 @@ export function setRefreshCookie(
   token: string,
   maxAgeMs = 30 * 24 * 60 * 60 * 1000 // 30 days
 ): void {
-  const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  const isHttps = ENV.IS_PRODUCTION || req.secure;
   
   const options: CookieOptions = {
     httpOnly: true,
@@ -60,7 +61,7 @@ export function clearRefreshCookie(
   res: Response,
   name: string
 ): void {
-  const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  const isHttps = ENV.IS_PRODUCTION || req.secure;
 
   const options: CookieOptions = {
     httpOnly: true,

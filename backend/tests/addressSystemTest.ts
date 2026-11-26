@@ -360,6 +360,7 @@ async function runAddressSystemTests() {
       '/bookings',
       {
         serviceId,
+        category: 'car',
         date: tomorrowStr,
         time: '10:00 AM',
         address: {
@@ -377,6 +378,7 @@ async function runAddressSystemTests() {
       '/bookings',
       {
         serviceId,
+        category: 'car',
         date: tomorrowStr,
         time: '11:00 AM',
         address: {
@@ -397,6 +399,7 @@ async function runAddressSystemTests() {
       '/bookings',
       {
         serviceId,
+        category: 'car',
         date: tomorrowStr,
         time: '12:00 PM',
         address: {
@@ -416,6 +419,7 @@ async function runAddressSystemTests() {
       '/bookings',
       {
         serviceId,
+        category: 'car',
         date: tomorrowStr,
         time: '01:00 PM',
         address: {
@@ -440,6 +444,7 @@ async function runAddressSystemTests() {
       '/bookings',
       {
         serviceId,
+        category: 'car',
         date: tomorrowStr,
         time: '03:00 PM',
         address: {
@@ -477,6 +482,7 @@ async function runAddressSystemTests() {
       '/bookings',
       {
         serviceId,
+        category: 'car',
         date: tomorrowStr,
         time: '04:00 PM',
         address: {
@@ -505,6 +511,7 @@ async function runAddressSystemTests() {
       '/bookings',
       {
         serviceId,
+        category: 'car',
         date: tomorrowStr,
         time: '05:00 PM',
         address: {
@@ -524,6 +531,7 @@ async function runAddressSystemTests() {
       '/bookings',
       {
         serviceId,
+        category: 'car',
         date: tomorrowStr,
         time: '06:00 PM',
         address: {
@@ -586,6 +594,7 @@ async function runAddressSystemTests() {
       '/bookings',
       {
         serviceId,
+        category: 'car',
         date: tomorrowStr,
         time: '07:00 PM',
         address: {

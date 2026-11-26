@@ -34,15 +34,26 @@ import {
 
 
 
+const bookingAttempts = new Map<string, string>();
+
+function bookingAccessHeaders(id: string): Record<string, string> {
+  try {
+    const token = localStorage.getItem(`cleanzo-booking-access:${id}`);
+    return token ? { 'X-Booking-Access': token } : {};
+  } catch {
+    return {};
+  }
+}
+
 export const cleanzoApi = {
   // Customer Auth
   auth: {
     register: (data: { name: string; phone: string; password?: string; email?: string }) =>
       apiRequest<{ user: User; token: string }>('/auth/customer/register', {
         method: 'POST',
-        body: JSON.stringify({ ...data, password: data.password || 'password123' }),
+        body: JSON.stringify(data),
       }),
-    login: (phone: string, password = 'password123') =>
+    login: (phone: string, password: string) =>
       apiRequest<{ user: User; token: string }>('/auth/customer/login', {
         method: 'POST',
         body: JSON.stringify({ phone, password }),
@@ -200,7 +211,8 @@ export const cleanzoApi = {
       duration?: number,
       serviceIds?: string[],
       excludeBookingId?: string,
-      category?: string
+      category?: string,
+      signal?: AbortSignal
     ) => {
       const params = new URLSearchParams({ date });
       if (serviceId) params.append('serviceId', serviceId);
@@ -226,7 +238,7 @@ export const cleanzoApi = {
           travelTimeMinutes?: number;
           totalOccupiedMinutes?: number;
         }>;
-      }>(`/availability?${params.toString()}`, { cache: 'no-store' });
+      }>(`/availability?${params.toString()}`, { cache: 'no-store', signal });
     },
     validateSlot: (
       date: string,
@@ -244,7 +256,7 @@ export const cleanzoApi = {
 
   // Bookings & Orders
   bookings: {
-    create: (bookingData: {
+    create: async (bookingData: {
       serviceId?: string;
       services?: Array<{ serviceId: string; packageId?: string; addonIds?: string[] }>;
       packageId?: string;
@@ -258,15 +270,41 @@ export const cleanzoApi = {
       guestName?: string;
       guestPhone?: string;
       saveAddress?: boolean;
-    }) =>
-      apiRequest<Order>('/bookings', {
-        method: 'POST',
-        body: JSON.stringify(bookingData),
-      }),
+    }, isAdmin = false) => {
+      const address = { ...bookingData.address };
+      delete address.id;
+      const body = JSON.stringify({ ...bookingData, address });
+      const attempt = JSON.stringify([isAdmin, body]);
+      let key = bookingAttempts.get(attempt);
+      if (!key) {
+        if (bookingAttempts.size >= 32) bookingAttempts.delete(bookingAttempts.keys().next().value!);
+        key = Array.from(crypto.getRandomValues(new Uint8Array(16)), byte =>
+          byte.toString(16).padStart(2, '0'),
+        ).join('');
+        bookingAttempts.set(attempt, key);
+      }
+      const { bookingAccess, ...booking } = await apiRequest<Order & { bookingAccess?: string }>(
+        isAdmin ? '/bookings/admin/create' : '/bookings',
+        { isAdmin, method: 'POST', body, headers: { 'Idempotency-Key': key } },
+      );
+      if (bookingAccess) {
+        try {
+          localStorage.setItem(`cleanzo-booking-access:${booking.id}`, bookingAccess);
+        } catch {}
+      }
+      bookingAttempts.delete(attempt);
+      return booking;
+    },
     getMyBookings: () => apiRequest<Order[]>('/bookings/my'),
     getBookingById: (id: string) => apiRequest<Order>(`/bookings/${id}`),
-    trackOrder: (id: string, phone?: string) =>
-      apiRequest<Order>(`/bookings/track/${id}${phone ? `?phone=${phone}` : ''}`),
+    submitReview: (id: string, rating: number, comment: string) =>
+      apiRequest<{ id: string }>(`/bookings/${encodeURIComponent(id)}/review`, {
+        method: 'POST',
+        headers: bookingAccessHeaders(id),
+        body: JSON.stringify({ rating, comment }),
+      }),
+    trackOrder: (id: string) =>
+      apiRequest<Order>(`/bookings/track/${encodeURIComponent(id)}`, { headers: bookingAccessHeaders(id) }),
     calculatePrice: (options: {
       serviceId?: string;
       services?: Array<{ serviceId: string; packageId?: string; addonIds?: string[] }>;
@@ -280,10 +318,11 @@ export const cleanzoApi = {
         method: 'POST',
         body: JSON.stringify(options),
       }),
-    cancel: (id: string, reason?: string, customerPhone?: string) =>
+    cancel: (id: string, reason?: string) =>
       apiRequest<Order>(`/bookings/${id}/cancel`, {
         method: 'POST',
-        body: JSON.stringify({ reason, customerPhone }),
+        headers: bookingAccessHeaders(id),
+        body: JSON.stringify({ reason }),
       }),
     reschedule: (
       id: string,
@@ -291,6 +330,7 @@ export const cleanzoApi = {
     ) =>
       apiRequest<Order>(`/bookings/${id}/reschedule`, {
         method: 'POST',
+        headers: bookingAccessHeaders(id),
         body: JSON.stringify(data),
       }),
   },
@@ -468,6 +508,11 @@ export const cleanzoApi = {
 
   // Contact
   contact: {
+    getMessages: (page: number) =>
+      apiRequest<{
+        messages: Array<{ id: string; name: string; phone: string; email?: string; message: string; createdAt: string }>;
+        pagination: { page: number; pages: number };
+      }>(`/contact/admin?page=${page}&limit=20`, { isAdmin: true }),
     submitMessage: (data: { name: string; phone: string; email?: string; message: string; source?: string }) =>
       apiRequest<{ id: string }>('/contact', {
         method: 'POST',
@@ -501,7 +546,7 @@ export const cleanzoApi = {
 
   // Admin APIs (Secured with RBAC)
   admin: {
-    login: (username: string, password = 'password123') =>
+    login: (username: string, password: string) =>
       apiRequest<{ admin: AdminUser; token: string }>('/auth/admin/login', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
@@ -721,6 +766,12 @@ export const cleanzoApi = {
         method: 'PUT',
         isAdmin: true,
         body: JSON.stringify({ status, note }),
+      }),
+    updateOrderNotes: (orderId: string, notes: string) =>
+      apiRequest<{ id: string; notes: string }>(`/bookings/admin/${encodeURIComponent(orderId)}/notes`, {
+        method: 'PATCH',
+        isAdmin: true,
+        body: JSON.stringify({ notes }),
       }),
     assignTechnician: (orderId: string, technicianId: string) =>
       apiRequest<Order>(`/bookings/admin/${orderId}/assign`, {

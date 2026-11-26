@@ -29,7 +29,7 @@ import {
   getSubscriptionAnalyticsHandler,
   triggerSubscriptionScheduler,
 } from '../controllers/subscriptionController.js';
-import { authenticateCustomer, optionalCustomerAuth } from '../middleware/authMiddleware.js';
+import { authenticateCustomer } from '../middleware/authMiddleware.js';
 import { authenticateAdmin, authorize } from '../middleware/adminAuthMiddleware.js';
 
 const router = Router();
@@ -53,12 +53,12 @@ router.delete('/admin/plans/:id', authenticateAdmin, authorize('subscriptions', 
 // ==========================================
 // 2. Customer Subscriptions Endpoints
 // ==========================================
-router.post('/', optionalCustomerAuth, createCustomerSubscription);
+router.post('/', authenticateCustomer, createCustomerSubscription);
 router.get('/my', authenticateCustomer, getMySubscriptions);
 router.get('/my/:id', authenticateCustomer, getMySubscriptionById);
-router.post('/visits/:visitId/cancel', optionalCustomerAuth, cancelVisitCustomer);
-router.post('/visits/:visitId/reschedule', optionalCustomerAuth, rescheduleVisitCustomer);
-router.post('/:id/renew', optionalCustomerAuth, renewSubscriptionCustomer);
+router.post('/visits/:visitId/cancel', authenticateCustomer, cancelVisitCustomer);
+router.post('/visits/:visitId/reschedule', authenticateCustomer, rescheduleVisitCustomer);
+router.post('/:id/renew', authenticateCustomer, renewSubscriptionCustomer);
 
 // ==========================================
 // 3. Admin Subscriptions Management Endpoints

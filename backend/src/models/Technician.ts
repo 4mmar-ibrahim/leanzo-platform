@@ -1,6 +1,6 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import { createPrismaRepository, type RepositoryRecord } from './prismaModelBridge.js';
 
-export interface ITechnician extends Document {
+export interface ITechnician extends RepositoryRecord {
   id: string; // e.g. 'tech-1'
   name: string;
   phone: string;
@@ -20,26 +20,4 @@ export interface ITechnician extends Document {
   updatedAt: Date;
 }
 
-const TechnicianSchema = new Schema<ITechnician>(
-  {
-    id: { type: String, required: true, unique: true, index: true },
-    name: { type: String, required: true, trim: true },
-    phone: { type: String, required: true, trim: true, index: true },
-    email: { type: String, trim: true },
-    avatar: { type: String, default: '/uploads/images/default-avatar.png' },
-    rating: { type: Number, default: 5.0 },
-    specialty: { type: String, default: 'غسيل سيارات وتنظيف منازل' },
-    specialtiesList: [{ type: String }],
-    status: { type: String, enum: ['available', 'busy', 'offline'], default: 'available', index: true },
-    active: { type: Boolean, default: true, index: true },
-    completedOrders: { type: Number, default: 0 },
-    assignedOrders: { type: Number, default: 0 },
-    bio: { type: String, default: '' },
-    nationalId: { type: String, default: '' },
-    joinedDate: { type: Date, default: Date.now },
-  },
-  { timestamps: true }
-);
-
-import { createPrismaRepository } from './prismaModelBridge.js';
 export const Technician = createPrismaRepository('technician') as any;

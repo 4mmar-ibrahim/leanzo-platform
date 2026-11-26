@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import prisma from '../src/config/prisma.js';
+import { generateAdminToken, generateCustomerToken } from '../src/utils/jwt.js';
 import { connectDB, disconnectDB } from '../src/config/db.js';
 import { app } from '../src/app.js';
 import http from 'http';
@@ -9,6 +12,7 @@ import {
   getAvailableSlots,
   assertSlotAvailability,
   withBookingLock,
+  SCHEDULE_LOCK,
   timeStringToMinutes,
   minutesToDisplayTime,
 } from '../src/services/availabilityService.js';
@@ -40,7 +44,9 @@ async function runCategorySchedulingEngineTests() {
     });
   });
 
-  const testDate = '2026-11-25'; // Clean future isolated date (Wednesday)
+  const futureWednesday = new Date();
+  futureWednesday.setUTCDate(futureWednesday.getUTCDate() + 7 + (3 - futureWednesday.getUTCDay() + 7) % 7);
+  const testDate = futureWednesday.toISOString().slice(0, 10);
 
   // Ensure testDate is not in holidays or blockedDates in settings
   const settingsDoc = await SystemSettings.findOne({ key: 'global_settings' });
@@ -329,7 +335,7 @@ async function runCategorySchedulingEngineTests() {
     // =============================================================
     console.log('\n--- TEST 6: Concurrent requests for same slot in Cars -> Exactly ONE succeeds ---');
 
-    const lockKey = `${testDate}_car`;
+    const lockKey = SCHEDULE_LOCK;
     let attempt1Success = false;
     let attempt2Success = false;
 
@@ -435,6 +441,8 @@ async function runCategorySchedulingEngineTests() {
       category: 'car',
       customDuration: 60, // 45 base + 15 addon
     });
+    assert(dynamicTiming.totalOccupiedMinutes === 60,
+      'Slot validation returns the full occupied time for persistence and rescheduling');
     assert(dynamicTiming.scheduledStart === '14:00' && dynamicTiming.scheduledEnd === '15:00',
       'Dynamic Addons: 45m service + 15m addon locks entire 60m interval (14:00 - 15:00)');
 
@@ -449,11 +457,266 @@ async function runCategorySchedulingEngineTests() {
     assert(baseTiming.scheduledStart === '14:00' && baseTiming.scheduledEnd === '14:45',
       'Without addon: locks 45m interval (14:00 - 14:45)');
 
+    // Exercise the public and admin HTTP entry points on the same calendar.
+    const testLocation = await prisma.locationGovernorate.upsert({
+      where: { id: 'scheduling-test' },
+      update: {},
+      create: {
+        id: 'scheduling-test', name: 'محافظة تجريبية', nameEn: 'Test governorate', active: true,
+        cities: [{ id: 'scheduling-city', name: 'مدينة تجريبية', active: true }],
+      },
+    });
+    const testAdmin = await prisma.adminUser.upsert({
+      where: { username: 'scheduling-test-admin' },
+      update: {},
+      create: {
+        username: 'scheduling-test-admin', name: 'Scheduling test', email: 'test@example.invalid',
+        password: randomUUID(), role: 'owner',
+      },
+    });
+    const adminToken = generateAdminToken({ id: testAdmin.id, username: testAdmin.username, role: testAdmin.role });
+    const request = async (path: string, body?: object, headers: Record<string, string> = {}, method = body ? 'POST' : 'GET') => {
+      const response = await fetch(`${baseUrl}/api/bookings${path}`, {
+        method,
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      return { status: response.status, json: await response.json() as any };
+    };
+    const bookingPayload = {
+      serviceId: carWash.id, category: 'car', date: testDate, time: '15:00',
+      guestName: 'عميل اختبار الحجز', guestPhone: '01012345678', saveAddress: false,
+      address: { governorateId: testLocation.id, cityId: 'scheduling-city', area: 'منطقة تجريبية' },
+    };
+    const idempotency = { 'Idempotency-Key': randomUUID() };
+    const [first, retry] = await Promise.all([
+      request('', bookingPayload, idempotency),
+      request('', bookingPayload, idempotency),
+    ]);
+    assert([first.status, retry.status].sort().join(',') === '200,201', 'Concurrent HTTP retry returns one creation and one replay');
+    assert(first.json.data.id === retry.json.data.id, 'Retries return the same persisted booking');
+    const guestBooking = first.json.data;
+    const guestHeaders = { 'X-Booking-Access': guestBooking.bookingAccess };
+    const adminHeaders = { Authorization: `Bearer ${adminToken}` };
+    const adminConflict = await request('/admin/create', { ...bookingPayload, serviceId: tireWash.id }, adminHeaders);
+    assert(adminConflict.status === 409, 'Admin and guest bookings share the same schedule');
+    const invalid = await request('', { ...bookingPayload, time: '15:75' });
+    assert(invalid.status === 422, 'Invalid clock time is rejected by reservation rules');
+    const plan = await prisma.subscriptionPlan.upsert({
+      where: { id: 'scheduling-test-plan' },
+      update: {},
+      create: { id: 'scheduling-test-plan', name: 'Test plan', serviceId: carWash.id, visitCount: 1, price: 150 },
+    });
+    const subscriptionUser = await prisma.user.upsert({
+      where: { phone: '01512345678' },
+      update: {},
+      create: { name: 'عميل اختبار الاشتراك', phone: '01512345678', password: randomUUID() },
+    });
+    const subscriptionToken = generateCustomerToken({ id: subscriptionUser.id, phone: subscriptionUser.phone });
+    const subscribe = (time: string) => fetch(`${baseUrl}/api/subscriptions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${subscriptionToken}` },
+      body: JSON.stringify({
+        ...bookingPayload,
+        planId: plan.id,
+        visits: [{ date: testDate, time }],
+      }),
+    });
+    const subscriptionConflict = await subscribe('15:30');
+    assert(subscriptionConflict.status === 409, 'An existing booking blocks a conflicting subscription visit');
+    const subscriptionResponse = await subscribe('17:00');
+    assert(subscriptionResponse.status === 201, 'An available subscription visit is reserved');
+    const subscription = (await subscriptionResponse.json() as any).data;
+    const bookingAgainstVisit = await request('/admin/create', { ...bookingPayload, time: '17:00' }, adminHeaders);
+    assert(bookingAgainstVisit.status === 409, 'A subscription visit blocks a conflicting admin booking');
+    await prisma.subscriptionVisit.deleteMany({ where: { subscriptionId: subscription.id } });
+    await prisma.subscription.delete({ where: { id: subscription.id } });
+    const durationAddon = await prisma.serviceAddon.upsert({
+      where: { id: 'scheduling-test-duration-addon' },
+      update: {},
+      create: { id: 'scheduling-test-duration-addon', serviceId: carWash.id, name: 'Duration test', price: 20, durationMinutes: 15 },
+    });
+    const addonDate = new Date(`${testDate}T00:00:00Z`);
+    addonDate.setUTCDate(addonDate.getUTCDate() + 7);
+    const addonDay = addonDate.toISOString().slice(0, 10);
+    const withAddon = await request('', { ...bookingPayload, date: addonDay, time: '15:00', addonIds: [durationAddon.id] });
+    assert(withAddon.status === 201 && withAddon.json.data.totalOccupiedMinutes === 75,
+      'The saved booking includes the add-on in its occupied time');
+    const addonBooking = withAddon.json.data;
+    const addonHeaders = { 'X-Booking-Access': addonBooking.bookingAccess };
+    await prisma.booking.update({ where: { id: addonBooking.id }, data: { totalOccupiedMinutes: 60 } });
+    const movedAddonBooking = await request(`/${addonBooking.id}/reschedule`, { newDate: addonDay, newTime: '16:00' }, addonHeaders);
+    assert(movedAddonBooking.status === 200 && movedAddonBooking.json.data.scheduledEnd === '17:15' &&
+      movedAddonBooking.json.data.totalOccupiedMinutes === 75,
+      'Rescheduling preserves the duration of the booking with its add-on');
+    const cancelledAddonBooking = await request(`/${addonBooking.id}/cancel`, {}, addonHeaders);
+    assert(cancelledAddonBooking.status === 200, 'The add-on booking releases its appointment after cancellation');
+    const past = await request('', { ...bookingPayload, date: '2000-01-01' });
+    assert(past.status === 422, 'Past dates cannot reserve an appointment');
+    const tracked = await request(`/track/${guestBooking.id}`, undefined, guestHeaders);
+    assert(tracked.status === 200, 'Guest can track their booking using its access grant');
+    const rescheduled = await request(`/${guestBooking.id}/reschedule`, { newDate: testDate, newTime: '16:00' }, guestHeaders);
+    assert(rescheduled.status === 200 && rescheduled.json.data.scheduledStart === '16:00', 'Guest reschedule commits the new appointment');
+    const cancelled = await request(`/${guestBooking.id}/cancel`, { reason: 'تجربة الإلغاء' }, guestHeaders);
+    assert(cancelled.status === 200 && cancelled.json.data.status === 'cancelled', 'Guest cancellation commits the cancelled state');
+    const adminCreated = await request('/admin/create', { ...bookingPayload, time: '16:00' }, adminHeaders);
+    assert(adminCreated.status === 201, 'Admin can book a slot released by guest cancellation');
+
+    const adminBookingPath = `/admin/${adminCreated.json.data.id}`;
+    const notes = 'ملاحظات الطلب من لوحة الإدارة';
+    const notesUpdate = await request(`${adminBookingPath}/notes`, { notes }, adminHeaders, 'PATCH');
+    assert(notesUpdate.status === 200, 'Admin notes are saved through the API');
+    const withNotes = await request(adminBookingPath, undefined, adminHeaders);
+    assert(withNotes.json.data.notes === notes, 'Admin notes persist in the booking record');
+
+    const coupon = await prisma.coupon.upsert({
+      where: { code: 'SCHEDULETEST' },
+      update: { currentUsageCount: 0, lastUsedAt: null },
+      create: {
+        code: 'SCHEDULETEST', discountType: 'fixed', discountValue: 10,
+        startDate: '2000-01-01', endDate: '2099-12-31', totalUsageLimit: 1,
+      },
+    });
+    await prisma.couponUsage.deleteMany({ where: { couponId: coupon.id } });
+    const discountedBooking = { ...bookingPayload, time: '14:00', promoCode: coupon.code };
+    const discountKey = { 'Idempotency-Key': randomUUID() };
+    const secondDiscountKey = { 'Idempotency-Key': randomUUID() };
+    const otherPayload = { ...discountedBooking, time: '15:00', guestPhone: '01123456789' };
+    const [oneDiscount, otherDiscount] = await Promise.all([
+      request('', discountedBooking, discountKey),
+      request('', otherPayload, secondDiscountKey),
+    ]);
+    const acceptedDiscounts = [oneDiscount, otherDiscount].filter((result) => result.status === 201);
+    assert(acceptedDiscounts.length === 1, 'Concurrent bookings cannot exceed the coupon usage limit');
+    const couponUsage = await prisma.coupon.findUniqueOrThrow({ where: { id: coupon.id } });
+    assert(couponUsage.currentUsageCount === 1, 'Coupon counter commits only the accepted redemption');
+    const discountReplay = oneDiscount.status === 201
+      ? await request('', discountedBooking, discountKey)
+      : await request('', otherPayload, secondDiscountKey);
+    assert(discountReplay.status === 200 && discountReplay.json.data.id === acceptedDiscounts[0].json.data.id,
+      'A successful booking can be replayed after its coupon is exhausted');
+
+    // Use a fixed Cairo clock to test late cancellation without depending on run time.
+    const liveDay = '2026-12-09';
+    const realDate = global.Date;
+    let stoppedAt = realDate.parse(`${liveDay}T08:00:00Z`);
+    class ScenarioClock extends realDate {
+      constructor(value?: string | number | Date) {
+        super(value ?? stoppedAt);
+      }
+      static now() { return stoppedAt; }
+    }
+    const settings = await prisma.systemSettings.findFirst({ where: { key: 'global_settings' } });
+    const liveSettings = { ...(settings?.booking as object || {}), sameDayBooking: true, minNoticeHours: 0, workingDays: [3], breakStart: null, breakEnd: null };
+    const record = settings
+      ? await prisma.systemSettings.update({ where: { id: settings.id }, data: { booking: liveSettings } })
+      : await prisma.systemSettings.create({ data: { key: 'global_settings', booking: liveSettings } });
+    await Booking.deleteMany({ date: liveDay });
+    let liveSubscriptionId: string | undefined;
+    global.Date = ScenarioClock as DateConstructor;
+    try {
+      const firstAppointment = await request('', { ...bookingPayload, date: liveDay, time: '13:00' });
+      const nextAppointment = await request('', { ...bookingPayload, date: liveDay, time: '14:00' });
+      const workingAppointment = await request('', { ...bookingPayload, date: liveDay, time: '15:00' });
+      assert([firstAppointment, nextAppointment, workingAppointment].every(item => item.status === 201), 'Set up three real bookings for late-cancellation checks');
+      const original = firstAppointment.json.data;
+      const headers = { 'X-Booking-Access': original.bookingAccess };
+      stoppedAt = realDate.parse(`${liveDay}T10:55:00Z`);
+      const shortNotice = await request(`/${original.id}/cancel`, {}, headers);
+      assert(shortNotice.json.code === 'CANCELLATION_RESTRICTED_6H', 'Pre-appointment cancellation still respects configured notice');
+      stoppedAt = realDate.parse(`${liveDay}T11:10:00Z`);
+      const cancellations = await Promise.all([
+        request(`/${original.id}/cancel`, {}, headers),
+        request(`/${original.id}/cancel`, {}, headers),
+      ]);
+      assert(cancellations.every(item => item.status === 200 && item.json.data.status === 'cancelled'),
+        'Concurrent cancellation requests return the same final cancelled state');
+      const persisted = await prisma.booking.findUniqueOrThrow({ where: { id: original.id } });
+      assert((persisted.timeline as any[]).filter(event => event.status === 'cancelled').length === 1,
+        'Cancelling twice records one timeline event');
+      const free = await getAvailableSlots(liveDay, tireWash.id);
+      assert(free.slots[0]?.start === '13:10' && free.slots[0]?.end === '13:40',
+        'A 30-minute service can start at the exact 13:10 release boundary');
+      const pastSlot = await request('', { ...bookingPayload, date: liveDay, serviceId: tireWash.id, time: '13:09' });
+      const longerSlot = await request('', { ...bookingPayload, date: liveDay, time: '13:10' });
+      assert(pastSlot.status === 422 && pastSlot.json.code === 'BOOKING_TIME_PAST' && longerSlot.status === 409,
+        'Time already elapsed and services overlapping 14:00 remain unavailable');
+      const competing = await Promise.all([
+        request('', { ...bookingPayload, date: liveDay, serviceId: tireWash.id, time: '13:10', guestPhone: '01123456789' }),
+        request('', { ...bookingPayload, date: liveDay, serviceId: tireWash.id, time: '13:10', guestPhone: '01234567890' }),
+      ]);
+      assert(competing.map(item => item.status).sort().join(',') === '201,409', 'Two clients competing for the released slot create exactly one booking');
+      const following = await prisma.booking.findUniqueOrThrow({ where: { id: nextAppointment.json.data.id } });
+      assert(following.scheduledStart === '14:00', 'Previously scheduled customers keep their committed appointment');
+      const active = workingAppointment.json.data;
+      await prisma.booking.update({ where: { id: active.id }, data: { status: 'assigned', assignedTechnicianId: 'scheduling-test-technician' } });
+      stoppedAt = realDate.parse(`${liveDay}T13:10:00Z`);
+      const currentAdminHeaders = { Authorization: `Bearer ${generateAdminToken({ id: testAdmin.id, username: testAdmin.username, role: testAdmin.role })}` };
+      const race = await Promise.all([
+        request(`/${active.id}/cancel`, {}, { 'X-Booking-Access': active.bookingAccess }),
+        request(`/admin/${active.id}/status`, { status: 'in_progress' }, currentAdminHeaders, 'PUT'),
+      ]);
+      assert(race.filter(item => item.status === 200).length === 1, 'Only one of service start and customer cancellation can commit');
+      const finalState = await prisma.booking.findUniqueOrThrow({ where: { id: active.id } });
+      assert(race[0].status === 200 ? finalState.status === 'cancelled' : finalState.status === 'in_progress',
+        'The stored status matches the result of the winning operation');
+      const liveCustomerToken = generateCustomerToken({ id: subscriptionUser.id, phone: subscriptionUser.phone });
+      const subscriptionHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${liveCustomerToken}` };
+      const liveSubscription = await fetch(`${baseUrl}/api/subscriptions`, {
+        method: 'POST',
+        headers: subscriptionHeaders,
+        body: JSON.stringify({ ...bookingPayload, planId: plan.id, visits: [{ date: liveDay, time: '16:00' }] }),
+      });
+      assert(liveSubscription.status === 201, 'A subscription visit can reserve the next appointment');
+      const liveSubscriptionData = (await liveSubscription.json() as any).data;
+      liveSubscriptionId = liveSubscriptionData.id;
+      stoppedAt = realDate.parse(`${liveDay}T14:10:00Z`);
+      const currentCustomerToken = generateCustomerToken({ id: subscriptionUser.id, phone: subscriptionUser.phone });
+      const visitCancellation = await fetch(`${baseUrl}/api/subscriptions/visits/${liveSubscriptionData.visits[0].id}/cancel`, {
+        method: 'POST',
+        headers: { ...subscriptionHeaders, Authorization: `Bearer ${currentCustomerToken}` },
+        body: '{}',
+      });
+      assert(visitCancellation.status === 200, 'Customer can cancel an unstarted subscription visit within its appointment');
+      const afterVisit = await getAvailableSlots(liveDay, tireWash.id);
+      assert(afterVisit.slots[0]?.start === '16:10', 'Subscription cancellation releases the rest of the visit at the exact minute');
+      const finishedWindow = await request(`/${nextAppointment.json.data.id}/cancel`, {}, {
+        'X-Booking-Access': nextAppointment.json.data.bookingAccess,
+      });
+      assert(finishedWindow.status !== 200, 'An elapsed appointment is not retroactively cancelled');
+      const lateService = await request('', { ...bookingPayload, date: liveDay, time: '17:00' });
+      assert(lateService.status === 201, 'Set up a booked service for execution checks');
+      const liveOrder = lateService.json.data;
+      await prisma.booking.update({ where: { id: liveOrder.id }, data: { status: 'assigned', assignedTechnicianId: 'scheduling-test-technician' } });
+      stoppedAt = realDate.parse(`${liveDay}T15:10:00Z`);
+      const startService = await request(`/admin/${liveOrder.id}/status`, { status: 'in_progress' }, {
+        Authorization: `Bearer ${generateAdminToken({ id: testAdmin.id, username: testAdmin.username, role: testAdmin.role })}`,
+      }, 'PUT');
+      assert(startService.status === 200, 'Technician workflow marks the booking in progress');
+      const denyCancel = await request(`/${liveOrder.id}/cancel`, {}, { 'X-Booking-Access': liveOrder.bookingAccess });
+      assert(denyCancel.status === 400 && denyCancel.json.code === 'CANNOT_CANCEL_IN_PROGRESS',
+        'A customer cannot release an appointment after the service starts');
+      const whileWorking = await getAvailableSlots(liveDay, tireWash.id);
+      assert(!whileWorking.slots.some(slot => slot.start < '18:00'), 'An appointment receiving service still occupies the time');
+    } finally {
+      global.Date = realDate;
+      if (liveSubscriptionId) {
+        await prisma.subscriptionVisit.deleteMany({ where: { subscriptionId: liveSubscriptionId } });
+        await prisma.subscription.deleteMany({ where: { id: liveSubscriptionId } });
+      }
+      await Booking.deleteMany({ date: liveDay });
+      if (settings) {
+        await prisma.systemSettings.update({ where: { id: record.id }, data: { booking: settings.booking ?? {} } });
+      } else {
+        await prisma.systemSettings.delete({ where: { id: record.id } });
+      }
+    }
+
     // Cleanup
     await Booking.deleteMany({ date: testDate });
 
     console.log('\n===============================================================');
-    console.log('🎉 ALL 8 MANDATORY VERIFICATION TESTS PASSED SUCCESSFULLY! (8/8)');
+    console.log('🎉 ALL SCHEDULING AND BOOKING HTTP CHECKS PASSED');
     console.log('===============================================================\n');
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));

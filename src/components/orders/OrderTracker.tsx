@@ -31,6 +31,9 @@ import {
   getAuthoritativeStatusBanner,
 } from '@/lib/orderStatusConfig';
 import { RescheduleModal } from './RescheduleModal';
+import { Dialog } from '@/components/ui/Dialog';
+import { Button } from '@/components/ui/Button';
+import { cleanzoApi } from '@/lib/api/cleanzoApi';
 
 interface OrderTrackerProps {
   order: Order;
@@ -43,6 +46,29 @@ export function OrderTracker({ order, onOpenReview, onOrderUpdate }: OrderTracke
   const isAr = locale === 'ar';
   const router = useRouter();
   const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
+
+  const [isCancelOpen, setIsCancelOpen] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const canCancel = ['pending', 'confirmed', 'assigned', 'on_the_way'].includes(order.status);
+
+  const cancelBooking = async () => {
+    if (isCancelling) return;
+    setIsCancelling(true);
+    try {
+      const updated = await cleanzoApi.bookings.cancel(order.id);
+      if (updated?.id !== order.id || updated.status !== 'cancelled') {
+        throw new Error(isAr ? 'تعذر تأكيد إلغاء الحجز' : 'Could not confirm cancellation');
+      }
+      onOrderUpdate?.({ ...order, ...updated });
+      setIsCancelOpen(false);
+      window.dispatchEvent(new CustomEvent('cleanzo:booking-changed', { detail: { date: updated.date } }));
+      toast.success(isAr ? 'تم إلغاء الحجز' : 'Booking cancelled');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : (isAr ? 'تعذر إلغاء الحجز' : 'Could not cancel booking'));
+    } finally {
+      setIsCancelling(false);
+    }
+  };
 
   const { selectService, setAddress, setCategory } = useBookingStore();
 
@@ -361,6 +387,27 @@ export function OrderTracker({ order, onOpenReview, onOrderUpdate }: OrderTracke
           </div>
         </div>
       </div>
+
+      {canCancel && onOrderUpdate && (
+        <Button variant="outline" size="sm" onClick={() => setIsCancelOpen(true)}>
+          {isAr ? 'إلغاء الحجز' : 'Cancel booking'}
+        </Button>
+      )}
+      <Dialog
+        isOpen={isCancelOpen}
+        onClose={() => { if (!isCancelling) setIsCancelOpen(false); }}
+        title={isAr ? 'تأكيد إلغاء الحجز' : 'Confirm cancellation'}
+        maxWidth="sm"
+      >
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" disabled={isCancelling} onClick={() => setIsCancelOpen(false)}>
+            {isAr ? 'رجوع' : 'Back'}
+          </Button>
+          <Button variant="danger" isLoading={isCancelling} onClick={cancelBooking}>
+            {isAr ? 'نعم، إلغاء الحجز' : 'Yes, cancel booking'}
+          </Button>
+        </div>
+      </Dialog>
 
       {/* Reschedule Modal */}
       <RescheduleModal

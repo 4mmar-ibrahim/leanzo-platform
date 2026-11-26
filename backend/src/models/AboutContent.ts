@@ -1,6 +1,6 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import { createPrismaRepository, type RepositoryRecord } from './prismaModelBridge.js';
 
-export interface IAboutContent extends Document {
+export interface IAboutContent extends RepositoryRecord {
   title: string;
   titleEn: string;
   description: string;
@@ -17,39 +17,4 @@ export interface IAboutContent extends Document {
   updatedAt: Date;
 }
 
-const AboutContentSchema = new Schema<IAboutContent>(
-  {
-    title: { type: String, required: true, default: 'من نحن - كلينزو' },
-    titleEn: { type: String, required: true, default: 'About Us - Cleanzo' },
-    description: { type: String, default: '' },
-    descriptionEn: { type: String, default: '' },
-    mission: { type: String, default: '' },
-    missionEn: { type: String, default: '' },
-    vision: { type: String, default: '' },
-    visionEn: { type: String, default: '' },
-    story: { type: String, default: '' },
-    storyEn: { type: String, default: '' },
-    stats: [
-      {
-        id: String,
-        label: String,
-        labelEn: String,
-        value: String,
-      },
-    ],
-    features: [
-      {
-        id: String,
-        title: String,
-        titleEn: String,
-        description: String,
-        descriptionEn: String,
-        icon: String,
-      },
-    ],
-  },
-  { timestamps: true }
-);
-
-import { createPrismaRepository } from './prismaModelBridge.js';
 export const AboutContent = createPrismaRepository('aboutContent') as any;

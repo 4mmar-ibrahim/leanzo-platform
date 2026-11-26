@@ -313,7 +313,9 @@ async function runTests() {
     // -------------------------------------------------------------
     console.log('\n📋 [Suite 5/7] Booking Availability Engine & Overlap Prevention:');
 
-    const testDate = '2026-10-15';
+    const futureDate = new Date();
+    futureDate.setUTCDate(futureDate.getUTCDate() + 7 + (4 - futureDate.getUTCDay() + 7) % 7);
+    const testDate = futureDate.toISOString().slice(0, 10);
     const testTime = '10:00 AM';
 
     // Ensure slot capacity is strictly 1 for overlap testing

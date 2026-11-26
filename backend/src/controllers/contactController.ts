@@ -9,9 +9,11 @@ import {
 
 export async function submitContactMessage(req: Request, res: Response): Promise<void> {
   try {
-    const { name, phone, email, message, source } = req.body;
+    const { name, phone, email, message } = req.body;
 
-    if (!name || !phone || !message) {
+    if (typeof name !== 'string' || !name.trim() || typeof phone !== 'string' ||
+        typeof message !== 'string' || !message.trim() ||
+        (email !== undefined && typeof email !== 'string')) {
       sendError(res, 'يرجى إدخال الاسم ورقم الهاتف والرسالة', 422);
       return;
     }
@@ -33,9 +35,8 @@ export async function submitContactMessage(req: Request, res: Response): Promise
       phone: phone.trim(),
       email: email ? email.trim() : undefined,
       message: message.trim(),
-      source: source || 'website_contact',
+      subject: 'رسالة من صفحة التواصل',
       status: 'new',
-      ip: req.ip || req.socket.remoteAddress,
     });
 
     sendSuccess(res, { id: newMessage._id }, 'شكراً لتواصلك معنا! تم استلام رسالتك وسيتواصل معك فريق خدمة العملاء قريباً.', 201);
@@ -85,7 +86,7 @@ export async function updateContactMessageStatus(req: Request, res: Response): P
 
     const msg = await ContactMessage.findByIdAndUpdate(
       id,
-      { status, replyNote },
+      { status, ...(typeof replyNote === 'string' ? { notes: replyNote.trim() } : {}) },
       { new: true }
     );
 

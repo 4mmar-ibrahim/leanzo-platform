@@ -14,7 +14,7 @@ import { formatTimeTo12Hour } from '@/lib/timeUtils';
 
 export default function AccountOrdersPage() {
   const { t, locale, direction } = useLocaleStore();
-  const { orders, fetchMyOrders, isLoading } = useOrderStore();
+  const { orders, fetchMyOrders, isLoading, customerOrdersStale } = useOrderStore();
   const isAr = locale === 'ar';
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
 
@@ -26,7 +26,7 @@ export default function AccountOrdersPage() {
 
   const filteredOrders = orders.filter((o) => {
     if (activeTab === 'all') return true;
-    if (activeTab === 'upcoming') return ['pending', 'confirmed', 'assigned'].includes(o.status);
+    if (activeTab === 'upcoming') return ['pending', 'confirmed', 'assigned', 'on_the_way'].includes(o.status);
     if (activeTab === 'in_progress') return o.status === 'in_progress';
     if (activeTab === 'completed') return o.status === 'completed';
     if (activeTab === 'cancelled') return o.status === 'cancelled';
@@ -35,7 +35,7 @@ export default function AccountOrdersPage() {
 
   const tabs = [
     { id: 'all', label: t.account.allOrders, count: orders.length },
-    { id: 'upcoming', label: t.account.upcoming, count: orders.filter((o) => ['pending', 'confirmed', 'assigned'].includes(o.status)).length },
+    { id: 'upcoming', label: t.account.upcoming, count: orders.filter((o) => ['pending', 'confirmed', 'assigned', 'on_the_way'].includes(o.status)).length },
     { id: 'in_progress', label: t.account.inProgress, count: orders.filter((o) => o.status === 'in_progress').length },
     { id: 'completed', label: t.account.completed, count: orders.filter((o) => o.status === 'completed').length },
     { id: 'cancelled', label: t.account.cancelled, count: orders.filter((o) => o.status === 'cancelled').length },
@@ -63,6 +63,12 @@ export default function AccountOrdersPage() {
           <span className="hidden sm:inline">{isAr ? 'تحديث' : 'Refresh'}</span>
         </button>
       </div>
+
+      {customerOrdersStale && (
+        <p role="status" className="text-sm text-amber-700 dark:text-amber-400">
+          {isAr ? 'تعذر تحديث الحجوزات. البيانات المعروضة قديمة.' : 'Could not refresh bookings. The displayed data may be out of date.'}
+        </p>
+      )}
 
       {/* Filter Tabs */}
       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">

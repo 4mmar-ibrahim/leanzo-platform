@@ -187,7 +187,7 @@ export default function AccountSubscriptionsPage() {
 
   // Handle Cancel submit
   const handleConfirmCancel = async () => {
-    if (!cancelModalVisit) return;
+    if (!cancelModalVisit || cancelling) return;
 
     setCancelling(true);
     try {
@@ -197,6 +197,7 @@ export default function AccountSubscriptionsPage() {
 
       if (res && res.success) {
         toast.success(isAr ? 'تم إلغاء موعد الزيارة بنجاح' : 'Visit cancelled successfully');
+        window.dispatchEvent(new CustomEvent('cleanzo:booking-changed', { detail: { date: cancelModalVisit.visit.date } }));
         setCancelModalVisit(null);
         fetchSubscriptions();
       } else {
@@ -414,7 +415,7 @@ export default function AccountSubscriptionsPage() {
                             </div>
 
                             {/* Action Buttons for upcoming visits */}
-                            {!isCompleted && !isCancelled && (
+                            {!isCompleted && !isCancelled && visit.status !== 'in_progress' && (
                               <div className="flex flex-col gap-1.5 shrink-0">
                                 {isAllowed ? (
                                   <>
@@ -428,16 +429,6 @@ export default function AccountSubscriptionsPage() {
                                       className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-[#0866C6] dark:text-sky-400 border border-slate-200 dark:border-slate-700 text-xs font-bold transition-all shadow-xs"
                                     >
                                       {isAr ? 'تغيير الموعد' : 'Reschedule'}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setCancelModalVisit({ visit, sub });
-                                        setCancelReason('');
-                                      }}
-                                      className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-slate-200 dark:border-slate-700 text-xs font-bold transition-all shadow-xs"
-                                    >
-                                      {isAr ? 'إلغاء' : 'Cancel'}
                                     </button>
                                   </>
                                 ) : (
@@ -460,6 +451,16 @@ export default function AccountSubscriptionsPage() {
                                     </div>
                                   </div>
                                 )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCancelModalVisit({ visit, sub });
+                                    setCancelReason('');
+                                  }}
+                                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-slate-200 dark:border-slate-700 text-xs font-bold transition-all shadow-xs"
+                                >
+                                  {isAr ? 'إلغاء' : 'Cancel'}
+                                </button>
                               </div>
                             )}
                           </div>

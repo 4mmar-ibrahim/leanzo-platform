@@ -20,6 +20,7 @@ import { useCMSStore } from '@/store/useCMSStore';
 import { useActivityLogStore } from '@/store/useActivityLogStore';
 import { useAdminStore } from '@/store/useAdminStore';
 import { toast } from 'sonner';
+import { cleanzoApi } from '@/lib/api/cleanzoApi';
 
 export default function AdminContentContactPage() {
   const contact = useCMSStore((s) => s.contact);
@@ -36,6 +37,20 @@ export default function AdminContentContactPage() {
 
   const currentAdmin = useAdminStore((s) => s.currentAdmin);
   const addLog = useActivityLogStore((s) => s.addLog);
+
+  const [messagePage, setMessagePage] = useState(1);
+  const [inbox, setInbox] = useState<Awaited<ReturnType<typeof cleanzoApi.contact.getMessages>> | null>(null);
+  const [inboxError, setInboxError] = useState('');
+  useEffect(() => {
+    if (!currentAdmin) return;
+    let active = true;
+    setInbox(null);
+    setInboxError('');
+    cleanzoApi.contact.getMessages(messagePage)
+      .then(result => { if (active) setInbox(result); })
+      .catch(() => { if (active) setInboxError('تعذر تحميل رسائل التواصل'); });
+    return () => { active = false; };
+  }, [currentAdmin?.id, messagePage]);
 
   // Contact Form State
   const [phone, setPhone] = useState(contact.phone);
@@ -451,6 +466,33 @@ export default function AdminContentContactPage() {
           </button>
         </div>
       </form>
+      <section className="space-y-4 rounded-2xl border border-slate-200 p-5 dark:border-slate-700">
+        <h2 className="font-bold">رسائل التواصل</h2>
+        {inboxError ? (
+          <p role="status">{inboxError}</p>
+        ) : !inbox ? (
+          <p role="status">جارٍ تحميل الرسائل…</p>
+        ) : inbox.messages.length === 0 ? (
+          <p>لا توجد رسائل تواصل.</p>
+        ) : (
+          <ul className="space-y-3">
+            {inbox.messages.map(item => (
+              <li key={item.id} className="space-y-1 border-b border-slate-200 pb-3 text-sm dark:border-slate-700">
+                <p className="font-semibold">{item.name}</p>
+                <p dir="auto">{item.phone}{item.email ? ` · ${item.email}` : ''}</p>
+                <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString('ar-EG', { timeZone: 'Africa/Cairo' })}</time>
+                <p dir="auto" className="whitespace-pre-wrap break-words">{item.message}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+        {inbox && inbox.pagination.pages > 1 && (
+          <div className="flex gap-4">
+            <button type="button" disabled={messagePage <= 1} onClick={() => setMessagePage(page => page - 1)}>السابق</button>
+            <button type="button" disabled={messagePage >= inbox.pagination.pages} onClick={() => setMessagePage(page => page + 1)}>التالي</button>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { SectionHeader } from '@/components/common/SectionHeader';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { toast } from 'sonner';
+import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { useZoStudioStore } from '@/store/useZoStudioStore';
 import { SocialBrandIcon, resolveSocialItems } from '@/components/common/SocialBrandIcon';
 
@@ -29,16 +30,20 @@ export default function ContactPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (!name.trim() || !phone.trim() || !message.trim()) {
       toast.error(isAr ? 'يرجى إكمال الحقول المطلوبة' : 'Please fill all required fields');
       return;
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      const saved = await cleanzoApi.contact.submitMessage({
+        name: name.trim(), phone: phone.trim(), email: email.trim() || undefined, message: message.trim(),
+      });
+      if (!saved?.id) throw new Error(isAr ? 'تعذر تأكيد استلام الرسالة' : 'Could not confirm receipt');
       setIsSuccess(true);
       toast.success(isAr ? 'تم استلام رسالتك بنجاح! سيتواصل معك فريق الدعم قريباً.' : 'Message received! We will be in touch shortly.');
 
@@ -50,7 +55,11 @@ export default function ContactPage() {
         customMessage: 'رسالتك وصلت يا بطل! 💙 فريق كلينزو هيتواصل معاك في أسرع وقت.',
         customMessageEn: 'Your message has been received! 💙 The Cleanzo team will reach out shortly.',
       });
-    }, 600);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : (isAr ? 'تعذر إرسال الرسالة' : 'Could not send the message'));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

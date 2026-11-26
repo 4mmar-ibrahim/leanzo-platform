@@ -5,6 +5,7 @@
  * and zero-leakage error handling.
  */
 
+import { useAuthStore } from '@/store/useAuthStore';
 import { useAdminStore } from '@/store/useAdminStore';
 
 /**
@@ -51,15 +52,11 @@ export class ApiError extends Error {
   }
 }
 
-function getCookie(name: string): string | null {
-  if (typeof document === 'undefined') return null;
-  const match = document.cookie.match(new RegExp('(^|;\\s*)(' + name + ')=([^;]*)'));
-  return match ? decodeURIComponent(match[3]) : null;
-}
-
 export function getCustomerAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
   try {
+    const token = useAuthStore.getState().token;
+    if (token) return token;
     const raw = localStorage.getItem('cleanzo-auth-storage');
     if (!raw) return null;
     const parsed = JSON.parse(raw);
@@ -71,49 +68,12 @@ export function getCustomerAuthToken(): string | null {
 
 export function getAdminAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
-  try {
-    // 1. Check in-memory store token first if initialized
-    try {
-      const storeToken = useAdminStore.getState().token;
-      if (storeToken && storeToken !== 'demo-admin-owner-jwt-token') {
-        return storeToken;
-      }
-    } catch {}
-
-    // 2. Check localStorage
-    const raw =
-      localStorage.getItem('cleanzo-admin-auth-storage') ||
-      localStorage.getItem('cleanzo-admin-storage');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed?.state?.token) return parsed.state.token;
-      if (parsed?.token) return parsed.token;
-    }
-
-    // 3. Check cleanzo_admin_token cookie
-    const cookieToken = getCookie('cleanzo_admin_token');
-    if (cookieToken && cookieToken !== 'demo-admin-owner-jwt-token') return cookieToken;
-  } catch {}
-  return null;
+  return useAdminStore.getState().token;
 }
 
 export function setCustomerAuthToken(newToken: string, user?: any): void {
   if (typeof window === 'undefined') return;
   try {
-    const raw = localStorage.getItem('cleanzo-auth-storage');
-    let parsed: any = {};
-    if (raw) {
-      try {
-        parsed = JSON.parse(raw);
-      } catch {}
-    }
-    if (!parsed.state) parsed.state = {};
-    parsed.state.token = newToken;
-    parsed.state.isAuthenticated = true;
-    if (user) {
-      parsed.state.user = user;
-    }
-    localStorage.setItem('cleanzo-auth-storage', JSON.stringify(parsed));
     window.dispatchEvent(
       new CustomEvent('cleanzo:customer-token-changed', {
         detail: { token: newToken, user },
@@ -143,35 +103,8 @@ export function clearCustomerAuthSession(): void {
   } catch {}
 }
 
-export function setAdminAuthToken(newToken: string): void {
-  if (typeof window === 'undefined') return;
-  try {
-    // 1. Update localStorage
-    const raw = localStorage.getItem('cleanzo-admin-auth-storage');
-    let parsed: any = {};
-    if (raw) {
-      try {
-        parsed = JSON.parse(raw);
-      } catch {}
-    }
-    if (!parsed.state) parsed.state = {};
-    parsed.state.token = newToken;
-    parsed.state.isAuthenticated = true;
-    localStorage.setItem('cleanzo-admin-auth-storage', JSON.stringify(parsed));
-    localStorage.setItem('cleanzo-admin-storage', JSON.stringify(parsed));
-
-    // 2. Update browser cookie (30 days validity, Path=/, SameSite=Lax)
-    const isHttps = window.location.protocol === 'https:';
-    document.cookie = `cleanzo_admin_token=${encodeURIComponent(newToken)}; path=/; max-age=2592000; SameSite=Lax${isHttps ? '; Secure' : ''}`;
-
-    // 3. Synchronize in-memory Zustand store directly
-    try {
-      useAdminStore.getState().setSessionToken(newToken);
-    } catch {}
-
-    // 4. Dispatch in-tab custom event
-    window.dispatchEvent(new CustomEvent('cleanzo:admin-token-changed', { detail: { token: newToken } }));
-  } catch {}
+function setAdminAuthToken(newToken: string): void {
+  if (typeof window !== 'undefined') useAdminStore.getState().setSessionToken(newToken);
 }
 
 export function clearAdminAuthSession(): void {
@@ -179,7 +112,6 @@ export function clearAdminAuthSession(): void {
   try {
     localStorage.removeItem('cleanzo-admin-auth-storage');
     localStorage.removeItem('cleanzo-admin-storage');
-    document.cookie = 'cleanzo_admin_token=; path=/; max-age=0; SameSite=Lax';
     try {
       useAdminStore.getState().logout();
     } catch {}

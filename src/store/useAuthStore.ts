@@ -3,7 +3,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { User } from '@/types';
-import { useCustomerStore } from '@/store/useCustomerStore';
 import { useAddressStore } from '@/store/useAddressStore';
 import { useBookingStore } from '@/store/useBookingStore';
 import { useCustomerNotificationStore } from '@/store/useCustomerNotificationStore';
@@ -13,22 +12,12 @@ import {
   CANONICAL_PHONE_ERROR_MESSAGE,
 } from '@/lib/validation/phoneValidation';
 
-export interface RegisteredAccount {
-  phone: string;
-  password: string;
-  name: string;
-  email?: string;
-  status: 'active' | 'inactive' | 'suspended' | 'deleted' | 'disabled';
-  isDeleted?: boolean;
-}
-
 interface AuthState {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
   authStatus: 'AUTH_LOADING' | 'AUTHENTICATED' | 'UNAUTHENTICATED';
   rememberMe: boolean;
-  registeredAccounts: RegisteredAccount[];
   initAuth: () => Promise<void>;
   login: (
     phone: string,
@@ -49,33 +38,6 @@ interface AuthState {
   resetDemoUser: () => boolean;
 }
 
-/**
- * Syncs a user to the customer store so they appear in the admin customers panel.
- * Skips if the customer already exists (matched by phone).
- */
-function syncUserToCustomerStore(user: User) {
-  try {
-    const customerStore = useCustomerStore.getState();
-    const alreadyExists = customerStore.customers.some(
-      (c) => c.phone === user.phone
-    );
-    if (!alreadyExists) {
-      customerStore.addCustomer({
-        name: user.name,
-        phone: user.phone,
-        email: user.email,
-        avatar: user.avatar,
-        addresses: user.addresses || [],
-        status: 'active',
-        source: 'website',
-        tags: ['عميل جديد'],
-      });
-    }
-  } catch {
-    // Silently ignore if customer store is not ready
-  }
-}
-
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
@@ -84,415 +46,59 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       authStatus: 'AUTH_LOADING',
       rememberMe: true,
-      registeredAccounts: [
-        {
-          phone: '01012345678',
-          password: 'password123',
-          name: 'أحمد المحمدي',
-          email: 'ahmed@cleanzo.com',
-          status: 'active',
-        },
-      ],
-
       initAuth: async () => {
-        set({ authStatus: 'AUTH_LOADING' });
         try {
-          // 1. Silent token refresh using HttpOnly cookie
-          const res = await cleanzoApi.auth.refresh();
-          if (res?.token && res?.user) {
-            set({
-              user: res.user,
-              token: res.token,
-              isAuthenticated: true,
-              authStatus: 'AUTHENTICATED',
-            });
-            syncUserToCustomerStore(res.user);
+          const session = await cleanzoApi.auth.refresh();
+          if (session?.token && session?.user) {
+            set({ user: session.user, token: session.token, isAuthenticated: true, authStatus: 'AUTHENTICATED' });
             return;
           }
-        } catch (refreshErr: any) {
-          if (refreshErr?.statusCode === 403) {
-            set({
-              user: null,
-              token: null,
-              isAuthenticated: false,
-              authStatus: 'UNAUTHENTICATED',
-            });
-            return;
-          }
-        }
-
-        // 2. Validate current access token with profile endpoint
-        const currentToken = get().token;
-        if (currentToken && currentToken !== 'cleanzo-customer-local-jwt') {
+        } catch {}
+        if (get().token) {
           try {
-            const profile = await cleanzoApi.auth.getProfile();
-            if (profile) {
-              set({
-                user: profile,
-                isAuthenticated: true,
-                authStatus: 'AUTHENTICATED',
-              });
-              syncUserToCustomerStore(profile);
+            const user = await cleanzoApi.auth.getProfile();
+            if (user?.id) {
+              set({ user, isAuthenticated: true, authStatus: 'AUTHENTICATED' });
               return;
             }
-          } catch (profileErr: any) {
-            if (profileErr?.statusCode === 401 || profileErr?.statusCode === 403) {
-              set({
-                user: null,
-                token: null,
-                isAuthenticated: false,
-                authStatus: 'UNAUTHENTICATED',
-              });
-              return;
-            }
-          }
+          } catch {}
         }
+        set({ user: null, token: null, isAuthenticated: false, authStatus: 'UNAUTHENTICATED' });
+      },
 
-        // 3. Fallback for local demo mode if user existed
-        const existingUser = get().user;
-        if (existingUser && get().isAuthenticated) {
-          set({ authStatus: 'AUTHENTICATED' });
-        } else {
-          set({
-            user: null,
-            token: null,
-            isAuthenticated: false,
-            authStatus: 'UNAUTHENTICATED',
-          });
+      login: async (phone, password, remember = true) => {
+        const validPhone = validateEgyptianPhone(phone.trim());
+        if (!validPhone.isValid || !password?.trim()) {
+          return { success: false, message: validPhone.message || 'يرجى إدخال رقم الهاتف وكلمة المرور' };
+        }
+        try {
+          const session = await cleanzoApi.auth.login(phone.trim(), password);
+          if (!session?.user || !session.token) throw new Error('تعذر تأكيد تسجيل الدخول');
+          set({ user: session.user, token: session.token, isAuthenticated: true, authStatus: 'AUTHENTICATED', rememberMe: remember });
+          return { success: true };
+        } catch (error) {
+          return { success: false, message: error instanceof Error ? error.message : 'تعذر تسجيل الدخول' };
         }
       },
 
-      login: async (phone: string, password = 'password123', remember: boolean = true) => {
-        const cleanPhone = phone.trim();
-        const cleanPassword = password ? password.trim() : '';
-
-        if (!cleanPhone || !cleanPassword) {
-          return {
-            success: false,
-            message: 'يرجى إدخال رقم الهاتف وكلمة المرور بشكل صحيح',
-          };
+      register: async (input, phoneArg, passwordArg) => {
+        const data = typeof input === 'string' ? { name: input, phone: phoneArg || '', password: passwordArg } : input;
+        const name = data.name.trim();
+        const phone = data.phone.trim();
+        const password = data.password;
+        const validPhone = validateEgyptianPhone(phone);
+        if (!validPhone.isValid) return { success: false, message: validPhone.message || CANONICAL_PHONE_ERROR_MESSAGE };
+        if (!name || !password || password.length < 6) {
+          return { success: false, message: 'يرجى إدخال الاسم وكلمة مرور من 6 خانات على الأقل' };
         }
-
-        const phoneVal = validateEgyptianPhone(cleanPhone);
-        if (!phoneVal.isValid) {
-          return {
-            success: false,
-            message: phoneVal.message || CANONICAL_PHONE_ERROR_MESSAGE,
-          };
-        }
-
-        // 1. Check if customer is deactivated/suspended/deleted in customerStore
         try {
-          const customerStore = useCustomerStore.getState();
-          const matchedCust = customerStore.customers.find((c) => c.phone === cleanPhone);
-          if (matchedCust) {
-            if (matchedCust.status === 'deleted' || matchedCust.status === 'disabled' || matchedCust.isDeleted) {
-              return {
-                success: false,
-                message: 'هذا الحساب محذوف ومعطل نهائياً من قِبل إدارة كلينزو. تم حظر الدخول.',
-              };
-            }
-            if (matchedCust.status === 'inactive' || matchedCust.status === 'suspended') {
-              return {
-                success: false,
-                message: 'هذا الحساب معطل من قِبل إدارة كلينزو. يرجى التواصل مع خدمة العملاء.',
-              };
-            }
-          }
-        } catch {}
-
-        // 2. Attempt Backend API Login
-        try {
-          const res = await cleanzoApi.auth.login(cleanPhone, cleanPassword);
-          if (res && res.user && res.token) {
-            set({
-              user: res.user,
-              token: res.token,
-              isAuthenticated: true,
-              authStatus: 'AUTHENTICATED',
-              rememberMe: remember,
-            });
-            syncUserToCustomerStore(res.user);
-            return { success: true };
-          }
-        } catch (err: any) {
-          // If backend gave a specific authorization error, respect it and return failure
-          if (err?.code === 'ACCOUNT_DELETED' || err?.message?.includes('محذوف ومعطل نهائياً')) {
-            return {
-              success: false,
-              message: 'هذا الحساب محذوف ومعطل نهائياً من قِبل إدارة كلينزو. تم حظر الدخول.',
-            };
-          }
-          if (err?.statusCode === 401 || err?.code === 'INVALID_CREDENTIALS') {
-            return {
-              success: false,
-              message: 'رقم الهاتف أو كلمة المرور غير صحيحة. يرجى التأكد وإعادة المحاولة.',
-            };
-          }
-          if (err?.statusCode === 403 || err?.code === 'ACCOUNT_DEACTIVATED') {
-            return {
-              success: false,
-              message: 'هذا الحساب معطل من قِبل إدارة كلينزو. يرجى التواصل مع خدمة العملاء.',
-            };
-          }
-          // If backend offline / NO_REMOTE_BACKEND, fallback to local store below
+          const session = await cleanzoApi.auth.register({ name, phone, password, email: data.email?.trim() });
+          if (!session?.user || !session.token) throw new Error('تعذر تأكيد إنشاء الحساب');
+          set({ user: session.user, token: session.token, isAuthenticated: true, authStatus: 'AUTHENTICATED', rememberMe: true });
+          return { success: true };
+        } catch (error) {
+          return { success: false, message: error instanceof Error ? error.message : 'تعذر إنشاء الحساب' };
         }
-
-        // 3. Local / Offline Credential Verification
-        const accounts = get().registeredAccounts || [];
-        const matchedAccount = accounts.find((a) => a.phone === cleanPhone);
-
-        if (!matchedAccount) {
-          // Check if customer was created by admin in customerStore
-          const customerStore = useCustomerStore.getState();
-          const cust = customerStore.customers.find((c) => c.phone === cleanPhone);
-          if (!cust) {
-            return {
-              success: false,
-              message: 'رقم الهاتف أو كلمة المرور غير صحيحة. يرجى التحقق من صحة البيانات أو إنشاء حساب جديد.',
-            };
-          }
-          // Accept default initial password if registered via admin
-          if (cleanPassword !== 'password123' && cleanPassword !== '123456') {
-            return {
-              success: false,
-              message: 'كلمة المرور غير صحيحة. يرجى إعادة المحاولة.',
-            };
-          }
-        } else {
-          if (matchedAccount.status === 'inactive' || matchedAccount.status === 'suspended') {
-            return {
-              success: false,
-              message: 'هذا الحساب معطل من قِبل إدارة كلينزو. يرجى التواصل مع خدمة العملاء.',
-            };
-          }
-          if (matchedAccount.password !== cleanPassword) {
-            return {
-              success: false,
-              message: 'رقم الهاتف أو كلمة المرور غير صحيحة. يرجى إعادة المحاولة.',
-            };
-          }
-        }
-
-        const userName = matchedAccount?.name || 'عميل كلينزو';
-        const updatedUser: User = {
-          id: `usr-${cleanPhone.slice(-4)}`,
-          name: userName,
-          phone: cleanPhone,
-          email: matchedAccount?.email,
-          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=400&q=80',
-          createdAt: new Date().toISOString().split('T')[0],
-          addresses: [],
-          status: 'active',
-        };
-
-        set({
-          user: updatedUser,
-          token: 'cleanzo-customer-local-jwt',
-          isAuthenticated: true,
-          rememberMe: remember,
-        });
-
-        syncUserToCustomerStore(updatedUser);
-        return { success: true };
-      },
-
-      register: async (dataOrName, phoneArg, passwordArg) => {
-        let name = '';
-        let phone = '';
-        let password = 'password123';
-        let email: string | undefined = undefined;
-
-        if (typeof dataOrName === 'string') {
-          name = dataOrName.trim();
-          phone = (phoneArg || '').trim();
-          if (passwordArg) password = passwordArg.trim();
-        } else {
-          name = (dataOrName.name || '').trim();
-          phone = (dataOrName.phone || '').trim();
-          if (dataOrName.password) password = dataOrName.password.trim();
-          if (dataOrName.email) email = dataOrName.email.trim().toLowerCase();
-        }
-
-        // 1. Basic format validation
-        if (!name || !phone) {
-          return {
-            success: false,
-            message: 'يرجى إدخال الاسم ورقم الهاتف بالكامل',
-          };
-        }
-
-        const phoneVal = validateEgyptianPhone(phone);
-        if (!phoneVal.isValid) {
-          return {
-            success: false,
-            message: phoneVal.message || CANONICAL_PHONE_ERROR_MESSAGE,
-          };
-        }
-
-        if (password.length < 6) {
-          return {
-            success: false,
-            message: 'كلمة المرور يجب أن تتكون من 6 خانات على الأقل',
-          };
-        }
-
-        // 2. Check duplicate phone / email in customerStore
-        try {
-          const customerStore = useCustomerStore.getState();
-          const existingPhone = customerStore.customers.find((c) => c.phone === phone);
-          if (existingPhone) {
-            if (existingPhone.status === 'deleted' || existingPhone.status === 'disabled' || existingPhone.isDeleted) {
-              return {
-                success: false,
-                message: 'بيانات هذا الحساب (رقم الهاتف) محظورة ومحذوفة مسبقاً من قِبل الإدارة. لا يمكن إنشاء حساب جديد بهذه البيانات.',
-              };
-            }
-            if (existingPhone.status === 'inactive' || existingPhone.status === 'suspended') {
-              return {
-                success: false,
-                message: 'هذا الرقم مرتبط بحساب معطل من قِبل الإدارة. يرجى التواصل مع خدمة العملاء.',
-              };
-            }
-            return {
-              success: false,
-              message: 'رقم الهاتف هذا مسجل بالفعل لحساب آخر. يرجى تسجيل الدخول أو استخدام رقم مختلف.',
-            };
-          }
-
-          if (email) {
-            const existingEmail = customerStore.customers.find(
-              (c) => c.email && c.email.toLowerCase() === email
-            );
-            if (existingEmail) {
-              if (existingEmail.status === 'deleted' || existingEmail.status === 'disabled' || existingEmail.isDeleted) {
-                return {
-                  success: false,
-                  message: 'البريد الإلكتروني المدخل محظور ومحذوف مسبقاً من قِبل الإدارة.',
-                };
-              }
-              return {
-                success: false,
-                message: 'البريد الإلكتروني المدخل مسجل بالفعل لحساب آخر.',
-              };
-            }
-          }
-        } catch {}
-
-        // 3. Check duplicate phone / email in local registeredAccounts
-        const accounts = get().registeredAccounts || [];
-        const existingAcc = accounts.find((a) => a.phone === phone);
-        if (existingAcc) {
-          if (existingAcc.status === 'deleted' || existingAcc.status === 'disabled' || (existingAcc as any).isDeleted) {
-            return {
-              success: false,
-              message: 'بيانات هذا الحساب (رقم الهاتف) محظورة ومحذوفة مسبقاً من قِبل الإدارة. لا يمكن إنشاء حساب جديد بهذه البيانات.',
-            };
-          }
-          return {
-            success: false,
-            message: 'رقم الهاتف هذا مسجل بالفعل لحساب آخر. يرجى تسجيل الدخول مباشرة.',
-          };
-        }
-        if (email) {
-          const existingEmailAcc = accounts.find((a) => a.email && a.email.toLowerCase() === email);
-          if (existingEmailAcc) {
-            if (existingEmailAcc.status === 'deleted' || existingEmailAcc.status === 'disabled' || (existingEmailAcc as any).isDeleted) {
-              return {
-                success: false,
-                message: 'البريد الإلكتروني المدخل محظور ومحذوف مسبقاً من قِبل الإدارة.',
-              };
-            }
-            return {
-              success: false,
-              message: 'البريد الإلكتروني المدخل مسجل بالفعل لحساب آخر.',
-            };
-          }
-        }
-
-        // 4. Attempt Backend API Registration
-        try {
-          const res = await cleanzoApi.auth.register({
-            name,
-            phone,
-            password,
-            email,
-          });
-
-          if (res && res.user && res.token) {
-            set((state) => ({
-              user: res.user,
-              token: res.token,
-              isAuthenticated: true,
-              authStatus: 'AUTHENTICATED',
-              rememberMe: true,
-              registeredAccounts: [
-                ...(state.registeredAccounts || []),
-                {
-                  name,
-                  phone,
-                  password,
-                  email,
-                  status: 'active',
-                },
-              ],
-            }));
-            syncUserToCustomerStore(res.user);
-            return { success: true };
-          }
-        } catch (err: any) {
-          // If backend returned conflict error (409)
-          if (
-            err?.statusCode === 409 ||
-            err?.code === 'PHONE_ALREADY_EXISTS' ||
-            err?.code === 'EMAIL_ALREADY_EXISTS'
-          ) {
-            return {
-              success: false,
-              message: err.message || 'بيانات الحساب (رقم الهاتف أو البريد) مسجلة بالفعل لحساب آخر.',
-            };
-          }
-          if (err?.statusCode === 422) {
-            return {
-              success: false,
-              message: err.message || 'يرجى مراجعة البيانات المدخلة والتأكد من صحتها.',
-            };
-          }
-          // Fall back to local creation below
-        }
-
-        // 5. Local Registration Fallback
-        const newUser: User = {
-          id: `usr-${phone.slice(-4)}`,
-          name,
-          phone,
-          email,
-          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=400&q=80',
-          createdAt: new Date().toISOString().split('T')[0],
-          addresses: [],
-          status: 'active',
-        };
-
-        set((state) => ({
-          user: newUser,
-          token: 'cleanzo-customer-local-jwt',
-          isAuthenticated: true,
-          authStatus: 'AUTHENTICATED',
-          rememberMe: true,
-          registeredAccounts: [
-            ...(state.registeredAccounts || []),
-            {
-              name,
-              phone,
-              password,
-              email,
-              status: 'active',
-            },
-          ],
-        }));
-
-        syncUserToCustomerStore(newUser);
-        return { success: true };
       },
 
       logout: () => {
@@ -557,7 +163,6 @@ export const useAuthStore = create<AuthState>()(
               phone: res.phone || cleanPhone,
             };
             set({ user: updatedUser });
-            syncUserToCustomerStore(updatedUser);
             return { success: true };
           }
         } catch (err: any) {
@@ -573,15 +178,7 @@ export const useAuthStore = create<AuthState>()(
           };
         }
 
-        const updatedUser = {
-          ...current,
-          name: cleanName,
-          email: cleanEmail,
-          phone: cleanPhone,
-        };
-        set({ user: updatedUser });
-        syncUserToCustomerStore(updatedUser);
-        return { success: true };
+        return { success: false, message: 'تعذر تأكيد تحديث البيانات' };
       },
 
       resetDemoUser: () => {
@@ -590,12 +187,11 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'cleanzo-auth-storage',
+      version: 1,
+      migrate: () => ({}),
       partialize: (state) => ({
-        user: state.user,
-        token: state.token,
-        isAuthenticated: state.isAuthenticated,
-        rememberMe: true,
-        registeredAccounts: state.registeredAccounts,
+        token: state.rememberMe ? state.token : null,
+        rememberMe: state.rememberMe,
       }),
     }
   )

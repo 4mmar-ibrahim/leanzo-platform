@@ -1,11 +1,11 @@
 import { Request, Response } from 'express';
-import { getAvailableSlots, assertSlotAvailability } from '../services/availabilityService.js';
+import { getAvailableSlots, assertSlotAvailability, isBookingDate } from '../services/availabilityService.js';
 import { sendSuccess, sendError } from '../utils/responseHandler.js';
 
 export async function checkDateAvailability(req: Request, res: Response): Promise<void> {
   try {
     const { date, duration, serviceId, serviceIds, excludeBookingId, category, includeUnavailable } = req.query;
-    if (!date || typeof date !== 'string') {
+    if (!isBookingDate(date)) {
       sendError(res, 'يرجى تحديد التاريخ المراد فحصه (YYYY-MM-DD)', 422);
       return;
     }
@@ -69,6 +69,6 @@ export async function validateSlot(req: Request, res: Response): Promise<void> {
 
     sendSuccess(res, { valid: true, timing, message: 'الموعد متاح للحجز' });
   } catch (err: any) {
-    sendError(res, err.message, 409, 'TIME_SLOT_UNAVAILABLE');
+    sendError(res, err.message, err.statusCode || 409, err.code || 'TIME_SLOT_UNAVAILABLE');
   }
 }

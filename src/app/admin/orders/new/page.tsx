@@ -249,7 +249,7 @@ function AdminNewBookingContent() {
         guestName: rawName || undefined,
         guestPhone: rawPhone || undefined,
         customerId: selectedCustomer.id || undefined,
-      } as any);
+      } as any, true);
 
       if (res && res.id) {
         addLog({

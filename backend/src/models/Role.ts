@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import { createPrismaRepository, type RepositoryRecord } from './prismaModelBridge.js';
 
 export type PermissionLevel = 'hidden' | 'view' | 'edit';
 export type PermissionModule = string;
@@ -29,7 +29,7 @@ export const ADMIN_MODULES = [
 
 export type AdminModuleId = (typeof ADMIN_MODULES)[number]['id'];
 
-export interface IRole extends Document {
+export interface IRole extends RepositoryRecord {
   id: string;
   name: string;
   nameAr: string;
@@ -41,20 +41,6 @@ export interface IRole extends Document {
   updatedAt: Date;
 }
 
-const RoleSchema = new Schema<IRole>(
-  {
-    id: { type: String, required: true, unique: true, index: true },
-    name: { type: String, required: true },
-    nameAr: { type: String, required: true },
-    description: { type: String },
-    descriptionAr: { type: String },
-    permissions: { type: Schema.Types.Mixed, default: {} },
-    isSystem: { type: Boolean, default: false },
-  },
-  { timestamps: true }
-);
-
-import { createPrismaRepository } from './prismaModelBridge.js';
 export const Role = createPrismaRepository('role') as any;
 
 /**

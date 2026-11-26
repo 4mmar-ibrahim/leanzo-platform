@@ -16,7 +16,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
-  const [quickActionType, setQuickActionType] = useState<'order' | 'service' | 'offer' | 'technician' | null>(null);
+  const [quickActionType, setQuickActionType] = useState<'service' | 'offer' | 'technician' | null>(null);
 
   const { currentAdmin, isAuthenticated, adminAuthStatus, initAdminAuth, refreshCurrentAdmin } = useAdminStore();
   const { theme: adminTheme, setTheme: setAdminTheme } = useAdminThemeStore();
@@ -111,7 +111,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <AdminTopbar
           onOpenSearch={() => setSearchModalOpen(true)}
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
-          onOpenQuickAction={(type) => setQuickActionType(type)}
+          onOpenQuickAction={(type) => {
+            if (type === 'order') router.push('/admin/orders/new');
+            else setQuickActionType(type);
+          }}
         />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">

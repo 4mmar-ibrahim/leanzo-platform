@@ -5,11 +5,14 @@ import { ContactMessage } from '../models/ContactMessage.js';
 import { CustomerAddress } from '../models/CustomerAddress.js';
 import { SystemSettings } from '../models/SystemSettings.js';
 import { EncryptionLog } from '../models/EncryptionLog.js';
-import { ENV } from '../config/env.js';
+import '../config/env.js';
 
 // Secret key derivation (AES-256 requires 32 bytes)
-const ENCRYPTION_SECRET = process.env.DATA_ENCRYPTION_KEY || ENV.JWT_SECRET || 'cleanzo-platform-master-encryption-key-2026';
-const KEY = crypto.createHash('sha256').update(String(ENCRYPTION_SECRET)).digest();
+const ENCRYPTION_SECRET = process.env.DATA_ENCRYPTION_KEY || process.env.JWT_SECRET;
+function encryptionKey() {
+  if (!ENCRYPTION_SECRET) throw new Error('Set DATA_ENCRYPTION_KEY before encrypting or decrypting stored data.');
+  return crypto.createHash('sha256').update(ENCRYPTION_SECRET).digest();
+}
 const ALGORITHM = 'aes-256-gcm';
 const PREFIX = 'enc:v1:';
 
@@ -22,7 +25,7 @@ export function encryptText(plainText: string | null | undefined): string {
   if (plainText.startsWith(PREFIX)) return plainText; // already encrypted
 
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(ALGORITHM, KEY, iv);
+  const cipher = crypto.createCipheriv(ALGORITHM, encryptionKey(), iv);
 
   let encrypted = cipher.update(plainText, 'utf8', 'hex');
   encrypted += cipher.final('hex');
@@ -45,7 +48,7 @@ export function decryptText(cipherText: string | null | undefined): string {
     const [ivHex, authTagHex, encryptedHex] = parts;
     const iv = Buffer.from(ivHex, 'hex');
     const authTag = Buffer.from(authTagHex, 'hex');
-    const decipher = crypto.createDecipheriv(ALGORITHM, KEY, iv);
+    const decipher = crypto.createDecipheriv(ALGORITHM, encryptionKey(), iv);
     decipher.setAuthTag(authTag);
 
     let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');

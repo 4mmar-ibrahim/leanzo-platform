@@ -1,6 +1,6 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import { createPrismaRepository, type RepositoryRecord } from './prismaModelBridge.js';
 
-export interface INotification extends Document {
+export interface INotification extends RepositoryRecord {
   target: 'admin' | 'customer';
   userId?: string; // If customer specific
   title: string;
@@ -14,20 +14,4 @@ export interface INotification extends Document {
   updatedAt: Date;
 }
 
-const NotificationSchema = new Schema<INotification>(
-  {
-    target: { type: String, enum: ['admin', 'customer'], required: true, index: true },
-    userId: { type: String, index: true },
-    title: { type: String, required: true },
-    titleEn: { type: String, required: true },
-    message: { type: String, required: true },
-    messageEn: { type: String, required: true },
-    type: { type: String, enum: ['order', 'customer', 'system', 'technician', 'offer', 'info'], default: 'order' },
-    read: { type: Boolean, default: false, index: true },
-    link: { type: String },
-  },
-  { timestamps: true }
-);
-
-import { createPrismaRepository } from './prismaModelBridge.js';
 export const Notification = createPrismaRepository('notification') as any;

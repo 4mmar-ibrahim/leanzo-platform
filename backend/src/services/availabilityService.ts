@@ -1,3 +1,4 @@
+import { inDatabaseTransaction } from '../config/prisma.js';
 import { Booking, IBooking } from '../models/Booking.js';
 import { SubscriptionVisit } from '../models/SubscriptionVisit.js';
 import { Service } from '../models/Service.js';
@@ -173,9 +174,7 @@ export function doIntervalsOverlap(
  * Examples: 607 (10:07) -> 615 (10:15), 540 (9:00) -> 540, 541 -> 555 (9:15)
  * This ensures all displayed/accepted times are :00, :15, :30, or :45.
  */
-export function snapTo15Minutes(minutes: number): number {
-  return Math.ceil(minutes / 15) * 15;
-}
+
 
 /**
  * Gets default booking settings from database or fallback configuration
@@ -242,28 +241,14 @@ export async function resolveServiceTiming(
   };
 }
 
-/**
- * In-memory concurrency lock to serialize simultaneous booking submissions per (date, serviceId)
- */
-const bookingResourceLocks = new Map<string, Promise<void>>();
+// A shared PostgreSQL lock covers every service and subscription reservation.
+export const SCHEDULE_LOCK = 'cleanzo:booking-schedule';
 
-export async function withBookingLock<T>(lockKey: string, task: () => Promise<T>): Promise<T> {
-  while (bookingResourceLocks.has(lockKey)) {
-    await bookingResourceLocks.get(lockKey);
-  }
-
-  let releaseLock: () => void;
-  const lockPromise = new Promise<void>((resolve) => {
-    releaseLock = resolve;
+export function withBookingLock<T>(lockKey: string, task: () => Promise<T>): Promise<T> {
+  return inDatabaseTransaction(async tx => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+    return task();
   });
-  bookingResourceLocks.set(lockKey, lockPromise);
-
-  try {
-    return await task();
-  } finally {
-    bookingResourceLocks.delete(lockKey);
-    releaseLock!();
-  }
 }
 
 /**
@@ -405,6 +390,47 @@ export function getRecordCategory(record: any): string | undefined {
  * 4. Boundary Awareness: Previous booking boundaries (e.g. 9:45 end) are available start times.
  * 5. Dynamic Duration: Exact service duration + sum of addons duration.
  */
+export function isBookingDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function isBookingTime(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const parts = value.trim().split(/\s*[–—-]\s*/);
+  return parts.length <= 2 && parts.every(part => {
+    const match = /^(\d{1,2}):[0-5]\d\s*(AM|PM|ص|م|صباحاً|مساءً|صباح|مساء|ظهراً|عصراً)?$/i.exec(part);
+    return Boolean(match && (match[2] ? Number(match[1]) >= 1 && Number(match[1]) <= 12 : Number(match[1]) < 24));
+  });
+}
+
+export function isDuringCairoAppointment(date: string, start: number, end: number, now: Date): boolean {
+  if (date !== getCairoDateFromDate(now)) return false;
+  const minute = timeStringToMinutes(getCairoTimeFromDate(now));
+  return minute >= start && minute < end;
+}
+
+function occupiedUntil(
+  appointment: { status: string; timeline?: unknown; cancelledAt?: Date | string | null },
+  date: string,
+  start: number,
+  end: number,
+): number {
+  if (appointment.status.toLowerCase() !== 'cancelled' ||
+      (Array.isArray(appointment.timeline) && appointment.timeline.some(event => event.status === 'in_progress'))) {
+    return end;
+  }
+  if (!appointment.cancelledAt) return start;
+
+  const cancelledAt = new Date(appointment.cancelledAt);
+  const cancellationDate = getCairoDateFromDate(cancelledAt);
+  if (cancellationDate < date) return start;
+  if (cancellationDate > date) return end;
+  const cancellationMinute = timeStringToMinutes(getCairoTimeFromDate(cancelledAt));
+  return Math.max(start, Math.min(end, cancellationMinute));
+}
+
 export async function getAvailableSlots(
   dateStr: string,
   serviceId?: string,
@@ -461,7 +487,7 @@ export async function getAvailableSlots(
 
   // 2. Check day of week
   const dateObj = new Date(dateStr);
-  const dayOfWeek = dateObj.getDay();
+  const dayOfWeek = dateObj.getUTCDay();
   if (!settings.workingDays.includes(dayOfWeek)) {
     return {
       date: dateStr,
@@ -473,7 +499,14 @@ export async function getAvailableSlots(
   }
 
   // 3. Minimum notice check if booking is today
-  const todayStr = getCurrentCairoDateString();
+  const now = new Date();
+  const todayStr = getCairoDateFromDate(now);
+  if (dateStr < todayStr) {
+    return {
+      date: dateStr, isDayAvailable: false, dayReason: 'تاريخ الحجز قد مضى',
+      serviceTiming: timing, slots: [],
+    };
+  }
   const isToday = dateStr === todayStr;
 
   if (isToday && settings.sameDayBooking === false) {
@@ -486,7 +519,7 @@ export async function getAvailableSlots(
     };
   }
 
-  const currentCairoTimeStr = getCurrentCairoTimeString();
+  const currentCairoTimeStr = getCairoTimeFromDate(now);
   const currentMinutesNow = timeStringToMinutes(currentCairoTimeStr);
   const earliestAllowedMinutes = isToday
     ? currentMinutesNow + (settings.minNoticeHours || 0) * 60
@@ -517,7 +550,7 @@ export async function getAvailableSlots(
   interface DetailedInterval {
     start: number;
     end: number;
-    type: 'break' | 'booking' | 'elapsed';
+    type: 'break' | 'booking';
     reason: string;
   }
   const occupiedIntervals: DetailedInterval[] = [];
@@ -570,25 +603,9 @@ export async function getAvailableSlots(
       bEnd = bStart + bDuration;
     }
 
-    if (b.status !== 'cancelled') {
-      // Active booking: occupies [bStart, bEnd]
-      occupiedIntervals.push({ start: bStart, end: bEnd, type: 'booking', reason: 'محجوز بالكامل' });
-    } else {
-      // Cancelled booking safety rules:
-      const wasStarted = Array.isArray(b.timeline) && b.timeline.some((e: any) => e.status === 'in_progress');
-      if (wasStarted) {
-        // Service execution was already in progress: elapsed time cannot be reopened
-        occupiedIntervals.push({ start: bStart, end: bEnd, type: 'booking', reason: 'محجوز بالكامل' });
-      } else if (b.cancelledAt) {
-        const cancelDateStr = getCairoDateFromDate(new Date(b.cancelledAt));
-        if (isToday || cancelDateStr === dateStr) {
-          const cancelTimeStr = getCairoTimeFromDate(new Date(b.cancelledAt));
-          const cancelMin = timeStringToMinutes(cancelTimeStr);
-          if (cancelMin > bStart && cancelMin < bEnd) {
-            occupiedIntervals.push({ start: bStart, end: cancelMin, type: 'elapsed', reason: 'وقت منقضي' });
-          }
-        }
-      }
+    const occupiedEnd = occupiedUntil(b, dateStr, bStart, bEnd);
+    if (occupiedEnd > bStart) {
+      occupiedIntervals.push({ start: bStart, end: occupiedEnd, type: 'booking', reason: 'محجوز بالكامل' });
     }
   }
 
@@ -638,22 +655,9 @@ export async function getAvailableSlots(
       vEnd = vStart + vDuration;
     }
 
-    if (v.status !== 'cancelled') {
-      occupiedIntervals.push({ start: vStart, end: vEnd, type: 'booking', reason: 'محجوز بالكامل' });
-    } else {
-      const wasStarted = Array.isArray(v.timeline) && v.timeline.some((e: any) => e.status === 'in_progress');
-      if (wasStarted) {
-        occupiedIntervals.push({ start: vStart, end: vEnd, type: 'booking', reason: 'محجوز بالكامل' });
-      } else if (v.cancelledAt) {
-        const cancelDateStr = getCairoDateFromDate(new Date(v.cancelledAt));
-        if (isToday || cancelDateStr === dateStr) {
-          const cancelTimeStr = getCairoTimeFromDate(new Date(v.cancelledAt));
-          const cancelMin = timeStringToMinutes(cancelTimeStr);
-          if (cancelMin > vStart && cancelMin < vEnd) {
-            occupiedIntervals.push({ start: vStart, end: cancelMin, type: 'elapsed', reason: 'وقت منقضي' });
-          }
-        }
-      }
+    const occupiedEnd = occupiedUntil(v, dateStr, vStart, vEnd);
+    if (occupiedEnd > vStart) {
+      occupiedIntervals.push({ start: vStart, end: occupiedEnd, type: 'booking', reason: 'محجوز بالكامل' });
     }
   }
 
@@ -726,13 +730,7 @@ export async function getAvailableSlots(
   // Slots start at block.start and step sequentially by requiredDuration
   // Example for 45 min: 09:00 -> 09:45 -> 10:30 -> 11:15...
   for (const block of freeBlocks) {
-    let slotCursor = snapTo15Minutes(block.start);
-    // If today and prior slots elapsed, skip to the next upcoming sequential slot
-    if (isToday && earliestAllowedMinutes > slotCursor) {
-      while (slotCursor < earliestAllowedMinutes && slotCursor + requiredDuration <= block.end) {
-        slotCursor += requiredDuration;
-      }
-    }
+    let slotCursor = Math.ceil(Math.max(block.start, earliestAllowedMinutes));
     while (slotCursor + requiredDuration <= block.end) {
       candidateStarts.add(slotCursor);
       slotCursor += requiredDuration;
@@ -743,7 +741,7 @@ export async function getAvailableSlots(
   if (includeUnavailable) {
     for (const occ of mergedOccupied) {
       if (occ.type === 'booking' || occ.type === 'break') {
-        candidateStarts.add(snapTo15Minutes(occ.start));
+        candidateStarts.add(occ.start);
       }
     }
   }
@@ -752,11 +750,6 @@ export async function getAvailableSlots(
   const slots: TimeSlotOption[] = [];
 
   for (const slotStart of sortedStarts) {
-    // Strict 15-minute grid check: start must be multiple of 15 (:00, :15, :30, :45)
-    if (slotStart % 15 !== 0) {
-      continue;
-    }
-
     const slotEnd = slotStart + requiredDuration;
 
     // Check service completion before end of working hours (allow 1440 for 23:59 end-of-day)
@@ -867,6 +860,18 @@ export async function assertSlotAvailability(params: {
   totalOccupiedMinutes: number;
 }> {
   const { dateStr, timeStr, serviceId, serviceIds, category, customDuration, excludeBookingId, excludeVisitId, technicianId } = params;
+  if (!isBookingDate(dateStr) || !isBookingTime(timeStr)) {
+    throw Object.assign(new Error('تاريخ أو وقت الحجز غير صالح'), {
+      statusCode: 422,
+      code: 'INVALID_BOOKING_DATE_TIME',
+    });
+  }
+
+  const now = new Date();
+  const todayStr = getCairoDateFromDate(now);
+  if (dateStr < todayStr) {
+    throw Object.assign(new Error('تاريخ الحجز قد مضى'), { statusCode: 422, code: 'BOOKING_DATE_PAST' });
+  }
 
   const targetCategory = await resolveTargetCategory(category, serviceId, serviceIds);
 
@@ -889,14 +894,12 @@ export async function assertSlotAvailability(params: {
     throw new Error(`عطلة رسمية: ${holiday.name}`);
   }
   const dateObj = new Date(dateStr);
-  const dayOfWeek = dateObj.getDay();
+  const dayOfWeek = dateObj.getUTCDay();
   if (!settings.workingDays.includes(dayOfWeek)) {
     throw new Error('هذا اليوم يقع خارج أيام العمل المتاحة للحجز');
   }
 
-  // Snap the requested time to the nearest clean 15-minute boundary
-  const rawStartMin = timeStringToMinutes(timeStr);
-  const slotStartMin = snapTo15Minutes(rawStartMin);
+  const slotStartMin = timeStringToMinutes(timeStr);
   const slotEndMin = slotStartMin + timing.totalOccupiedMinutes;
 
   const workStartMin = timeStringToMinutes(settings.workingHoursStart);
@@ -917,21 +920,21 @@ export async function assertSlotAvailability(params: {
     }
   }
 
-  // 4. Past time and same-day check if today
-  const todayStr = getCurrentCairoDateString();
+  // 4. Enforce the same-day policy.
   const isToday = dateStr === todayStr;
   if (isToday) {
     if (settings.sameDayBooking === false) {
       throw new Error('الحجز في نفس اليوم غير متاح حسب قواعد وسياسة الحجز');
     }
-    const currentCairoMin = timeStringToMinutes(getCurrentCairoTimeString());
+    const currentCairoMin = timeStringToMinutes(getCairoTimeFromDate(now));
     const minAllowed = currentCairoMin + (settings.minNoticeHours || 0) * 60;
     if (slotStartMin < minAllowed) {
-      throw new Error(
-        settings.minNoticeHours > 0
+      const hasNotice = settings.minNoticeHours > 0;
+      throw Object.assign(new Error(
+        hasNotice
           ? `لا يمكن الحجز قبل مضي الحد الأدنى للإشعار المسبق (${settings.minNoticeHours} ساعة)`
           : 'لا يمكن حجز موعد في وقت قد مضى'
-      );
+      ), { statusCode: 422, code: hasNotice ? 'BOOKING_NOTICE_REQUIRED' : 'BOOKING_TIME_PAST' });
     }
   }
 
@@ -1010,28 +1013,8 @@ export async function assertSlotAvailability(params: {
       bEnd = bStart + bDuration;
     }
 
-    let isOccupied = false;
-    let occStart = bStart;
-    let occEnd = bEnd;
-
-    if (b.status !== 'cancelled') {
-      isOccupied = true;
-    } else {
-      // Cancelled booking check:
-      const wasStarted = Array.isArray(b.timeline) && b.timeline.some((e: any) => e.status === 'in_progress');
-      if (wasStarted) {
-        isOccupied = true;
-      } else if (isToday && b.cancelledAt) {
-        const cancelTimeStr = getCairoTimeFromDate(new Date(b.cancelledAt));
-        const cancelMin = timeStringToMinutes(cancelTimeStr);
-        if (cancelMin > bStart && cancelMin < bEnd) {
-          isOccupied = true;
-          occEnd = cancelMin;
-        }
-      }
-    }
-
-    if (isOccupied && doIntervalsOverlap(slotStartMin, slotEndMin, occStart, occEnd)) {
+    const occupiedEnd = occupiedUntil(b, dateStr, bStart, bEnd);
+    if (occupiedEnd > bStart && doIntervalsOverlap(slotStartMin, slotEndMin, bStart, occupiedEnd)) {
       const conflictErr: any = new Error('الموعد لم يعد متاحًا، يرجى اختيار موعد آخر.');
       conflictErr.statusCode = 409;
       conflictErr.code = 'SLOT_UNAVAILABLE';
@@ -1077,27 +1060,8 @@ export async function assertSlotAvailability(params: {
     const vDuration = v.serviceDurationMinutes || v.duration || 45;
     const vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + vDuration;
 
-    let isOccupied = false;
-    let occStart = vStart;
-    let occEnd = vEnd;
-
-    if (v.status !== 'cancelled') {
-      isOccupied = true;
-    } else {
-      const wasStarted = Array.isArray(v.timeline) && v.timeline.some((e: any) => e.status === 'in_progress');
-      if (wasStarted) {
-        isOccupied = true;
-      } else if (isToday && v.cancelledAt) {
-        const cancelTimeStr = getCairoTimeFromDate(new Date(v.cancelledAt));
-        const cancelMin = timeStringToMinutes(cancelTimeStr);
-        if (cancelMin > vStart && cancelMin < vEnd) {
-          isOccupied = true;
-          occEnd = cancelMin;
-        }
-      }
-    }
-
-    if (isOccupied && doIntervalsOverlap(slotStartMin, slotEndMin, occStart, occEnd)) {
+    const occupiedEnd = occupiedUntil(v, dateStr, vStart, vEnd);
+    if (occupiedEnd > vStart && doIntervalsOverlap(slotStartMin, slotEndMin, vStart, occupiedEnd)) {
       const conflictErr: any = new Error('الموعد لم يعد متاحًا، يرجى اختيار موعد آخر.');
       conflictErr.statusCode = 409;
       conflictErr.code = 'SLOT_UNAVAILABLE';
@@ -1112,8 +1076,8 @@ export async function assertSlotAvailability(params: {
     scheduledStart,
     scheduledEnd,
     serviceDurationMinutes: timing.serviceDurationMinutes,
-    travelTimeMinutes: 0,
-    totalOccupiedMinutes: timing.serviceDurationMinutes,
+    travelTimeMinutes: timing.travelTimeMinutes,
+    totalOccupiedMinutes: timing.totalOccupiedMinutes,
   };
 }
 

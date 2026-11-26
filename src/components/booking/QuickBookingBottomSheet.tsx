@@ -26,12 +26,13 @@ import { useServiceStore } from '@/store/useServiceStore';
 import { useOrderStore } from '@/store/useOrderStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useLocaleStore } from '@/store/useLocaleStore';
+import { useCMSStore } from '@/store/useCMSStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useLocationStore } from '@/store/useLocationStore';
 import { useCustomerStore } from '@/store/useCustomerStore';
 import { useAddressStore, isSameAddress } from '@/store/useAddressStore';
 import { useBookingStore } from '@/store/useBookingStore';
-import { getUpcomingBookingDates, getTimeSlotsForDate, BookingSlot, isSameService, isSameTime, getBookingTimeInterval, isTimeIntervalOverlapping, minutesTo24H, getOrderCategory } from '@/lib/bookingEngine';
+import { getUpcomingBookingDates, BookingSlot, isSameTime } from '@/lib/bookingEngine';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { formatTimeTo12Hour } from '@/lib/timeUtils';
 import { Service, ServiceCategory, Order, Address, ServicePackage, ServiceAddon } from '@/types';
@@ -83,7 +84,6 @@ export function QuickBookingBottomSheet({
   }, [storeServices]);
 
   const addOrder = useOrderStore((s) => s.addOrder);
-  const orders = useOrderStore((s) => s.orders) || [];
   const { isAuthenticated, user } = useAuthStore();
 
   // Booking Flow Steps: 1: Service, 2: Date & Time, 3: Address & Phone, 4: Success
@@ -102,7 +102,10 @@ export function QuickBookingBottomSheet({
   const [customerName, setCustomerName] = useState(user?.name || '');
   const [customerPhone, setCustomerPhone] = useState(user?.phone || '');
   const [notes, setNotes] = useState('');
-  const [confirmedOrderId, setConfirmedOrderId] = useState<string>('');
+  const [confirmedOrder, setConfirmedOrder] = useState<Order | null>(null);
+  const confirmedOrderId = confirmedOrder?.id;
+  const whatsapp = useCMSStore((state) => state.contact.whatsapp);
+  const whatsappNumber = whatsapp?.replace(/^https?:\/\/wa\.me\//i, '').replace(/[^0-9]/g, '');
 
   useEffect(() => {
     if (isOpen) {
@@ -245,8 +248,13 @@ export function QuickBookingBottomSheet({
   const [liveSlots, setLiveSlots] = useState<BookingSlot[] | null>(null);
 
   const serviceDuration = useMemo(() => {
-    return Number(selectedService?.serviceDurationMinutes || selectedService?.duration) || 45;
-  }, [selectedService]);
+    const serviceMinutes = Number(selectedService?.serviceDurationMinutes || selectedService?.duration) || 30;
+    const travelMinutes = Number(selectedService?.travelTimeMinutes) || 0;
+    const baseMinutes = selectedPkg
+      ? (Number(selectedPkg.durationMinutes) || 45) + travelMinutes
+      : Number(selectedService?.totalOccupiedMinutes) || serviceMinutes + travelMinutes;
+    return baseMinutes + selectedAddonsList.reduce((minutes, addon) => minutes + (Number(addon.durationMinutes) || 0), 0);
+  }, [selectedService, selectedPkg, selectedAddonsList]);
 
   useEffect(() => {
     if (!selectedDate || !selectedService?.id) {
@@ -254,13 +262,18 @@ export function QuickBookingBottomSheet({
       return;
     }
     let isMounted = true;
+    let request: AbortController | undefined;
+    setLiveSlots(null);
     const effectiveCategory = selectedService?.category;
 
     const fetchLiveSlots = () => {
+      request?.abort();
+      const currentRequest = new AbortController();
+      request = currentRequest;
       cleanzoApi.availability
-        .checkDate(selectedDate, selectedService.id, serviceDuration, [selectedService.id], undefined, effectiveCategory)
+        .checkDate(selectedDate, selectedService.id, serviceDuration, [selectedService.id], undefined, effectiveCategory, currentRequest.signal)
         .then((res) => {
-          if (!isMounted) return;
+          if (!isMounted || currentRequest.signal.aborted) return;
           if (res && Array.isArray(res.slots)) {
             const formattedSlots: BookingSlot[] = res.slots
               .filter((slot: any) => Boolean(slot.available ?? slot.isAvailable))
@@ -268,7 +281,7 @@ export function QuickBookingBottomSheet({
                 const labelAr = formatTimeTo12Hour(slot.label || slot.time, { locale: 'ar' });
                 const labelEn = formatTimeTo12Hour(slot.label || slot.time, { locale: 'en' });
                 return {
-                  time: labelEn,
+                  time: slot.time24 || slot.start,
                   label: labelAr,
                   labelEn: labelEn,
                   isAvailable: true,
@@ -283,7 +296,7 @@ export function QuickBookingBottomSheet({
           }
         })
         .catch(() => {
-          if (isMounted) {
+          if (isMounted && !currentRequest.signal.aborted) {
             setLiveSlots(null);
           }
         });
@@ -311,6 +324,7 @@ export function QuickBookingBottomSheet({
 
     return () => {
       isMounted = false;
+      request?.abort();
       clearInterval(pollTimer);
       window.removeEventListener('cleanzo:booking-changed', handleBookingChanged);
       window.removeEventListener('focus', fetchLiveSlots);
@@ -322,32 +336,15 @@ export function QuickBookingBottomSheet({
     };
   }, [selectedDate, selectedService?.id, serviceDuration, selectedService?.category]);
 
-  const timeSlots = useMemo(() => {
-    let baseSlots: BookingSlot[] = [];
-    const effectiveCategory = selectedService?.category;
-    if (liveSlots !== null) {
-      baseSlots = [...liveSlots];
-    } else {
-      baseSlots = getTimeSlotsForDate(
-        selectedDate,
-        bookingSettings,
-        selectedService?.id,
-        selectedService?.title,
-        orders,
-        serviceDuration,
-        selectedService?.travelTimeMinutes,
-        selectedService?.id ? [selectedService.id] : [],
-        effectiveCategory,
-        false
-      );
-    }
-
-    return baseSlots.filter((s) => s.isAvailable);
-  }, [selectedDate, liveSlots, bookingSettings, selectedService, orders, serviceDuration]);
+  const timeSlots = useMemo(() => liveSlots ?? [], [liveSlots]);
 
   const [selectedTime, setSelectedTime] = useState<string>('');
 
   useEffect(() => {
+    if (timeSlots.length === 0 && selectedTime) {
+      setSelectedTime('');
+      return;
+    }
     if (timeSlots.length > 0) {
       const isCurrentValid = timeSlots.some((s) => (s.time === selectedTime || isSameTime(s.time, selectedTime)) && s.isAvailable);
       if (!isCurrentValid) {
@@ -461,43 +458,15 @@ export function QuickBookingBottomSheet({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Helper: Re-fetch live slots to reflect real-time changes immediately (no page refresh needed)
-  const refreshLiveSlots = () => {
-    if (!selectedDate || !selectedService?.id) return;
-    const effectiveCategory = selectedService?.category;
-    cleanzoApi.availability
-      .checkDate(selectedDate, selectedService.id, serviceDuration, [selectedService.id], undefined, effectiveCategory)
-      .then((res) => {
-        if (res && Array.isArray(res.slots)) {
-          const formattedSlots: BookingSlot[] = res.slots.map((slot: any) => {
-            const labelAr = formatTimeTo12Hour(slot.label || slot.time, { locale: 'ar' });
-            const labelEn = formatTimeTo12Hour(slot.label || slot.time, { locale: 'en' });
-            return {
-              time: labelEn,
-              label: labelAr,
-              labelEn: labelEn,
-              isAvailable: Boolean(slot.available),
-              reason: slot.reason,
-              scheduledStart: slot.start || slot.scheduledStart || slot.time24,
-              scheduledEnd: slot.end || slot.scheduledEnd,
-              totalOccupiedMinutes: slot.totalOccupiedMinutes || serviceDuration,
-              serviceDurationMinutes: slot.serviceDurationMinutes || serviceDuration,
-            };
-          });
-          setLiveSlots(formattedSlots);
-        } else {
-          setLiveSlots(null);
-        }
-      })
-      .catch(() => {
-        setLiveSlots(null);
-      });
-  };
-
   const handleConfirmBooking = async () => {
     if (isSubmitting) return;
     if (!selectedService || !isSelectedServiceValid) {
       toast.error(isAr ? 'يرجى اختيار الخدمة المطابقة للقسم المحدد' : 'Please select a valid service for this category');
+      return;
+    }
+    if (!selectedDate || !timeSlots.some(slot => isSameTime(slot.time, selectedTime))) {
+      toast.error(isAr ? 'اختر موعدًا متاحًا قبل تأكيد الحجز' : 'Choose an available appointment before confirming');
+      setStep(2);
       return;
     }
     if (!customerPhone.trim() || customerPhone.trim().length < 9) {
@@ -582,9 +551,6 @@ export function QuickBookingBottomSheet({
       useBookingStore.getState().setGuestInfo(customerName.trim(), customerPhone.trim());
       useBookingStore.getState().setAddress(savedAddrPayload);
 
-      // Immediately re-fetch live slots so the booked time disappears from the UI without page refresh
-      refreshLiveSlots();
-
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('cleanzo:booking-changed', { detail: { date: selectedDate } }));
         try {
@@ -596,11 +562,15 @@ export function QuickBookingBottomSheet({
         }
       }
 
-      setConfirmedOrderId(createdBooking.id);
+      setConfirmedOrder(createdBooking);
       setStep(4);
       toast.success(isAr ? `تم تسجيل طلبك بنجاح برقم #${createdBooking.id}` : `Booking created successfully #${createdBooking.id}`);
     } catch (err: any) {
-      console.error('[QuickBooking Submit Error]:', err);
+      if (err?.code === 'TIME_SLOT_UNAVAILABLE') {
+        setSelectedTime('');
+        setStep(2);
+        window.dispatchEvent(new CustomEvent('cleanzo:booking-changed', { detail: { date: selectedDate } }));
+      }
       toast.error(err?.message || (isAr ? 'فشل إتمام الحجز، يرجى المحاولة مجدداً' : 'Failed to complete booking'));
     } finally {
       setIsSubmitting(false);
@@ -1188,7 +1158,7 @@ export function QuickBookingBottomSheet({
                   تم استلام طلب الحجز بنجاح!
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
-                  سيتواصل معك فني كلينزو للتأكيد والانطلاق في الموعد المحدد: {selectedDate} ({selectedTime}).
+                  سيتواصل معك فني كلينزو للتأكيد. الموعد المسجل: {confirmedOrder?.date} ({formatTimeTo12Hour(confirmedOrder?.time)}).
                 </p>
               </div>
 
@@ -1203,20 +1173,20 @@ export function QuickBookingBottomSheet({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">المبلغ المطلوب:</span>
-                  <span className="font-bold text-emerald-600">{selectedService?.price} ج.م</span>
+                  <span className="font-bold text-emerald-600">{confirmedOrder?.finalPrice} ج.م</span>
                 </div>
               </div>
 
               <div className="flex flex-col gap-2.5 w-full pt-2">
-                <a
-                  href={`https://wa.me/201012345678?text=${encodeURIComponent(`مرحباً كلينزو، أود متابعة طلبي رقم #${confirmedOrderId} لخدمة ${selectedService?.title}`)}`}
+                {whatsappNumber && <a
+                  href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`مرحباً كلينزو، أود متابعة طلبي رقم #${confirmedOrderId} لخدمة ${selectedService?.title}`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
                 >
                   <MessageCircle className="w-4 h-4" />
-                  <span>تأكيد عبر واتساب مع الدعم</span>
-                </a>
+                  <span>تواصل مع الدعم عبر واتساب</span>
+                </a>}
 
                 <button
                   onClick={onClose}
@@ -1273,6 +1243,7 @@ export function QuickBookingBottomSheet({
               <Button
                 variant="primary"
                 size="md"
+                disabled={!selectedTime || !timeSlots.some(slot => isSameTime(slot.time, selectedTime))}
                 onClick={() => setStep(3)}
                 className="flex-1 justify-center rounded-xl text-xs font-bold"
               >
