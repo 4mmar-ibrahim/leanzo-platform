@@ -1,6 +1,6 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import { createPrismaRepository, type RepositoryRecord } from './prismaModelBridge.js';
 
-export interface ISystemSettings extends Document {
+export interface ISystemSettings extends RepositoryRecord {
   key: string; // 'global_settings'
   general: {
     companyName: string;
@@ -98,20 +98,4 @@ export interface ISystemSettings extends Document {
   updatedAt: Date;
 }
 
-const SystemSettingsSchema = new Schema<ISystemSettings>(
-  {
-    key: { type: String, required: true, unique: true, default: 'global_settings', index: true },
-    general: { type: Schema.Types.Mixed, default: {} },
-    booking: { type: Schema.Types.Mixed, default: {} },
-    appearance: { type: Schema.Types.Mixed, default: {} },
-    social: { type: Schema.Types.Mixed, default: {} },
-    branding: { type: Schema.Types.Mixed, default: {} },
-    notifications: { type: Schema.Types.Mixed, default: {} },
-    mobileExperience: { type: Schema.Types.Mixed, default: {} },
-    security: { type: Schema.Types.Mixed, default: {} },
-  },
-  { timestamps: true }
-);
-
-import { createPrismaRepository } from './prismaModelBridge.js';
 export const SystemSettings = createPrismaRepository('systemSettings') as any;

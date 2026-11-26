@@ -1,5 +1,5 @@
+import { connectDB, disconnectDB } from '../src/config/db.js';
 import assert from 'assert';
-import mongoose from 'mongoose';
 import { encryptText, decryptText, isEncrypted, encryptAllDatabaseData, getEncryptionStatus, getEncryptionLogs } from '../src/services/encryptionService.js';
 import { wipeAllPlatformData } from '../src/services/dataWipeService.js';
 import { User } from '../src/models/User.js';
@@ -12,14 +12,15 @@ import { LocationGovernorate } from '../src/models/Location.js';
 import { EncryptionLog } from '../src/models/EncryptionLog.js';
 import { AdminUser } from '../src/models/AdminUser.js';
 
-const MONGO_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/cleanzo';
 
 async function runTests() {
   console.log('🚀 Starting Cleanzo Encryption & Universal Deletion Verification Suite...\n');
 
-  if (mongoose.connection.readyState === 0) {
-    await mongoose.connect(MONGO_URI);
+  const database = new URL(process.env.DATABASE_URL || 'postgresql://invalid');
+  if (!['127.0.0.1', 'localhost'].includes(database.hostname) || database.pathname !== '/cleanzo_encryption_test') {
+    throw new Error('The destructive verification suite requires its dedicated local PostgreSQL database.');
   }
+  await connectDB();
 
   // --- Test 1: AES-256-GCM Encryption / Decryption ---
   console.log('Test 1: AES-256-GCM Encryption and Decryption Roundtrip...');
@@ -203,7 +204,7 @@ async function runTests() {
   console.log('  ✓ Multi-section data wipe and admin safety preservation passed.');
 
   console.log('\n🎉 ALL 6 VERIFICATION CHECKS PASSED WITH 100% SUCCESS!');
-  await mongoose.disconnect();
+  await disconnectDB();
   process.exit(0);
 }
 

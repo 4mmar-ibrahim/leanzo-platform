@@ -27,18 +27,14 @@ export async function validateLocationPair(governorateId: string, cityId: string
 export async function getCustomerAddresses(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const userId = req.user?._id;
-    const phone = req.user?.phone || req.customer?.phone;
 
-    if (!userId && !phone) {
+    if (!userId) {
       sendError(res, 'يرجى تسجيل الدخول لعرض عناوينك', 401, 'UNAUTHORIZED');
       return;
     }
 
     const addresses = await CustomerAddress.find({
-      $or: [
-        ...(userId ? [{ customerId: userId }] : []),
-        ...(phone ? [{ customerPhone: phone }] : []),
-      ],
+      customerId: userId,
     }).sort({ isDefault: -1, updatedAt: -1 });
 
     // Deduplicate addresses and clean up duplicate documents in database
@@ -94,7 +90,7 @@ export async function createCustomerAddress(req: AuthenticatedRequest, res: Resp
     const userId = req.user?._id;
     const userPhone = req.user?.phone || req.customer?.phone;
 
-    if (!userId && !userPhone) {
+    if (!userId) {
       sendError(res, 'يرجى تسجيل الدخول لحفظ العنوان', 401, 'UNAUTHORIZED');
       return;
     }
@@ -125,10 +121,7 @@ export async function createCustomerAddress(req: AuthenticatedRequest, res: Resp
 
     // Check if an address with identical physical details already exists for this customer
     const existingAddress = await CustomerAddress.findOne({
-      $or: [
-        ...(userId ? [{ customerId: userId }] : []),
-        ...(userPhone ? [{ customerPhone: userPhone }] : []),
-      ],
+      customerId: userId,
       governorateId,
       cityId,
       area: (area || '').trim(),
@@ -147,10 +140,7 @@ export async function createCustomerAddress(req: AuthenticatedRequest, res: Resp
       if (shouldBeDefault) {
         await CustomerAddress.updateMany(
           {
-            $or: [
-              ...(userId ? [{ customerId: userId }] : []),
-              ...(userPhone ? [{ customerPhone: userPhone }] : []),
-            ],
+            customerId: userId,
             _id: { $ne: existingAddress._id },
           },
           { $set: { isDefault: false } }
@@ -165,7 +155,7 @@ export async function createCustomerAddress(req: AuthenticatedRequest, res: Resp
 
     // Check if this is the customer's first address
     const existingCount = await CustomerAddress.countDocuments(
-      userId ? { customerId: userId } : { customerPhone: userPhone }
+      { customerId: userId }
     );
 
     const shouldBeDefault = Boolean(isDefault) || existingCount === 0;
@@ -173,7 +163,7 @@ export async function createCustomerAddress(req: AuthenticatedRequest, res: Resp
     // If making default, unset other defaults
     if (shouldBeDefault) {
       await CustomerAddress.updateMany(
-        userId ? { customerId: userId } : { customerPhone: userPhone },
+        { customerId: userId },
         { $set: { isDefault: false } }
       );
     }
@@ -206,7 +196,6 @@ export async function updateCustomerAddress(req: AuthenticatedRequest, res: Resp
   try {
     const { id } = req.params;
     const userId = req.user?._id;
-    const userPhone = req.user?.phone || req.customer?.phone;
 
     const address = await CustomerAddress.findById(id);
     if (!address) {
@@ -215,9 +204,7 @@ export async function updateCustomerAddress(req: AuthenticatedRequest, res: Resp
     }
 
     // Security / IDOR Check: Ensure address belongs to current user
-    const isOwner =
-      (userId && address.customerId && address.customerId.toString() === userId.toString()) ||
-      (userPhone && address.customerPhone === userPhone);
+    const isOwner = Boolean(userId && address.customerId === userId);
 
     if (!isOwner) {
       sendError(res, 'غير مصرح لك بتعديل هذا العنوان', 403, 'FORBIDDEN_IDOR');
@@ -263,7 +250,7 @@ export async function updateCustomerAddress(req: AuthenticatedRequest, res: Resp
 
     if (isDefault === true) {
       await CustomerAddress.updateMany(
-        userId ? { customerId: userId } : { customerPhone: userPhone },
+        { customerId: userId },
         { $set: { isDefault: false } }
       );
       address.isDefault = true;
@@ -283,7 +270,6 @@ export async function setDefaultAddress(req: AuthenticatedRequest, res: Response
   try {
     const { id } = req.params;
     const userId = req.user?._id;
-    const userPhone = req.user?.phone || req.customer?.phone;
 
     const address = await CustomerAddress.findById(id);
     if (!address) {
@@ -291,9 +277,7 @@ export async function setDefaultAddress(req: AuthenticatedRequest, res: Response
       return;
     }
 
-    const isOwner =
-      (userId && address.customerId && address.customerId.toString() === userId.toString()) ||
-      (userPhone && address.customerPhone === userPhone);
+    const isOwner = Boolean(userId && address.customerId === userId);
 
     if (!isOwner) {
       sendError(res, 'غير مصرح لك بتعديل هذا العنوان', 403, 'FORBIDDEN_IDOR');
@@ -301,7 +285,7 @@ export async function setDefaultAddress(req: AuthenticatedRequest, res: Response
     }
 
     await CustomerAddress.updateMany(
-      userId ? { customerId: userId } : { customerPhone: userPhone },
+      { customerId: userId },
       { $set: { isDefault: false } }
     );
 
@@ -319,7 +303,6 @@ export async function deleteCustomerAddress(req: AuthenticatedRequest, res: Resp
   try {
     const { id } = req.params;
     const userId = req.user?._id;
-    const userPhone = req.user?.phone || req.customer?.phone;
 
     const address = await CustomerAddress.findById(id);
     if (!address) {
@@ -327,9 +310,7 @@ export async function deleteCustomerAddress(req: AuthenticatedRequest, res: Resp
       return;
     }
 
-    const isOwner =
-      (userId && address.customerId && address.customerId.toString() === userId.toString()) ||
-      (userPhone && address.customerPhone === userPhone);
+    const isOwner = Boolean(userId && address.customerId === userId);
 
     if (!isOwner) {
       sendError(res, 'غير مصرح لك بحذف هذا العنوان', 403, 'FORBIDDEN_IDOR');
@@ -342,7 +323,7 @@ export async function deleteCustomerAddress(req: AuthenticatedRequest, res: Resp
     // If this was default and customer has remaining addresses, designate the latest one as default
     if (wasDefault) {
       const nextAddress = await CustomerAddress.findOne(
-        userId ? { customerId: userId } : { customerPhone: userPhone }
+        { customerId: userId }
       ).sort({ updatedAt: -1 });
 
       if (nextAddress) {

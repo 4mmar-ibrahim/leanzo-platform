@@ -1,5 +1,4 @@
 import assert from 'assert';
-import mongoose from 'mongoose';
 import { connectDB, disconnectDB } from '../src/config/db.js';
 import { ZoPageConfig } from '../src/models/ZoPageConfig.js';
 import { Media } from '../src/models/Media.js';

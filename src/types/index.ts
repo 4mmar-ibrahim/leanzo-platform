@@ -134,6 +134,7 @@ export interface Order {
   userId: string;
   serviceId: string;
   service: Service;
+  serviceSnapshot?: Service;
   category: ServiceCategory;
   date: string; // YYYY-MM-DD
   time: string; // e.g. "11:00 AM"

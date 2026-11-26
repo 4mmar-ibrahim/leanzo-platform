@@ -54,29 +54,16 @@ app.use(
   })
 );
 
-const allowedOrigins = [
-  ENV.CLIENT_URL,
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  'http://localhost:5000',
-  'http://127.0.0.1:5000',
-].filter(Boolean) as string[];
+const allowedOrigins = new Set(
+  [ENV.CLIENT_URL, ...(process.env.CORS_ALLOWED_ORIGINS || '').split(','),
+    ...(!ENV.IS_PRODUCTION ? ['http://localhost:3000', 'http://127.0.0.1:3000'] : [])]
+    .map(origin => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean)
+);
 
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    const cleanOrigin = origin.replace(/\/$/, '');
-    if (
-      ENV.NODE_ENV !== 'production' ||
-      allowedOrigins.some(o => o.replace(/\/$/, '') === cleanOrigin) ||
-      cleanOrigin.startsWith('http://localhost:') ||
-      cleanOrigin.startsWith('http://127.0.0.1:') ||
-      cleanOrigin.includes('vercel.app') ||
-      /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(cleanOrigin)
-    ) {
-      return callback(null, true);
-    }
-    return callback(null, true);
+    return callback(null, !origin || allowedOrigins.has(origin));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -84,6 +71,7 @@ const corsOptions: cors.CorsOptions = {
     'Content-Type',
     'Authorization',
     'X-Requested-With',
+    'X-Booking-Access',
     'Idempotency-Key',
     'idempotency-key',
     'X-Idempotency-Key',
@@ -102,6 +90,14 @@ const corsOptions: cors.CorsOptions = {
 
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
+app.use((req, res, next) => {
+  const origin = req.get('origin');
+  if (origin && !['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !allowedOrigins.has(origin)) {
+    res.status(403).json({ success: false, code: 'ORIGIN_NOT_ALLOWED', message: 'مصدر الطلب غير مسموح به' });
+    return;
+  }
+  next();
+});
 
 // Request parsers
 app.use(express.json({ limit: '15mb' }));

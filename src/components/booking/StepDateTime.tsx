@@ -5,22 +5,15 @@ import { Calendar, Clock, ChevronDown, Check, AlertCircle, CheckCircle2 } from '
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useBookingStore } from '@/store/useBookingStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
-import { useOrderStore } from '@/store/useOrderStore';
 import {
   getUpcomingBookingDates,
   BookingDateOption,
-  getBookingTimeInterval,
-  isTimeIntervalOverlapping,
-  isSameCategory,
-  getOrderCategory,
-  getOrderCategoryInterval,
-  getOrderCategoryIntervals,
 } from '@/lib/bookingEngine';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { cn } from '@/lib/utils';
 
 interface SlotItem {
-  time: string;           // Machine value e.g. "09:00 – 09:45"
+  time: string;           // Slot start in 24-hour format
   start: string;          // e.g. "09:00"
   end: string;            // e.g. "09:45"
   displayAr: string;      // e.g. "9:00 – 9:45 ص" (single suffix)
@@ -148,11 +141,11 @@ export function StepDateTime() {
     }
   }, [selectedDate, dateOptions, setDate]);
 
-  // Fetch available slots from backend with real-time accuracy
-  const storeOrders = useOrderStore((state) => state.orders);
-
-  // Fetch available slots from backend with real-time accuracy and zero-conflict filtering
+  const availabilityRequest = useRef<AbortController | null>(null);
   const fetchAvailableSlots = useCallback(async () => {
+    availabilityRequest.current?.abort();
+    const request = new AbortController();
+    availabilityRequest.current = request;
     if (!selectedDate) {
       setSlots([]);
       setIsLoadingSlots(false);
@@ -167,46 +160,24 @@ export function StepDateTime() {
         totalDuration,
         currentServiceIds,
         undefined,
-        effectiveCategory
+        effectiveCategory,
+        request.signal
       );
+      if (request.signal.aborted) return;
 
       if (res && Array.isArray(res.slots)) {
         // Customer view: strictly available slots only
         const availableOnly = res.slots.filter((s: any) => Boolean(s.available ?? s.isAvailable));
 
-        // Interlock with all active orders in useOrderStore for the same category on selectedDate
-        const existingOrders = useOrderStore.getState().orders || [];
-
-        const nonConflictingSlots = availableOnly.filter((s: any) => {
+        const parsedSlots: SlotItem[] = availableOnly.map((s: any) => {
           const rawStart = s.start || s.time24 || (s.time ? s.time.split(/[-–—]/)[0].trim() : '09:00');
           const rawEnd = s.end || (s.time ? s.time.split(/[-–—]/)[1]?.trim() : '');
-          const slotTime = s.time || `${rawStart} – ${rawEnd}`;
-
-          const requestedInterval = getBookingTimeInterval({
-            time: slotTime,
-            totalOccupiedMinutes: totalDuration,
-          });
-
-          const isConflict = existingOrders.some((o) => {
-            if (o.status === 'cancelled') return false;
-            if (o.date !== selectedDate) return false;
-            const oIntervals = getOrderCategoryIntervals(o, effectiveCategory);
-            return oIntervals.some((oInt) => isTimeIntervalOverlapping(requestedInterval, oInt));
-          });
-
-          return !isConflict;
-        });
-
-        const parsedSlots: SlotItem[] = nonConflictingSlots.map((s: any) => {
-          const rawStart = s.start || s.time24 || (s.time ? s.time.split(/[-–—]/)[0].trim() : '09:00');
-          const rawEnd = s.end || (s.time ? s.time.split(/[-–—]/)[1]?.trim() : '');
-          const rawTime = s.time || `${rawStart} – ${rawEnd}`;
 
           const displayAr = formatCleanInterval(rawStart, rawEnd, true);
           const displayEn = formatCleanInterval(rawStart, rawEnd, false);
 
           return {
-            time: rawTime,
+            time: rawStart,
             start: rawStart,
             end: rawEnd,
             displayAr,
@@ -230,15 +201,19 @@ export function StepDateTime() {
         setSlots([]);
       }
     } catch {
-      setSlots([]);
+      if (!request.signal.aborted) {
+        setSlots([]);
+        if (selectedTime) setTime('');
+      }
     } finally {
-      setIsLoadingSlots(false);
+      if (!request.signal.aborted) setIsLoadingSlots(false);
     }
-  }, [selectedDate, selectedService?.id, totalDuration, currentServiceIds, effectiveCategory, selectedTime, setTime, storeOrders]);
+  }, [selectedDate, selectedService?.id, totalDuration, currentServiceIds, effectiveCategory, selectedTime, setTime]);
 
   // Refetch when date changes
   useEffect(() => {
     fetchAvailableSlots();
+    return () => availabilityRequest.current?.abort();
   }, [fetchAvailableSlots]);
 
   // Real-time listener: broadcast updates and 3.5s auto-polling

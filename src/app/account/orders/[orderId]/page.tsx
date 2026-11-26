@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -34,7 +34,7 @@ export default function OrderDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const { t, locale, direction } = useLocaleStore();
-  const { getOrderById, cancelOrder, addOrder } = useOrderStore();
+  const { getOrderById, addOrder } = useOrderStore();
   const isAr = locale === 'ar';
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
 
@@ -76,20 +76,33 @@ export default function OrderDetailsPage() {
 
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [loadResult, setLoadResult] = useState<{ id: string; error?: string } | null>(null);
 
-  if (loading && !order) {
-    return (
-      <div className="p-16 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center space-y-4">
-        <Loader2 className="w-8 h-8 text-sky-500 animate-spin mx-auto" />
-        <p className="text-sm text-slate-500">{isAr ? 'جاري جلب تفاصيل الحجز...' : 'Loading order details...'}</p>
-      </div>
-    );
+  useEffect(() => {
+    let active = true;
+    cleanzoApi.bookings.getBookingById(orderId)
+      .then((booking) => {
+        if (!active) return;
+        if (booking?.id !== orderId) throw new Error();
+        addOrder({ ...booking, service: booking.service || booking.serviceSnapshot });
+        setLoadResult({ id: orderId });
+      })
+      .catch((error) => {
+        if (active) setLoadResult({ id: orderId, error: error instanceof Error ? error.message : '' });
+      });
+    return () => { active = false; };
+  }, [orderId, addOrder]);
+
+  if (loadResult?.id !== orderId) {
+    return <p role="status" className="p-8 text-sm">{isAr ? 'جارٍ تحميل الحجز…' : 'Loading booking…'}</p>;
   }
 
-  if (!order) {
+  if (!order || loadResult.error !== undefined) {
     return (
       <div className="p-10 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center space-y-4">
-        <p className="text-sm text-slate-500">{isAr ? 'لم يتم العثور على هذا الطلب' : 'Order not found'}</p>
+        <p className="text-sm text-slate-500">{loadResult.error || (isAr ? 'لم يتم العثور على هذا الطلب' : 'Order not found')}</p>
         <Link href="/account/orders">
           <Button variant="outline" size="sm">
             <span>{isAr ? 'العودة لقائمة الطلبات' : 'Back to orders'}</span>
@@ -100,41 +113,29 @@ export default function OrderDetailsPage() {
   }
 
   const handleConfirmCancel = async () => {
+    setIsCancelling(true);
     try {
-      await cleanzoApi.bookings.cancel(order.id, 'إلغاء من قبل العميل', order.customerPhone);
-    } catch (err: any) {
-      console.warn('API cancel note:', err?.message);
+      const updated = await cleanzoApi.bookings.cancel(order.id, 'إلغاء من قبل العميل');
+      if (updated?.id !== order.id || updated.status !== 'cancelled') {
+        throw new Error(isAr ? 'تعذر تأكيد إلغاء الحجز من الخادم' : 'The server did not confirm cancellation');
+      }
+      addOrder({ ...order, ...updated });
+      window.dispatchEvent(new CustomEvent('cleanzo:booking-changed', { detail: { date: updated.date } }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : (isAr ? 'تعذر إلغاء الحجز' : 'Unable to cancel booking'));
+      if (error instanceof Error && 'code' in error && error.code === 'CANCELLATION_RESTRICTED_6H') {
+        setIsCancelModalOpen(false);
+        setIsSupportModalOpen(true);
+      }
+      return;
+    } finally {
+      setIsCancelling(false);
     }
-    cancelOrder(order.id);
     setIsCancelModalOpen(false);
     toast.success(isAr ? 'تم إلغاء الحجز بنجاح' : 'Booking cancelled');
   };
 
-  const isNoticeValidFor6Hours = (dateStr: string, timeStr?: string) => {
-    try {
-      const rawTime = (timeStr || '12:00').trim();
-      const timeMatch = rawTime.match(/(\d{1,2}):(\d{2})/);
-      let hours = 12;
-      let minutes = 0;
-      if (timeMatch) {
-        hours = parseInt(timeMatch[1], 10);
-        minutes = parseInt(timeMatch[2], 10);
-        if (/pm|مساء/i.test(rawTime) && hours < 12) hours += 12;
-        if (/am|صباح/i.test(rawTime) && hours === 12) hours = 0;
-      }
-      const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
-      const target = new Date(cleanDate);
-      target.setHours(hours, minutes, 0, 0);
-      const diffHours = (target.getTime() - Date.now()) / (1000 * 60 * 60);
-      return diffHours >= 6;
-    } catch {
-      return false;
-    }
-  };
-
-  const isCancellable = ['pending', 'confirmed', 'assigned'].includes(order.status);
-  const canSelfCancel = isCancellable && isNoticeValidFor6Hours(order.date, order.time);
-  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+  const isCancellable = ['pending', 'confirmed', 'assigned', 'on_the_way'].includes(order.status);
 
   return (
     <div className="space-y-8 text-start">
@@ -168,37 +169,20 @@ export default function OrderDetailsPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  if (canSelfCancel) {
-                    setIsRescheduleModalOpen(true);
-                  } else {
-                    setIsSupportModalOpen(true);
-                  }
-                }}
+                onClick={() => setIsRescheduleModalOpen(true)}
                 className="text-xs flex items-center gap-1.5 border-sky-300 dark:border-sky-800 text-[#0866C6] dark:text-[#83AED0] hover:bg-sky-50 dark:hover:bg-slate-800"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>{isAr ? 'تعديل الموعد' : 'Reschedule'}</span>
               </Button>
-              {canSelfCancel ? (
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={() => setIsCancelModalOpen(true)}
-                  className="text-xs"
-                >
-                  {isAr ? 'إلغاء الحجز' : 'Cancel'}
-                </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsSupportModalOpen(true)}
-                  className="text-xs text-rose-500 border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/20"
-                >
-                  {isAr ? 'تواصل مع الدعم للإلغاء' : 'Contact Support'}
-                </Button>
-              )}
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setIsCancelModalOpen(true)}
+                className="text-xs"
+              >
+                {isAr ? 'إلغاء الحجز' : 'Cancel'}
+              </Button>
             </>
           )}
         </div>
@@ -320,13 +304,7 @@ export default function OrderDetailsPage() {
             {isCancellable && (
               <button
                 type="button"
-                onClick={() => {
-                  if (canSelfCancel) {
-                    setIsRescheduleModalOpen(true);
-                  } else {
-                    setIsSupportModalOpen(true);
-                  }
-                }}
+                onClick={() => setIsRescheduleModalOpen(true)}
                 className="mt-1 w-full py-2 px-3 rounded-xl border border-sky-300 dark:border-sky-800 text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-slate-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -516,7 +494,7 @@ export default function OrderDetailsPage() {
           <Button variant="ghost" size="sm" onClick={() => setIsCancelModalOpen(false)}>
             {t.common.cancel}
           </Button>
-          <Button variant="danger" size="sm" onClick={handleConfirmCancel}>
+          <Button variant="danger" size="sm" onClick={handleConfirmCancel} isLoading={isCancelling}>
             {isAr ? 'نعم، إلغاء الحجز' : 'Yes, Cancel Booking'}
           </Button>
         </div>
@@ -529,8 +507,8 @@ export default function OrderDetailsPage() {
         title={isAr ? 'سياسة إلغاء وتعديل المواعيد' : 'Cancellation & Reschedule Policy'}
         description={
           isAr
-            ? 'لا يمكن إلغاء أو تغيير الحجز قبل الموعد بأقل من 6 ساعات. يُرجى التواصل مع الدعم للمساعدة.'
-            : 'Bookings cannot be cancelled or rescheduled less than 6 hours before the appointment. Please contact support for assistance.'
+            ? 'مدة الإشعار قبل الموعد غير كافية للإلغاء من الحساب. تواصل مع الدعم للمساعدة.'
+            : 'The cancellation notice period has passed. Contact support for assistance.'
         }
         maxWidth="sm"
       >

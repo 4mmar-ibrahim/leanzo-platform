@@ -19,7 +19,7 @@ interface AdminState {
 
   // Session & Auth Actions
   initAdminAuth: () => Promise<void>;
-  login: (username: string, password?: string) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<boolean>;
   loginWithToken: (admin: AdminUser, token: string) => void;
   setSessionToken: (token: string) => void;
   logout: () => void;
@@ -119,7 +119,7 @@ export const useAdminStore = create<AdminState>()(
 
         set({ adminAuthStatus: 'AUTH_LOADING' });
         try {
-          // 1. Silent token refresh using HttpOnly cookie (or authorization header)
+          // Restore the session using the HttpOnly refresh cookie.
           const refreshRes = await cleanzoApi.admin.refreshToken();
           if (refreshRes?.token && refreshRes?.admin) {
             set({
@@ -168,21 +168,15 @@ export const useAdminStore = create<AdminState>()(
           }
         }
 
-        // 3. If local offline demo with existing admin
-        const existingAdmin = get().currentAdmin;
-        if (existingAdmin && get().isAuthenticated) {
-          set({ adminAuthStatus: 'AUTHENTICATED' });
-        } else {
-          set({
-            currentAdmin: null,
-            token: null,
-            isAuthenticated: false,
-            adminAuthStatus: 'UNAUTHENTICATED',
-          });
-        }
+        set({
+          currentAdmin: null,
+          token: null,
+          isAuthenticated: false,
+          adminAuthStatus: 'UNAUTHENTICATED',
+        });
       },
 
-      login: async (username: string, password = 'password123') => {
+      login: async (username: string, password: string) => {
         try {
           const res = await cleanzoApi.admin.login(username, password);
           if (res?.token && res?.admin) {
@@ -192,10 +186,6 @@ export const useAdminStore = create<AdminState>()(
               isAuthenticated: true,
               adminAuthStatus: 'AUTHENTICATED',
             });
-            if (typeof window !== 'undefined') {
-              const isHttps = window.location.protocol === 'https:';
-              document.cookie = `cleanzo_admin_token=${encodeURIComponent(res.token)}; path=/; max-age=2592000; SameSite=Lax${isHttps ? '; Secure' : ''}`;
-            }
             return true;
           }
           return false;
@@ -212,10 +202,6 @@ export const useAdminStore = create<AdminState>()(
           isAuthenticated: true,
           adminAuthStatus: 'AUTHENTICATED',
         });
-        if (typeof window !== 'undefined') {
-          const isHttps = window.location.protocol === 'https:';
-          document.cookie = `cleanzo_admin_token=${encodeURIComponent(token)}; path=/; max-age=2592000; SameSite=Lax${isHttps ? '; Secure' : ''}`;
-        }
       },
 
       setSessionToken: (token: string) => {
@@ -232,7 +218,6 @@ export const useAdminStore = create<AdminState>()(
         });
         if (typeof window !== 'undefined') {
           try {
-            document.cookie = 'cleanzo_admin_token=; path=/; max-age=0; SameSite=Lax';
             localStorage.removeItem('cleanzo-admin-auth-storage');
             localStorage.removeItem('cleanzo-admin-storage');
           } catch {}
@@ -459,35 +444,23 @@ export const useAdminStore = create<AdminState>()(
     }),
     {
       name: 'cleanzo-admin-auth-storage',
-      partialize: (state) => ({
-        currentAdmin: state.currentAdmin,
-        token: state.token,
-        isAuthenticated: state.isAuthenticated,
-      }),
+      version: 1,
+      migrate: () => ({}),
+      partialize: () => ({}),
     }
   )
 );
 
-// Cross-tab and in-tab live session synchronization
+// Logout clears the shared session in every open admin tab.
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
-    if (event.key === 'cleanzo-admin-auth-storage' && event.newValue) {
-      try {
-        const parsed = JSON.parse(event.newValue);
-        if (parsed?.state) {
-          useAdminStore.setState({
-            currentAdmin: parsed.state.currentAdmin,
-            token: parsed.state.token,
-            isAuthenticated: parsed.state.isAuthenticated,
-          });
-        }
-      } catch {}
-    }
-  });
-
-  window.addEventListener('cleanzo:admin-token-changed', (event: any) => {
-    if (event?.detail?.token) {
-      useAdminStore.setState({ token: event.detail.token });
+    if (event.key === 'cleanzo-admin-auth-storage' && event.newValue === null) {
+      useAdminStore.setState({
+        currentAdmin: null,
+        token: null,
+        isAuthenticated: false,
+        adminAuthStatus: 'UNAUTHENTICATED',
+      });
     }
   });
 }

@@ -1,3 +1,4 @@
+import prisma from '../config/prisma.js';
 import { Coupon, ICoupon } from '../models/Coupon.js';
 import { CouponUsage, ICouponUsage } from '../models/CouponUsage.js';
 import { Offer } from '../models/Offer.js';
@@ -264,22 +265,26 @@ export async function redeemCouponAtomically(params: {
     if (!offer) {
       throw new CouponValidationError('كود العرض غير متاح', 'OFFER_NOT_FOUND', 404);
     }
-    if (offer.usageLimit && (offer.usageCount || 0) >= offer.usageLimit) {
-      throw new CouponValidationError(
-        `تم استنفاد الحد الأقصى المسموح به لاستخدام هذا العرض (${offer.usageLimit} مستخدم)`,
-        'OFFER_USAGE_LIMIT_REACHED',
-        400
-      );
+    const redemption = await prisma.offer.updateMany({
+      where: {
+        id: offer.id,
+        active: true,
+        isArchived: false,
+        OR: [
+          { usageLimit: null },
+          { usageLimit: 0 },
+          { usageCount: { lt: prisma.offer.fields.usageLimit } },
+        ],
+      },
+      data: { usageCount: { increment: 1 } },
+    });
+    if (!redemption.count) {
+      throw new CouponValidationError('كود العرض لم يعد متاحاً', 'OFFER_USAGE_LIMIT_REACHED', 409);
     }
-
-    const updatedOffer = await Offer.findOneAndUpdate(
-      { id: offer.id },
-      { $inc: { usageCount: 1 } },
-      { new: true }
-    );
+    const updatedOffer = await prisma.offer.findUniqueOrThrow({ where: { id: offer.id } });
 
     return {
-      coupon: (updatedOffer || offer) as any,
+      coupon: updatedOffer as any,
       usage: {
         id: `usage-${Date.now()}`,
         couponId: offer.id,
@@ -301,29 +306,31 @@ export async function redeemCouponAtomically(params: {
   }
 
   // 2. Atomic Reservation: Prevent concurrent requests from exceeding totalUsageLimit
-  const updatedCoupon = await Coupon.findOneAndUpdate(
-    {
-      _id: coupon._id,
+  const couponId = String(coupon._id);
+  const redemption = await prisma.coupon.updateMany({
+    where: {
+      id: couponId,
       isArchived: false,
       status: 'active',
-      startDate: { $lte: todayStr },
-      endDate: { $gte: todayStr },
-      $expr: { $lt: ['$currentUsageCount', '$totalUsageLimit'] },
+      startDate: { lte: todayStr },
+      endDate: { gte: todayStr },
+      currentUsageCount: { lt: prisma.coupon.fields.totalUsageLimit },
     },
-    {
-      $inc: { currentUsageCount: 1 },
-      $set: { lastUsedAt: new Date() },
+    data: {
+      currentUsageCount: { increment: 1 },
+      lastUsedAt: new Date(),
     },
-    { new: true }
-  );
+  });
 
-  if (!updatedCoupon) {
+  if (!redemption.count) {
     throw new CouponValidationError(
       'عذراً، تم استنفاد هذا الكوبون للتو من قِبل عميل آخر أو انتهت صلاحيته',
       'COUPON_RACE_EXHAUSTED',
       409
     );
   }
+
+  const updatedCoupon = await Coupon.findById(couponId);
 
   // 3. Double-check customer limit atomically after lock
   const currentCustomerUsage = await CouponUsage.countDocuments({

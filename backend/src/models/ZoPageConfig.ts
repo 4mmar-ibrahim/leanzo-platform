@@ -1,6 +1,6 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import { createPrismaRepository, type RepositoryRecord } from './prismaModelBridge.js';
 
-export interface IZoPageConfig extends Document {
+export interface IZoPageConfig extends RepositoryRecord {
   pageId: string;
   pageNameAr: string;
   pageNameEn: string;
@@ -100,27 +100,4 @@ export interface IZoPageConfig extends Document {
   updatedAt: Date;
 }
 
-const ZoPageConfigSchema = new Schema<IZoPageConfig>(
-  {
-    pageId: { type: String, required: true, unique: true, index: true },
-    pageNameAr: { type: String, required: true },
-    pageNameEn: { type: String, required: true },
-    pageCategory: { type: String, required: true },
-    pathPattern: { type: String, required: true },
-    enabled: { type: Boolean, default: true, index: true },
-    isPublished: { type: Boolean, default: true, index: true },
-    publishedAt: { type: Date },
-    character: { type: Schema.Types.Mixed, required: true },
-    desktop: { type: Schema.Types.Mixed, required: true },
-    tablet: { type: Schema.Types.Mixed, required: true },
-    mobile: { type: Schema.Types.Mixed, required: true },
-    message: { type: Schema.Types.Mixed, required: true },
-    behavior: { type: Schema.Types.Mixed, default: {} },
-    triggers: [{ type: Schema.Types.Mixed }],
-    draftConfig: { type: Schema.Types.Mixed },
-  },
-  { timestamps: true }
-);
-
-import { createPrismaRepository } from './prismaModelBridge.js';
 export const ZoPageConfig = createPrismaRepository('zoPageConfig') as any;

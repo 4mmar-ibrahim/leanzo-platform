@@ -45,7 +45,7 @@ export default function AdminDashboardPage() {
   const customers = useCustomerStore((s) => s.customers);
   const services = useServiceStore((s) => s.services);
   const technicians = useTechnicianStore((s) => s.technicians);
-  const updateOrderStatus = useOrderStore((s) => s.updateOrderStatus);
+  const updateOrderStatus = useOrderStore((s) => s.updateOrderStatusApi);
   const fetchAdminOrders = useOrderStore((s) => s.fetchAdminOrders);
   const isCleared = useAnalyticsResetStore((s) => s.isCleared);
 
@@ -200,12 +200,12 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleQuickStatus = (orderId: string, status: OrderStatus) => {
+  const handleQuickStatus = async (orderId: string, status: OrderStatus) => {
     try {
-      updateOrderStatus(orderId, status);
+      await updateOrderStatus(orderId, status);
       toast.success('تم تحديث حالة الطلب بنجاح');
-    } catch {
-      toast.error('حدث خطأ أثناء التحديث');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'حدث خطأ أثناء التحديث');
     }
   };
 

@@ -4,7 +4,6 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Order, OrderStatus, Technician } from '@/types';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
-import { useCustomerStore } from './useCustomerStore';
 import { useNotificationStore } from './useNotificationStore';
 import { useCustomerNotificationStore } from './useCustomerNotificationStore';
 import { findConflictingOrder } from '@/lib/bookingEngine';
@@ -13,6 +12,7 @@ import { getCanonicalBookingServiceTitle } from '@/lib/services/categoryUtils';
 interface OrderState {
   orders: Order[];
   isLoading: boolean;
+  customerOrdersStale: boolean;
   setOrders: (orders: Order[]) => void;
   addOrder: (order: Order) => void;
   fetchMyOrders: () => Promise<Order[]>;
@@ -22,7 +22,7 @@ interface OrderState {
   assignTechnician: (orderId: string, technician: Technician) => void;
   bulkUpdateStatus: (orderIds: string[], status: OrderStatus) => void;
   cancelOrder: (orderId: string, reason?: string) => void;
-  rescheduleOrder: (orderId: string, newDate: string, newTime: string, reason?: string, customerPhone?: string) => Promise<Order>;
+  rescheduleOrder: (orderId: string, newDate: string, newTime: string, reason?: string, isAdmin?: boolean) => Promise<Order>;
   deleteOrder: (orderId: string) => Promise<void> | void;
   updateOrderNotes: (orderId: string, notes: string) => void;
   getOrderById: (orderId: string) => Order | undefined;
@@ -132,6 +132,7 @@ export const useOrderStore = create<OrderState>()(
     (set, get) => ({
       orders: [],
       isLoading: false,
+      customerOrdersStale: false,
 
       setOrders: (orders: Order[]) => {
         set({ orders });
@@ -151,78 +152,6 @@ export const useOrderStore = create<OrderState>()(
           };
         });
 
-        // Automatically sync customer profile in useCustomerStore
-        try {
-          const custStore = useCustomerStore.getState();
-          const phone = newOrder.customerPhone || (newOrder as any).customer?.phone || (newOrder as any).guestPhone || (newOrder as any).phone;
-          const name = newOrder.customerName || (newOrder as any).customer?.name || (newOrder as any).guestName || (newOrder as any).name || 'عميل كلينزو';
-          if (phone) {
-            const existing = custStore.customers.find((c) => c.phone === phone);
-            if (existing) {
-              custStore.updateCustomer(existing.id, {
-                ordersCount: (existing.ordersCount || 0) + 1,
-                totalSpent: (existing.totalSpent || 0) + (newOrder.finalPrice || 0),
-              });
-            } else {
-              custStore.addCustomer({
-                name,
-                phone,
-                email: (newOrder as any).customer?.email || (newOrder as any).email || '',
-                avatar: '',
-                status: 'active',
-                source: 'website',
-                tags: ['طلب جديد'],
-                addresses: newOrder.address ? [newOrder.address] : [],
-              });
-            }
-          }
-        } catch {
-          // safe fallback
-        }
-
-        // Automatically dispatch notifications to Admin and Customer
-        try {
-          const serviceTitleAr = getCanonicalBookingServiceTitle(newOrder, false);
-          const serviceTitleEn = getCanonicalBookingServiceTitle(newOrder, true);
-          const custName = newOrder.customerName || (newOrder as any).guestName || 'عميل كلينزو';
-
-          useNotificationStore.getState().addNotification({
-            eventId: `order:created:admin:${newOrder.id}`,
-            title: 'طلب حجز جديد',
-            titleEn: 'New Booking Created',
-            message: `طلب جديد برقم #${newOrder.id} لخدمة ${serviceTitleAr} للعميل ${custName} بقيمة ${newOrder.finalPrice || 0} ج.م`,
-            messageEn: `New booking #${newOrder.id} for ${serviceTitleEn} by ${custName}`,
-            type: 'order',
-            link: `/admin/orders/${newOrder.id}`,
-          });
-
-          const targetUserId = newOrder.userId || (newOrder as any).customerId;
-          const targetPhone = newOrder.customerPhone || (newOrder as any).guestPhone || (newOrder as any).phone;
-
-          useCustomerNotificationStore.getState().addNotification({
-            eventId: `order:created:cust:${newOrder.id}`,
-            userId: targetUserId,
-            customerPhone: targetPhone,
-            title: '⏳ تم استلام طلبك وبانتظار المراجعة',
-            titleEn: '⏳ Booking Received & Under Review',
-            message: `تم استلام طلبك رقم #${newOrder.id} لخدمة (${serviceTitleAr}) بنجاح. فريق العمليات يراجع التفاصيل لتأكيد الموعد (${newOrder.date}${newOrder.time ? ` - ${newOrder.time}` : ''}). سنوافيك بالتأكيد قريباً.`,
-            messageEn: `Your booking #${newOrder.id} for (${serviceTitleEn}) was received. Our team is reviewing details for (${newOrder.date}${newOrder.time ? ` at ${newOrder.time}` : ''}). We will confirm shortly.`,
-            type: 'order',
-            link: `/track/${newOrder.id}`,
-          });
-        } catch {
-          // Non-blocking
-        }
-
-        // Broadcast availability update across tabs/windows immediately
-        try {
-          if (typeof window !== 'undefined') {
-            if ('BroadcastChannel' in window) {
-              new BroadcastChannel('cleanzo_availability').postMessage({ type: 'BOOKING_CHANGED', date: newOrder.date });
-            }
-            window.dispatchEvent(new CustomEvent('cleanzo:booking-changed', { detail: { date: newOrder.date } }));
-          }
-        } catch {}
       },
 
       fetchMyOrders: async () => {
@@ -240,11 +169,12 @@ export const useOrderStore = create<OrderState>()(
                 price: b.finalPrice || b.serviceSnapshot?.price || 0,
               },
             }));
-            set({ orders: mapped });
+            set({ orders: mapped, customerOrdersStale: false });
             return mapped;
           }
           return get().orders;
         } catch (err) {
+          set({ customerOrdersStale: true });
           console.warn('[useOrderStore] Could not fetch customer bookings from API, keeping current state:', err);
           return get().orders;
         } finally {
@@ -280,58 +210,12 @@ export const useOrderStore = create<OrderState>()(
       },
 
       updateOrderStatusApi: async (orderId: string, status: OrderStatus, note?: string) => {
-        try {
-          const updated = await cleanzoApi.admin.updateOrderStatus(orderId, status, note);
-          if (updated && updated.id) {
-            set((state) => ({
-              orders: state.orders.map((o) => (o.id === orderId ? { ...o, ...updated } : o)),
-            }));
-
-            // Broadcast status change across tabs/windows immediately
-            try {
-              if (typeof window !== 'undefined') {
-                if ('BroadcastChannel' in window) {
-                  new BroadcastChannel('cleanzo_availability').postMessage({
-                    type: 'BOOKING_CHANGED',
-                    status,
-                    orderId,
-                    date: updated.date,
-                  });
-                }
-                window.dispatchEvent(
-                  new CustomEvent('cleanzo:booking-changed', {
-                    detail: { status, orderId, date: updated.date },
-                  })
-                );
-              }
-            } catch {}
-
-            return updated;
-          }
-          get().updateOrderStatus(orderId, status, note);
-          const current = get().getOrderById(orderId) as Order;
-
-          try {
-            if (typeof window !== 'undefined') {
-              if ('BroadcastChannel' in window) {
-                new BroadcastChannel('cleanzo_availability').postMessage({
-                  type: 'BOOKING_CHANGED',
-                  status,
-                  orderId,
-                });
-              }
-              window.dispatchEvent(
-                new CustomEvent('cleanzo:booking-changed', {
-                  detail: { status, orderId },
-                })
-              );
-            }
-          } catch {}
-
-          return current;
-        } catch (err) {
-          throw err;
-        }
+        const updated = await cleanzoApi.admin.updateOrderStatus(orderId, status, note);
+        if (updated?.id !== orderId) throw new Error('تعذر تأكيد تحديث الطلب من الخادم');
+        set((state) => ({
+          orders: state.orders.map((order) => order.id === orderId ? { ...order, ...updated } : order),
+        }));
+        return updated;
       },
 
       updateOrderStatus: (orderId, status, note, actor = 'إدارة كلينزو') => {
@@ -524,33 +408,14 @@ export const useOrderStore = create<OrderState>()(
         );
       },
 
-      rescheduleOrder: async (orderId, newDate, newTime, reason, customerPhone) => {
-        let updated: any = null;
-        if (customerPhone) {
-          updated = await cleanzoApi.bookings.reschedule(orderId, {
-            newDate,
-            newTime,
-            reason,
-            customerPhone,
-          });
-        } else {
-          updated = await cleanzoApi.admin.rescheduleOrder(orderId, {
-            newDate,
-            newTime,
-            reason,
-          }).catch(() =>
-            cleanzoApi.bookings.reschedule(orderId, {
-              newDate,
-              newTime,
-              reason,
-            })
-          );
-        }
+      rescheduleOrder: async (orderId, newDate, newTime, reason, isAdmin = false) => {
+        const payload = { newDate, newTime, reason };
+        const updated = isAdmin
+          ? await cleanzoApi.admin.rescheduleOrder(orderId, payload)
+          : await cleanzoApi.bookings.reschedule(orderId, payload);
 
         const mappedOrder = {
           ...updated,
-          date: newDate,
-          time: newTime,
           service: updated?.service || updated?.serviceSnapshot || {
             id: updated?.serviceId || 'srv-unknown',
             title: updated?.serviceSnapshot?.title || 'خدمة كلينزو',

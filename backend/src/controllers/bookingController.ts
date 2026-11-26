@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto';
+import { generateBookingAccessToken, verifyBookingAccessToken } from '../utils/jwt.js';
 import { Request, Response } from 'express';
-import mongoose from 'mongoose';
 import { Booking, BookingStatus, ITimelineEvent } from '../models/Booking.js';
 import { CouponUsage } from '../models/CouponUsage.js';
 import { Service } from '../models/Service.js';
@@ -12,16 +13,15 @@ import { AuditLog } from '../models/AuditLog.js';
 import { auditService } from '../services/auditService.js';
 import {
   assertSlotAvailability,
-  compressScheduleAfterCancellation,
-  getCurrentCairoTimeString,
+  isDuringCairoAppointment,
   withBookingLock,
+  SCHEDULE_LOCK,
   mapCategoryCanonical,
   resolveTargetCategory,
-  canonicalizePlateNumber,
   normalizeCategory,
 } from '../services/availabilityService.js';
 import { calculateBookingPrice, calculateMultiServiceBookingPrice } from '../services/bookingPriceService.js';
-import { redeemCouponAtomically, rollbackCouponRedemption } from '../services/couponService.js';
+import { CouponValidationError, redeemCouponAtomically } from '../services/couponService.js';
 import { generateOrderNumber } from '../utils/orderNumber.js';
 import { sendSuccess, sendError } from '../utils/responseHandler.js';
 import { AuthenticatedRequest } from '../middleware/authMiddleware.js';
@@ -33,7 +33,7 @@ import {
 } from '../utils/phoneValidator.js';
 import { validateCustomerName } from '../utils/nameValidator.js';
 import { isNoticeSufficient, getSubscriptionSettings } from '../services/subscriptionService.js';
-import prisma from '../config/prisma.js';
+import prisma, { inDatabaseTransaction } from '../config/prisma.js';
 
 function timeStringToMinutes(timeStr: string): number {
   if (!timeStr) return 0;
@@ -349,6 +349,13 @@ export async function calculateBookingPriceHandler(req: Request, res: Response):
   }
 }
 
+function canManageBooking(req: AuthenticatedRequest, booking: any): boolean {
+  if (req.user) {
+    if (booking.customerId && String(booking.customerId) === String(req.user._id)) return true;
+  }
+  return verifyBookingAccessToken(req.get('x-booking-access'), booking.id);
+}
+
 export async function createBooking(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const {
@@ -445,22 +452,40 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
 
     customerPhone = cleanCustomerPhone;
 
-    // If customer was guest, find or auto-link user record by phone
-    if (!customerId) {
-      let existingUser = await User.findOne({ phone: customerPhone });
-      if (existingUser) {
-        customerId = existingUser._id;
-      }
+    const rawKey = req.get('Idempotency-Key') || req.get('X-Idempotency-Key');
+    if (rawKey && !/^[A-Za-z0-9_-]{20,128}$/.test(rawKey)) {
+      sendError(res, 'مفتاح إعادة المحاولة غير صالح', 400, 'INVALID_IDEMPOTENCY_KEY');
+      return;
     }
+    const adminId = (req as AuthenticatedAdminRequest).admin?._id;
+    const bookingActor = adminId ? ['admin', String(adminId)]
+      : req.user ? ['customer', String(req.user._id)] : ['guest', customerPhone];
+    const idempotencyKey = rawKey && createHash('sha256')
+      .update(JSON.stringify([rawKey, ...bookingActor]))
+      .digest('hex');
+    const requestHash = idempotencyKey && createHash('sha256').update(JSON.stringify(req.body)).digest('hex');
+    const bookingResponse = (booking: any) => ({
+      ...booking,
+      ...(!req.user && !(req as any).admin ? { bookingAccess: generateBookingAccessToken(booking.id) } : {}),
+    });
 
-    const isAuthorizedAdmin = Boolean((req as any).isAdmin || (req as any).admin);
-    if (!customerId && !isAuthorizedAdmin) {
-      sendError(
-        res,
-        'يرجى تسجيل الدخول أو إنشاء حساب عميل أولاً لإتمام الحجز ومتابعة طلبك',
-        401,
-        'CUSTOMER_ACCOUNT_REQUIRED'
-      );
+    const findBookingReplay = async () => {
+      if (!idempotencyKey) return null;
+      const booking = await prisma.booking.findFirst({
+        where: { metadata: { path: ['idempotencyKey'], equals: idempotencyKey } },
+      });
+      if (booking && (booking.metadata as { requestHash?: string })?.requestHash !== requestHash) {
+        throw Object.assign(new Error('مفتاح إعادة المحاولة مرتبط بطلب آخر'), {
+          statusCode: 409,
+          code: 'IDEMPOTENCY_KEY_REUSED',
+        });
+      }
+      return booking;
+    };
+
+    const replay = await findBookingReplay();
+    if (replay) {
+      sendSuccess(res, bookingResponse(replay), 'تم استرجاع الحجز المؤكد مسبقاً لمنع التكرار');
       return;
     }
 
@@ -479,6 +504,11 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
         });
       }
     } catch (priceErr: any) {
+      const existing = await findBookingReplay();
+      if (existing) {
+        sendSuccess(res, bookingResponse(existing), 'تم استرجاع الحجز المؤكد مسبقاً لمنع التكرار');
+        return;
+      }
       sendError(res, priceErr.message, 422, 'PRICING_VALIDATION_ERROR');
       return;
     }
@@ -496,6 +526,10 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
 
     // Anti-IDOR: If user selected an existing addressId, verify ownership
     if (address.addressId) {
+      if (!req.user && !(req as any).admin) {
+        sendError(res, 'سجّل الدخول لاستخدام عنوان محفوظ', 403, 'FORBIDDEN_ADDRESS_ACCESS');
+        return;
+      }
       const savedAddr = await CustomerAddress.findById(address.addressId);
       if (!savedAddr) {
         sendError(res, 'العنوان المحدد غير موجود', 404, 'ADDRESS_NOT_FOUND');
@@ -503,8 +537,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
       }
 
       const isOwner =
-        (customerId && savedAddr.customerId && savedAddr.customerId.toString() === customerId.toString()) ||
-        (customerPhone && savedAddr.customerPhone === customerPhone.trim());
+        Boolean(customerId && savedAddr.customerId && String(savedAddr.customerId) === String(customerId));
 
       if (!isOwner) {
         sendError(res, 'غير مصرح لك باستخدام هذا العنوان', 403, 'FORBIDDEN_IDOR');
@@ -592,15 +625,13 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
         ? 'mixed'
         : authoritativeCategory;
 
-    const lockKeys: string[] = Array.from(allCategoriesInOrder).map((c) => `${date}_${c}`);
     const vehiclePlateInput = req.body.vehicleDetails?.plateNumber || req.body.vehiclePlate || (typeof req.body.plateNumber === 'string' ? req.body.plateNumber : undefined);
-    if (vehiclePlateInput) {
-      lockKeys.push(`vehicle_${canonicalizePlateNumber(vehiclePlateInput)}`);
-    }
 
     let bookingResult: { isDuplicate: boolean; booking: any };
     try {
-      bookingResult = await withBookingLock(lockKeys, async () => {
+      bookingResult = await withBookingLock(SCHEDULE_LOCK, async () => {
+        const existing = await findBookingReplay();
+        if (existing) return { isDuplicate: true, booking: existing };
         // 4.1 Authoritative Server-Side Availability Check under serialized multi-resource lock
         const slotTiming = await assertSlotAvailability({
           dateStr: date,
@@ -613,20 +644,6 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
           vehiclePlate: vehiclePlateInput,
         });
 
-        // 4.2 Idempotency / Duplicate Booking Protection:
-        const recentDuplicate = await Booking.findOne({
-          customerPhone: customerPhone.trim(),
-          serviceId: service.id,
-          date,
-          scheduledStart: slotTiming.scheduledStart,
-          status: { $nin: ['cancelled'] },
-          createdAt: { $gte: new Date(Date.now() - 60 * 1000) },
-        });
-
-        if (recentDuplicate) {
-          return { isDuplicate: true, booking: recentDuplicate };
-        }
-
         // 4.3 Generate unique human-readable Order Number (collision-free)
         let nextNum = 100 + (await Booking.countDocuments()) + 1;
         let orderNumber = generateOrderNumber(nextNum);
@@ -636,9 +653,8 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
         }
 
         // 4.4 Race-condition safe atomic coupon redemption if a coupon is applied
-        let couponIdToRollback: any = null;
         if (pricing.couponSnapshot) {
-          const redemption = await redeemCouponAtomically({
+          await redeemCouponAtomically({
             code: pricing.couponSnapshot.couponCode,
             orderTotal: pricing.subtotal,
             customerPhone: customerPhone.trim(),
@@ -646,7 +662,6 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
             customerName,
             customerId,
           });
-          couponIdToRollback = redemption.coupon._id;
         }
 
         const initialTimeline: ITimelineEvent[] = [
@@ -663,76 +678,58 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
         ];
 
         // 4.5 Create Booking Record with immutable snapshot
-        try {
-          const created = await Booking.create({
-            id: orderNumber,
-            customerId,
-            customerName,
-            customerPhone: cleanCustomerPhone,
-            serviceId: service.id,
-            serviceSnapshot: {
-              id: service.id,
-              title: isMulti ? pricing.items.map((i: any) => i.title).join(' + ') : service.title,
-              titleEn: isMulti ? pricing.items.map((i: any) => i.titleEn).join(' + ') : service.titleEn,
-              category: finalOrderCategory,
-              image: service.image,
-              price: pricing.finalPrice,
-              duration: pricing.totalServiceDuration,
-              services: pricing.items || undefined,
-            },
-            packageId: pricing.packageId || null,
-            packageSnapshot: pricing.packageSnapshot || null,
-            addons: pricing.addons || [],
-            category: finalOrderCategory,
-            date,
-            time: `${slotTiming.scheduledStart} – ${slotTiming.scheduledEnd}`,
-            timeSlotStart: slotTiming.scheduledStart,
-            scheduledStart: slotTiming.scheduledStart,
-            scheduledEnd: slotTiming.scheduledEnd,
-            serviceDurationMinutes: slotTiming.serviceDurationMinutes,
-            travelTimeMinutes: slotTiming.travelTimeMinutes,
-            totalOccupiedMinutes: slotTiming.totalOccupiedMinutes,
-            duration: slotTiming.serviceDurationMinutes,
-            address: validatedAddressSnapshot,
-            basePrice: pricing.basePrice,
-            totalPrice: pricing.finalPrice,
-            discount: pricing.discount,
-            serviceFee: pricing.serviceFee,
-            finalPrice: pricing.finalPrice,
-            currency: 'ج.م',
-            promoCode: pricing.promoCode,
-            couponSnapshot: pricing.couponSnapshot,
-            status: 'pending',
-            timeline: initialTimeline,
-            notes,
-            metadata: {
-              isMultiService: isMulti,
-              serviceIds: targetServiceIds,
-              services: pricing.items || undefined,
-              vehicleDetails: req.body.vehicleDetails || (vehiclePlateInput ? { plateNumber: vehiclePlateInput } : undefined),
-              plateNumber: vehiclePlateInput || undefined,
-            },
-          });
-          return { isDuplicate: false, booking: created };
-        } catch (bookingCreateErr: any) {
-          if (couponIdToRollback) {
-            await rollbackCouponRedemption(couponIdToRollback, orderNumber);
-          }
-          throw bookingCreateErr;
-        }
+        const created = await Booking.create({
+          id: orderNumber,
+          customerId,
+          customerName,
+          customerPhone: cleanCustomerPhone,
+          serviceId: service.id,
+          serviceSnapshot: {
+            id: service.id,
+            title: isMulti ? pricing.items.map((i: any) => i.title).join(' + ') : service.title,
+            titleEn: isMulti ? pricing.items.map((i: any) => i.titleEn).join(' + ') : service.titleEn,
+            category: authoritativeCategory,
+            image: service.image,
+            price: pricing.finalPrice,
+            duration: pricing.totalServiceDuration,
+            services: pricing.items || undefined,
+          },
+          packageId: pricing.packageId || null,
+          packageSnapshot: pricing.packageSnapshot || null,
+          addons: pricing.addons || [],
+          category: authoritativeCategory,
+          date,
+          time,
+          timeSlotStart: time,
+          scheduledStart: slotTiming.scheduledStart,
+          scheduledEnd: slotTiming.scheduledEnd,
+          serviceDurationMinutes: slotTiming.serviceDurationMinutes,
+          travelTimeMinutes: slotTiming.travelTimeMinutes,
+          totalOccupiedMinutes: slotTiming.totalOccupiedMinutes,
+          duration: slotTiming.serviceDurationMinutes,
+          address: validatedAddressSnapshot,
+          basePrice: pricing.basePrice,
+          totalPrice: pricing.finalPrice,
+          discount: pricing.discount,
+          serviceFee: pricing.serviceFee,
+          finalPrice: pricing.finalPrice,
+          currency: 'ج.م',
+          promoCode: pricing.promoCode,
+          couponSnapshot: pricing.couponSnapshot,
+          status: 'pending',
+          timeline: initialTimeline,
+          notes,
+          metadata: {
+            ...(idempotencyKey ? { idempotencyKey, requestHash } : {}),
+            isMultiService: isMulti,
+            serviceIds: targetServiceIds,
+            services: pricing.items || undefined,
+          },
+        });
+        return { isDuplicate: false, booking: created };
       });
     } catch (availOrLockErr: any) {
-      if (availOrLockErr.code === 'DURATION_INSUFFICIENT' || availOrLockErr.status === 422 || availOrLockErr.statusCode === 422) {
-        sendError(
-          res,
-          availOrLockErr.message,
-          422,
-          'DURATION_INSUFFICIENT',
-          availOrLockErr.details
-        );
-        return;
-      }
-
+      if (availOrLockErr instanceof CouponValidationError) throw availOrLockErr;
       if (
         availOrLockErr.code === 'OFFICIAL_HOLIDAY' ||
         availOrLockErr.code === 'BLOCKED_DATE' ||
@@ -765,8 +762,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
 
       const isSlotConflict =
         availOrLockErr.code === 'SLOT_UNAVAILABLE' ||
-        availOrLockErr.code === 'VEHICLE_DOUBLE_BOOKING' ||
-        availOrLockErr.statusCode === 409 ||
+        (availOrLockErr.statusCode === 409 && availOrLockErr.code !== 'IDEMPOTENCY_KEY_REUSED') ||
         availOrLockErr.message?.includes('غير متاح') ||
         availOrLockErr.message?.includes('يتعارض') ||
         availOrLockErr.message?.includes('محجوز') ||
@@ -786,7 +782,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
     }
 
     if (bookingResult.isDuplicate) {
-      sendSuccess(res, bookingResult.booking, 'تم استرجاع الحجز المؤكد مسبقاً لمنع التكرار', 200);
+      sendSuccess(res, bookingResponse(bookingResult.booking), 'تم استرجاع الحجز المؤكد مسبقاً لمنع التكرار', 200);
       return;
     }
 
@@ -800,7 +796,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
     }
 
     // Automatically save customer address so it is permanently remembered for all subsequent orders
-    if (req.body.saveAddress !== false) {
+    if (req.body.saveAddress !== false && (req.user || (req as any).admin)) {
       try {
         const existingAddr = await CustomerAddress.findOne({
           $or: [
@@ -877,7 +873,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
 
     sendSuccess(
       res,
-      newBooking,
+      bookingResponse(newBooking),
       `تم تأكيد حجزك بنجاح برقم (${newBooking.id})، سنتواصل معك قريباً!`,
       201
     );
@@ -897,7 +893,7 @@ export async function getCustomerBookings(req: AuthenticatedRequest, res: Respon
 
     // IDOR Protection: Strictly query only user's own bookings
     const bookings = await Booking.find({
-      $or: [{ customerId: req.user._id }, { customerPhone: req.user.phone }],
+      customerId: req.user._id,
     }).sort({ createdAt: -1 });
 
     sendSuccess(res, bookings);
@@ -909,13 +905,7 @@ export async function getCustomerBookings(req: AuthenticatedRequest, res: Respon
 export async function getBookingById(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    let booking: any = null;
-    if (mongoose.isValidObjectId(id)) {
-      booking = await Booking.findById(id);
-    }
-    if (!booking) {
-      booking = await Booking.findOne({ $or: [{ id }, { bookingNumber: id }] });
-    }
+    const booking = await Booking.findById(id);
 
     if (!booking) {
       sendError(res, 'الطلب غير موجود', 404);
@@ -923,15 +913,9 @@ export async function getBookingById(req: AuthenticatedRequest, res: Response): 
     }
 
     // IDOR Protection: If requested by customer, ensure it belongs to them
-    if (req.user) {
-      const isOwner =
-        booking.customerId?.toString() === req.user._id.toString() ||
-        booking.customerPhone === req.user.phone;
-
-      if (!isOwner) {
-        sendError(res, 'غير مصرح لك بعرض بيانات هذا الحجز', 403, 'FORBIDDEN_ORDER_ACCESS');
-        return;
-      }
+    if (req.user && !canManageBooking(req, booking)) {
+      sendError(res, 'غير مصرح لك بعرض بيانات هذا الحجز', 403, 'FORBIDDEN_ORDER_ACCESS');
+      return;
     }
 
     // Direct API Protection / BOLA / RBAC for Admin & Technician users (Section 9 & 25)
@@ -1023,45 +1007,56 @@ export async function getBookingById(req: AuthenticatedRequest, res: Response): 
   }
 }
 
-export async function trackOrderPublic(req: Request, res: Response): Promise<void> {
+export async function submitBookingReview(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const { rating, comment } = req.body || {};
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5 ||
+      typeof comment !== 'string' || !comment.trim() || comment.trim().length > 2000) {
+    sendError(res, 'أدخل تقييمًا من 1 إلى 5 وتعليقًا لا يتجاوز 2000 حرف', 422, 'INVALID_REVIEW');
+    return;
+  }
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking || !canManageBooking(req, booking)) {
+      sendError(res, 'الطلب غير موجود', 404, 'ORDER_NOT_FOUND');
+      return;
+    }
+    if (booking.status !== 'completed') {
+      sendError(res, 'يمكن تقييم الطلب بعد اكتمال الخدمة', 409, 'BOOKING_NOT_COMPLETED');
+      return;
+    }
+    const content = comment.trim();
+    const saved = await prisma.review.upsert({
+      where: { id: `booking-review:${booking.id}` },
+      update: { rating, comment: content, content, visible: false },
+      create: {
+        id: `booking-review:${booking.id}`,
+        customerName: booking.customerName || 'عميل كلينزو',
+        category: booking.category,
+        service: booking.serviceSnapshot?.title || '',
+        serviceName: booking.serviceSnapshot?.title || '',
+        rating, comment: content, content, verified: true, visible: false,
+      },
+      select: { id: true },
+    });
+    sendSuccess(res, saved, 'تم حفظ تقييمك للمراجعة');
+  } catch {
+    sendError(res, 'تعذر حفظ التقييم', 500, 'REVIEW_SAVE_FAILED');
+  }
+}
+
+export async function trackOrderPublic(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const { phone } = req.query;
-
-    if (!phone || typeof phone !== 'string' || !phone.trim()) {
-      sendError(res, 'يرجى إدخال رقم الهاتف المسجل بالحجز للمتابعة', 400, 'PHONE_REQUIRED');
+    const booking = await Booking.findById(id);
+    if (!booking || !canManageBooking(req, booking)) {
+      sendError(res, 'سجّل الدخول أو افتح الطلب من الجهاز الذي استخدمته للحجز', 404, 'ORDER_NOT_FOUND');
       return;
     }
 
-    const cleanPhone = phone.trim();
-    const phoneVal = validateEgyptianPhone(cleanPhone);
-    if (!phoneVal.isValid) {
-      sendError(
-        res,
-        phoneVal.message || CANONICAL_PHONE_ERROR_MESSAGE,
-        400,
-        phoneVal.code || CANONICAL_PHONE_ERROR_CODE
-      );
-      return;
-    }
-
-    const booking = await Booking.findOne({ id });
-    if (!booking) {
-      sendError(res, 'رقم الطلب غير موجود', 404, 'ORDER_NOT_FOUND');
-      return;
-    }
-
-    // Security check: phone must match to view details if tracked publicly
-    if ((booking.customerPhone || '').trim() !== cleanPhone) {
-      sendError(res, 'رقم الهاتف غير مطابق لبيانات الحجز', 403, 'FORBIDDEN_PHONE_MISMATCH');
-      return;
-    }
-
-    // Project safe tracking data with technician and address details
     sendSuccess(res, {
       id: booking.id,
       status: booking.status,
-      customerPhone: booking.customerPhone || cleanPhone,
+      customerPhone: booking.customerPhone,
       customerName: booking.customerName,
       serviceId: booking.serviceId || booking.serviceSnapshot?.id,
       serviceTitle: booking.serviceSnapshot?.title || '',
@@ -1547,49 +1542,45 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
       changedBy: req.admin?.name || req.admin?.username || 'admin',
     });
 
-    // If completed, record completion metadata and update customer totalSpent
-    if (statusKey === 'completed') {
-      booking.completedAt = new Date();
-      booking.completedBy = {
-        id: req.admin?._id?.toString() || (req.admin as any)?.id || 'admin',
-        name: req.admin?.name || req.admin?.username || 'المسؤول',
-        role: req.admin?.role || 'admin',
-      };
-      (req as any).auditAction = 'complete_order';
+    // Save the state and its completion counters as one transaction.
+    await inDatabaseTransaction(async () => {
+      // If completed, record completion metadata and update customer totalSpent
+      if (statusKey === 'completed') {
+        booking.completedAt = new Date();
+        booking.completedBy = {
+          id: req.admin?._id?.toString() || (req.admin as any)?.id || 'admin',
+          name: req.admin?.name || req.admin?.username || 'المسؤول',
+          role: req.admin?.role || 'admin',
+        };
+        (req as any).auditAction = 'complete_order';
 
-      if (booking.customerId) {
-        await User.findByIdAndUpdate(booking.customerId, {
-          $inc: { totalSpent: booking.finalPrice },
-        });
+        if (booking.customerId) {
+          await User.findByIdAndUpdate(booking.customerId, {
+            $inc: { totalSpent: booking.finalPrice },
+          });
+        }
+
+        if (booking.assignedTechnicianId) {
+          await Technician.findOneAndUpdate(
+            {
+              $or: [
+                { id: booking.assignedTechnicianId },
+                { _id: booking.assignedTechnicianId.match(/^[0-9a-fA-F]{24}$/) ? booking.assignedTechnicianId : null },
+              ].filter(Boolean) as any,
+            },
+            {
+              $inc: { completedOrders: 1 },
+            }
+          );
+        }
+      } else if (statusKey === 'cancelled') {
+        booking.cancelledAt = new Date();
+        booking.cancellationSource = 'admin';
+        booking.cancellationReason = note || 'إلغاء بواسطة الإدارة';
       }
 
-      if (booking.assignedTechnicianId) {
-        await Technician.findOneAndUpdate(
-          {
-            $or: [
-              { id: booking.assignedTechnicianId },
-              { _id: booking.assignedTechnicianId.match(/^[0-9a-fA-F]{24}$/) ? booking.assignedTechnicianId : null },
-            ].filter(Boolean) as any,
-          },
-          {
-            $inc: { completedOrders: 1 },
-          }
-        );
-      }
-    } else if (statusKey === 'cancelled') {
-      booking.cancelledAt = new Date();
-      booking.cancellationSource = 'admin';
-      booking.cancellationReason = note || 'إلغاء بواسطة الإدارة';
-    }
-
-    await booking.save();
-
-    // If cancelled, trigger dynamic schedule compression for subsequent active slots of the day
-    if (statusKey === 'cancelled') {
-      const nowCairo = getCurrentCairoTimeString();
-      const operator = req.admin?.name || req.admin?.username || 'admin';
-      await compressScheduleAfterCancellation(booking, nowCairo, operator);
-    }
+      await booking.save(booking.updatedAt);
+    });
 
     // Automatic Notification Dispatches for Order Status Change
     try {
@@ -1629,7 +1620,7 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
 
     sendSuccess(res, booking, `تم تحديث حالة الحجز إلى (${statusLabelsAr[statusKey]}) بنجاح`);
   } catch (err: any) {
-    sendError(res, err.message, 500);
+    sendError(res, err.code === 'P2025' ? 'تم تغيير الحجز بالفعل. حدّث الصفحة وحاول مرة أخرى.' : err.message, err.code === 'P2025' ? 409 : 500, err.code === 'P2025' ? 'BOOKING_CHANGED' : undefined);
   }
 }
 
@@ -1684,7 +1675,7 @@ export async function assignTechnicianToBooking(req: AuthenticatedAdminRequest, 
     if (!technicianId) {
       booking.assignedTechnicianId = null;
       booking.technician = null;
-      await booking.save();
+      await booking.save(booking.updatedAt);
       sendSuccess(res, booking, 'تم إلغاء تعيين الفني بنجاح');
       return;
     }
@@ -1696,8 +1687,7 @@ export async function assignTechnicianToBooking(req: AuthenticatedAdminRequest, 
     }
 
     // Concurrency Lock per (technicianId, booking.date) to prevent race conditions
-    const lockKey = `tech_assign_${tech.id}_${booking.date}`;
-    await withBookingLock(lockKey, async () => {
+    const assignedBooking = await withBookingLock(SCHEDULE_LOCK, async () => {
       // Re-fetch latest booking state inside lock
       const freshBooking = await Booking.findOne({ id });
       if (!freshBooking) {
@@ -1800,21 +1790,7 @@ export async function assignTechnicianToBooking(req: AuthenticatedAdminRequest, 
         changedBy: req.admin?.name || 'admin',
       });
 
-      await freshBooking.save();
-
-      // Explicitly persist assignedTechnicianId and technician in PostgreSQL
-      try {
-        await prisma.booking.update({
-          where: { id: freshBooking.id },
-          data: {
-            assignedTechnicianId: tech.id,
-            technician: freshBooking.technician,
-            status: freshBooking.status,
-          },
-        });
-      } catch (dbErr) {
-        console.warn('Prisma explicit booking technician sync note:', dbErr);
-      }
+      await freshBooking.save(freshBooking.updatedAt);
 
       // Increment technician assigned counter
       tech.assignedOrders = (tech.assignedOrders || 0) + 1;
@@ -1862,10 +1838,42 @@ export async function assignTechnicianToBooking(req: AuthenticatedAdminRequest, 
         console.warn('Non-critical: Technician assign notification dispatch error:', notifErr);
       }
 
-      sendSuccess(res, freshBooking, `تم تعيين الفني (${tech.name}) للحجز بنجاح`);
+      return freshBooking;
     });
+    if (assignedBooking) sendSuccess(res, assignedBooking, `تم تعيين الفني (${tech.name}) للحجز بنجاح`);
   } catch (err: any) {
-    sendError(res, err.message, 500);
+    sendError(res, err.code === 'P2025' ? 'تم تغيير الحجز بالفعل. حدّث الصفحة وحاول مرة أخرى.' : err.message, err.code === 'P2025' ? 409 : 500, err.code === 'P2025' ? 'BOOKING_CHANGED' : undefined);
+  }
+}
+
+export async function updateBookingNotes(req: AuthenticatedAdminRequest, res: Response): Promise<void> {
+  const id = req.params.id;
+  if (typeof id !== 'string') {
+    sendError(res, 'رقم الطلب غير صالح', 422, 'INVALID_BOOKING_ID');
+    return;
+  }
+  const notes = req.body?.notes;
+  if (typeof notes !== 'string' || notes.length > 2000) {
+    sendError(res, 'الملاحظات يجب أن تكون نصاً لا يتجاوز 2000 حرف', 422, 'INVALID_BOOKING_NOTES');
+    return;
+  }
+
+  try {
+    const technician = req.admin?.role === 'technician' || req.admin?.userType === 'technician';
+    const result = await prisma.booking.updateMany({
+      where: {
+        id,
+        ...(technician ? { assignedTechnicianId: req.admin?.technicianId || req.admin?._id.toString() } : {}),
+      },
+      data: { notes: notes.trim() },
+    });
+    if (!result.count) {
+      sendError(res, 'الطلب غير موجود', 404, 'BOOKING_NOT_FOUND');
+      return;
+    }
+    sendSuccess(res, { id, notes: notes.trim() });
+  } catch {
+    sendError(res, 'تعذر حفظ ملاحظات الطلب', 500, 'BOOKING_NOTES_FAILED');
   }
 }
 
@@ -1934,94 +1942,84 @@ export async function deleteBookingAdmin(req: AuthenticatedAdminRequest, res: Re
 export async function cancelBookingCustomer(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const { reason, customerPhone } = req.body || {};
+    const { reason } = req.body || {};
 
-    let booking: any = null;
-    if (mongoose.isValidObjectId(id)) {
-      booking = await Booking.findById(id);
-    }
-    if (!booking) {
-      booking = await Booking.findOne({ $or: [{ id }, { bookingNumber: id }] });
-    }
+    const result = await withBookingLock(SCHEDULE_LOCK, async () => {
+      const booking = await Booking.findById(id);
 
-    if (!booking) {
-      sendError(res, 'الطلب غير موجود', 404, 'BOOKING_NOT_FOUND');
-      return;
-    }
+      if (!booking) {
+        sendError(res, 'الطلب غير موجود', 404, 'BOOKING_NOT_FOUND');
+        return null;
+      }
 
-    // IDOR Protection: Must be authenticated owner or provide verified matching phone
-    if (req.user) {
-      const isOwner =
-        booking.customerId?.toString() === req.user._id.toString() ||
-        booking.customerPhone === req.user.phone;
-      if (!isOwner) {
+      if (!canManageBooking(req, booking)) {
         sendError(res, 'غير مصرح لك بإلغاء هذا الحجز', 403, 'FORBIDDEN_CANCEL');
-        return;
+        return null;
       }
-    } else {
-      if (!customerPhone || String(customerPhone).trim() !== booking.customerPhone) {
-        sendError(res, 'يرجى تأكيد رقم الهاتف المرتبط بالحجز للمتابعة', 403, 'FORBIDDEN_CANCEL_PHONE_MISMATCH');
-        return;
+
+      // Safety checks according to Cleanzo business workflow:
+      // 1. Completed bookings cannot be cancelled
+      if (booking.status === 'completed') {
+        sendError(res, 'لا يمكن إلغاء حجز مكتمل بالفعل', 400, 'CANNOT_CANCEL_COMPLETED');
+        return null;
       }
-    }
+      // 2. Already cancelled bookings
+      if (booking.status === 'cancelled') {
+        return { booking, alreadyCancelled: true };
+      }
+      // 3. In-progress bookings cannot release or be cancelled blindly while technician is working
+      if (booking.status === 'in_progress' || booking.timeline?.some((event: ITimelineEvent) => event.status === 'in_progress')) {
+        sendError(res, 'لا يمكن إلغاء الحجز بعد بدء تقديم الخدمة فعلياً', 400, 'CANNOT_CANCEL_IN_PROGRESS');
+        return null;
+      }
 
-    // Safety checks according to Cleanzo business workflow:
-    // 1. Completed bookings cannot be cancelled
-    if (booking.status === 'completed') {
-      sendError(res, 'لا يمكن إلغاء حجز مكتمل بالفعل', 400, 'CANNOT_CANCEL_COMPLETED');
-      return;
-    }
-    // 2. Already cancelled bookings
-    if (booking.status === 'cancelled') {
-      sendError(res, 'الحجز ملغي بالفعل', 400, 'ALREADY_CANCELLED');
-      return;
-    }
-    // 3. In-progress bookings cannot release or be cancelled blindly while technician is working
-    if (booking.status === 'in_progress') {
-      sendError(res, 'لا يمكن إلغاء الحجز بعد بدء تقديم الخدمة فعلياً', 400, 'CANNOT_CANCEL_IN_PROGRESS');
-      return;
-    }
-
-    // 4. Enforce 6-hour cancellation rule for customer bookings
-    const subSettings = await getSubscriptionSettings();
-    const noticeHours = subSettings.normalBookingCancellationNoticeHours ?? 6;
-    const { isAllowed } = isNoticeSufficient(
-      booking.date,
-      booking.scheduledStart || booking.timeSlotStart || booking.time,
-      noticeHours
-    );
-
-    if (!isAllowed) {
-      sendError(
-        res,
-        'لا يمكن إلغاء أو تغيير الحجز قبل الموعد بأقل من 6 ساعات. يُرجى التواصل مع الدعم للمساعدة.',
-        400,
-        'CANCELLATION_RESTRICTED_6H'
+      // 4. Enforce 6-hour cancellation rule for customer bookings
+      const subSettings = await getSubscriptionSettings();
+      const noticeHours = subSettings.normalBookingCancellationNoticeHours ?? 6;
+      const { isAllowed } = isNoticeSufficient(
+        booking.date,
+        booking.scheduledStart || booking.timeSlotStart || booking.time,
+        noticeHours
       );
+
+      const cancelledAt = new Date();
+      const interval = getBookingTimeInterval(booking);
+      const waitingDuringAppointment = isDuringCairoAppointment(booking.date, interval.startMin, interval.endMin, cancelledAt);
+      if (!isAllowed && !waitingDuringAppointment) {
+        sendError(
+          res,
+          `لا يمكن إلغاء أو تغيير الحجز قبل الموعد بأقل من ${noticeHours} ساعة. يُرجى التواصل مع الدعم للمساعدة.`,
+          400,
+          'CANCELLATION_RESTRICTED_6H'
+        );
+        return null;
+      }
+
+      booking.status = 'cancelled';
+      booking.cancelledAt = cancelledAt;
+      booking.cancellationSource = 'customer';
+      booking.cancellationReason = reason || 'إلغاء من قبل العميل';
+
+      booking.timeline.push({
+        status: 'cancelled',
+        label: 'تم إلغاء الطلب من قبل العميل',
+        labelEn: 'Cancelled by Customer',
+        timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
+        completed: true,
+        description: reason || 'تم إلغاء الطلب بناءً على رغبة العميل',
+        descriptionEn: 'Order cancelled upon customer request',
+        changedBy: req.user?.name || booking.customerName || 'customer',
+      });
+
+      await booking.save(booking.updatedAt);
+      return { booking, alreadyCancelled: false };
+    });
+    if (!result) return;
+    const { booking, alreadyCancelled } = result;
+    if (alreadyCancelled) {
+      sendSuccess(res, booking, 'الحجز ملغي بالفعل');
       return;
     }
-
-    booking.status = 'cancelled';
-    booking.cancelledAt = new Date();
-    booking.cancellationSource = 'customer';
-    booking.cancellationReason = reason || 'إلغاء من قبل العميل';
-
-    booking.timeline.push({
-      status: 'cancelled',
-      label: 'تم إلغاء الطلب من قبل العميل',
-      labelEn: 'Cancelled by Customer',
-      timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
-      completed: true,
-      description: reason || 'تم إلغاء الطلب بناءً على رغبة العميل',
-      descriptionEn: 'Order cancelled upon customer request',
-      changedBy: req.user?.name || booking.customerName || 'customer',
-    });
-
-    await booking.save();
-
-    // Trigger dynamic schedule recalculation / compression
-    const nowCairo = getCurrentCairoTimeString();
-    await compressScheduleAfterCancellation(booking, nowCairo, req.user?.name || booking.customerName || 'Customer');
 
     // Automatic Notification Dispatches
     try {
@@ -2060,27 +2058,21 @@ export async function cancelBookingCustomer(req: AuthenticatedRequest, res: Resp
 
     sendSuccess(res, booking, 'تم إلغاء الحجز بنجاح وإتاحة الموعد');
   } catch (err: any) {
-    sendError(res, err.message, 500);
+    sendError(res, err.code === 'P2025' ? 'تم تغيير الحجز بالفعل. حدّث الصفحة وحاول مرة أخرى.' : err.message, err.code === 'P2025' ? 409 : 500, err.code === 'P2025' ? 'BOOKING_CHANGED' : undefined);
   }
 }
 
 export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const { newDate, newTime, reason, customerPhone } = req.body || {};
+    const { newDate, newTime, reason } = req.body || {};
 
     if (!newDate || !newTime) {
       sendError(res, 'التاريخ الجديد والوقت مطلوبان لإعادة الجدولة', 400, 'MISSING_NEW_TIME');
       return;
     }
 
-    let booking: any = null;
-    if (mongoose.isValidObjectId(id)) {
-      booking = await Booking.findById(id);
-    }
-    if (!booking) {
-      booking = await Booking.findOne({ $or: [{ id }, { bookingNumber: id }] });
-    }
+    const booking = await Booking.findById(id);
 
     if (!booking) {
       sendError(res, 'الطلب غير موجود', 404, 'BOOKING_NOT_FOUND');
@@ -2088,24 +2080,9 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
     }
 
     const isAdmin = Boolean((req as any).admin);
-    const normPhone = (p?: string) => String(p || '').replace(/\D/g, '').replace(/^20/, '').replace(/^0/, '');
-
-    // IDOR Protection: Admins bypass; customers must be authenticated owner or verified phone
-    if (!isAdmin) {
-      if (req.user) {
-        const isOwner =
-          booking.customerId?.toString() === req.user._id?.toString() ||
-          normPhone(booking.customerPhone) === normPhone(req.user.phone);
-        if (!isOwner) {
-          sendError(res, 'غير مصرح لك بإعادة جدولة هذا الحجز', 403, 'FORBIDDEN_RESCHEDULE');
-          return;
-        }
-      } else {
-        if (!customerPhone || normPhone(customerPhone) !== normPhone(booking.customerPhone)) {
-          sendError(res, 'يرجى تأكيد رقم الهاتف المرتبط بالحجز للمتابعة', 403, 'FORBIDDEN_RESCHEDULE_PHONE_MISMATCH');
-          return;
-        }
-      }
+    if (!isAdmin && !canManageBooking(req, booking)) {
+      sendError(res, 'غير مصرح لك بإعادة جدولة هذا الحجز', 403, 'FORBIDDEN_RESCHEDULE');
+      return;
     }
 
     if (booking.status === 'completed') {
@@ -2134,7 +2111,7 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       if (!isAllowed) {
         sendError(
           res,
-          'لا يمكن إلغاء أو تغيير الحجز قبل الموعد بأقل من 6 ساعات. يُرجى التواصل مع الدعم للمساعدة.',
+          `لا يمكن إلغاء أو تغيير الحجز قبل الموعد بأقل من ${noticeHours} ساعة. يُرجى التواصل مع الدعم للمساعدة.`,
           400,
           'RESCHEDULE_RESTRICTED_6H'
         );
@@ -2164,31 +2141,18 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
         ? (booking.serviceSnapshot as any).services
         : undefined;
 
-    const allCategoriesInOrder = new Set<string>();
-    allCategoriesInOrder.add(authoritativeCategory);
-    if (compositeList && Array.isArray(compositeList)) {
-      for (const item of compositeList) {
-        const itemCat = normalizeCategory(item.category) || (item.serviceId ? await mapCategoryCanonical(item.serviceId) : undefined) || 'car';
-        allCategoriesInOrder.add(itemCat);
-      }
-    }
-
-    const lockKeys: string[] = Array.from(allCategoriesInOrder).map((c) => `${newDate}_${c}`);
     const vPlate =
       (booking.vehicleDetails as any)?.plateNumber ||
       (booking.metadata as any)?.vehicleDetails?.plateNumber ||
       (booking.metadata as any)?.plateNumber;
-    if (vPlate) {
-      lockKeys.push(`vehicle_${canonicalizePlateNumber(vPlate)}`);
-    }
 
-    await withBookingLock(lockKeys, async () => {
+    const updatedBooking = await withBookingLock(SCHEDULE_LOCK, async () => {
       // Authoritative calculation of total required duration
-      const authoritativeDuration =
-        booking.totalOccupiedMinutes ||
-        booking.serviceSnapshot?.duration ||
-        (Number(booking.serviceDurationMinutes || booking.duration || 0) + Number(booking.travelTimeMinutes || 0)) ||
-        45;
+      const previousInterval = getBookingTimeInterval(booking);
+      const authoritativeDuration = Math.max(
+        booking.totalOccupiedMinutes || 0,
+        previousInterval.endMin - previousInterval.startMin,
+      );
 
       // 1. Validate new appointment slot BEFORE releasing old reservation (category-based aware)
       const slotTiming = await assertSlotAvailability({
@@ -2266,29 +2230,7 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
         changedBy: actorName,
       });
 
-      await booking.save();
-
-      // Authoritative direct persist in PostgreSQL via Prisma
-      try {
-        await prisma.booking.update({
-          where: { id: booking.id },
-          data: {
-            date: newDate,
-            time: newTimeLabel,
-            timeSlotStart: slotTiming.scheduledStart,
-            scheduledStart: slotTiming.scheduledStart,
-            scheduledEnd: slotTiming.scheduledEnd,
-            rescheduledFrom: previousTime,
-            assignedTechnicianId: booking.assignedTechnicianId,
-            technician: booking.technician,
-            status: booking.status,
-            timeline: booking.timeline,
-            metadata: booking.metadata,
-          },
-        });
-      } catch (prismaUpdateErr) {
-        console.warn('Non-critical Prisma direct update note:', prismaUpdateErr);
-      }
+      await booking.save(booking.updatedAt);
 
       try {
         const canonicalTitleAr = getCanonicalBookingServiceTitle(booking, 'ar');
@@ -2322,11 +2264,15 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
         }
       } catch (e) {}
 
-      sendSuccess(res, booking, 'تم إعادة جدولة الحجز بنجاح وتحديث بيانات الطلب');
+      return booking;
     });
+    sendSuccess(res, updatedBooking, 'تم إعادة جدولة الحجز بنجاح وتحديث بيانات الطلب');
   } catch (err: any) {
-    const statusCode = err.status || err.statusCode || (err.code === 'DURATION_INSUFFICIENT' ? 422 : 400);
-    sendError(res, err.message, statusCode, err.code, err.details);
+    if (err.code === 'P2025') {
+      sendError(res, 'تم تغيير الحجز بالفعل. حدّث الصفحة وحاول مرة أخرى.', 409, 'BOOKING_CHANGED');
+      return;
+    }
+    sendError(res, err.message, err.statusCode || 500, err.code);
   }
 }
 

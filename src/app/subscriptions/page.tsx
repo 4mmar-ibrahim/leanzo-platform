@@ -29,6 +29,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useServiceStore } from '@/store/useServiceStore';
 import { toast } from 'sonner';
 import { apiGet, apiPost } from '@/lib/api';
+import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { CleanzoImage } from '@/components/common/CleanzoImage';
 import { TimeRangeDisplay } from '@/components/common/TimeRangeDisplay';
 import { autoTranslate } from '@/lib/i18n/autoTranslate';
@@ -375,35 +376,32 @@ export default function SubscriptionsPage() {
     window.scrollTo({ top: 300, behavior: 'smooth' });
   };
 
-  // Fetch available slots for active visit index when date changes
+  const activeVisitDate = visitSchedules[activeVisitIndex]?.date;
+  const activeVisitServiceId = selectedPlan?.serviceId;
   useEffect(() => {
-    if (currentStep === 2 && selectedPlan && visitSchedules[activeVisitIndex]?.date) {
-      const dateStr = visitSchedules[activeVisitIndex].date;
-      const srvId = selectedPlan.serviceId;
-
-      async function fetchSlots() {
-        setLoadingSlots(true);
-        try {
-          const res = await apiGet<{ slots: ISlot[] }>(`/availability?date=${dateStr}&serviceId=${srvId}`);
-          if (res?.data?.slots) {
-            setAvailableSlots((prev) => ({
-              ...prev,
-              [activeVisitIndex]: res.data.slots.filter((s) => s.available),
-            }));
-          } else {
-            setAvailableSlots((prev) => ({ ...prev, [activeVisitIndex]: [] }));
-          }
-        } catch (err) {
-          console.error('Error fetching slots:', err);
-          setAvailableSlots((prev) => ({ ...prev, [activeVisitIndex]: [] }));
-        } finally {
-          setLoadingSlots(false);
-        }
-      }
-
-      fetchSlots();
-    }
-  }, [currentStep, selectedPlan, activeVisitIndex, visitSchedules]);
+    if (currentStep !== 2 || !activeVisitDate || !activeVisitServiceId) return;
+    const request = new AbortController();
+    setLoadingSlots(true);
+    setAvailableSlots((previous) => ({ ...previous, [activeVisitIndex]: [] }));
+    cleanzoApi.availability
+      .checkDate(activeVisitDate, activeVisitServiceId, undefined, undefined, undefined, undefined, request.signal)
+      .then((result) => {
+        if (request.signal.aborted) return;
+        const slots = result.slots.filter((slot) => slot.available).map((slot) => ({
+          ...slot,
+          start: slot.start || slot.time24,
+          end: slot.end || '',
+        }));
+        setAvailableSlots((previous) => ({ ...previous, [activeVisitIndex]: slots }));
+      })
+      .catch(() => {
+        if (!request.signal.aborted) setAvailableSlots((previous) => ({ ...previous, [activeVisitIndex]: [] }));
+      })
+      .finally(() => {
+        if (!request.signal.aborted) setLoadingSlots(false);
+      });
+    return () => request.abort();
+  }, [currentStep, activeVisitDate, activeVisitServiceId, activeVisitIndex]);
 
   // Update a visit date
   const handleDateChange = (visitIdx: number, newDate: string) => {
@@ -432,6 +430,10 @@ export default function SubscriptionsPage() {
   const handleConfirmSubscription = async () => {
     if (!selectedPlan) return;
     setErrorMsg('');
+    if (!isAuthenticated) {
+      setErrorMsg(isAr ? 'سجّل الدخول أولاً عشان تقدر تدير زيارات الاشتراك من حسابك.' : 'Sign in to manage subscription visits from your account.');
+      return;
+    }
 
     const phoneVal = validateEgyptianPhone(customerPhone);
     if (!phoneVal.isValid) {
@@ -944,9 +946,9 @@ export default function SubscriptionsPage() {
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                     {availableSlots[activeVisitIndex].map((slot, sIdx) => {
-                      const isChosen = visitSchedules[activeVisitIndex]?.time === slot.time;
+                      const isChosen = visitSchedules[activeVisitIndex]?.time === slot.start;
                       const currentDate = visitSchedules[activeVisitIndex]?.date;
-                      const candStart = timeStringToMinutes(slot.start || slot.time);
+                      const candStart = timeStringToMinutes(slot.start || slot.start);
                       const candEnd = slot.end ? timeStringToMinutes(slot.end) : candStart + 45;
                       const overlappingVisitIndex = visitSchedules.findIndex((other, oIdx) => {
                         if (oIdx === activeVisitIndex) return false;
@@ -963,7 +965,7 @@ export default function SubscriptionsPage() {
                           type="button"
                           disabled={isTakenByAnotherVisit}
                           title={isTakenByAnotherVisit ? (isAr ? `محجوز للزيارة رقم (${overlappingVisitIndex + 1})` : `Reserved for visit #${overlappingVisitIndex + 1}`) : undefined}
-                          onClick={() => !isTakenByAnotherVisit && handleSlotSelect(activeVisitIndex, slot.time)}
+                          onClick={() => !isTakenByAnotherVisit && handleSlotSelect(activeVisitIndex, slot.start)}
                           className={`p-3 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 border ${
                             isChosen
                               ? 'bg-[#0866C6] text-white border-[#0866C6] shadow-md shadow-[#0866C6]/20 ring-2 ring-[#0866C6]/30'

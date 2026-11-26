@@ -49,7 +49,6 @@ export default function AdminOrderDetailPage() {
   const orderId = params.orderId as string;
 
   const updateOrderStatusApi = useOrderStore((s) => s.updateOrderStatusApi);
-  const assignTechnician = useOrderStore((s) => s.assignTechnician);
   const updateOrderNotes = useOrderStore((s) => s.updateOrderNotes);
   const orders = useOrderStore((s) => s.orders);
   const fetchAdminOrders = useOrderStore((s) => s.fetchAdminOrders);
@@ -298,19 +297,11 @@ export default function AdminOrderDetailPage() {
 
     setAssigningTechId(tech.id);
     try {
-      const updatedOrder = await cleanzoApi.admin.assignTechnician(order.id, tech.id);
-      if (updatedOrder && updatedOrder.id) {
-        setOrder(updatedOrder);
-        useOrderStore.getState().addOrder(updatedOrder);
-      }
-      assignTechnician(order.id, {
-        id: tech.id,
-        name: tech.name,
-        phone: tech.phone,
-        avatar: tech.avatar,
-        rating: tech.rating,
-        specialty: tech.specialty,
-      });
+      const updated = await cleanzoApi.admin.assignTechnician(order.id, tech.id);
+      if (updated?.id !== order.id) throw new Error('تعذر تأكيد إسناد الطلب من الخادم');
+      const synced = { ...order, ...updated };
+      setOrder(synced);
+      useOrderStore.getState().addOrder(synced);
       addLog({
         adminName: currentAdmin?.name || 'Admin',
         adminRole: currentAdmin?.role || 'owner',
@@ -331,9 +322,17 @@ export default function AdminOrderDetailPage() {
     }
   };
 
-  const handleSaveNotes = () => {
-    updateOrderNotes(order.id, notesText);
-    toast.success('تم حفظ ملاحظات الطلب بنجاح');
+  const handleSaveNotes = async () => {
+    if (!canEditOrders) return;
+    try {
+      const saved = await cleanzoApi.admin.updateOrderNotes(order.id, notesText);
+      updateOrderNotes(saved.id, saved.notes);
+      setOrder(current => current ? { ...current, notes: saved.notes } : current);
+      setNotesText(saved.notes);
+      toast.success('تم حفظ ملاحظات الطلب بنجاح');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'تعذر حفظ ملاحظات الطلب');
+    }
   };
 
   const coupon = order.couponSnapshot || (order as any).coupon;
@@ -861,6 +860,7 @@ export default function AdminOrderDetailPage() {
               />
               <button
                 onClick={handleSaveNotes}
+                disabled={!canEditOrders}
                 className="mt-2 px-3 py-1.5 text-xs font-bold rounded-lg bg-sky-500 hover:bg-sky-600 text-white"
               >
                 حفظ الملاحظات
@@ -1236,6 +1236,7 @@ export default function AdminOrderDetailPage() {
 
       {order && (
         <RescheduleModal
+          isAdmin
           isOpen={isRescheduleOpen}
           onClose={() => setIsRescheduleOpen(false)}
           order={order}

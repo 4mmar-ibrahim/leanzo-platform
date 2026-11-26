@@ -1,4 +1,4 @@
-import prisma from '../config/prisma.js';
+import prisma, { inDatabaseTransaction } from '../config/prisma.js';
 import { SubscriptionPlan, ISubscriptionPlan } from '../models/SubscriptionPlan.js';
 import { Subscription, ISubscription } from '../models/Subscription.js';
 import { SubscriptionVisit, ISubscriptionVisit } from '../models/SubscriptionVisit.js';
@@ -15,10 +15,12 @@ import {
   minutesToDisplayTime,
   getCurrentCairoDateString,
   getCurrentCairoTimeString,
+  isDuringCairoAppointment,
   withBookingLock,
   doIntervalsOverlap,
   normalizeCategory,
   canonicalizePlateNumber,
+  SCHEDULE_LOCK,
 } from './availabilityService.js';
 import { generateSubscriptionNumber, generateVisitNumber } from '../utils/orderNumber.js';
 
@@ -196,15 +198,7 @@ export async function createSubscriptionAtomic(input: CreateSubscriptionInput): 
   const startDate = new Date();
   const endDate = new Date(startDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
-  const subCategory = normalizeCategory(service.category) || 'car';
-  const lockKeys: string[] = visits.map((v) => `${v.date}_${subCategory}`);
-  const cleanPlate = canonicalizePlateNumber(vehicleDetails?.plateNumber);
-  if (cleanPlate) {
-    lockKeys.push(`vehicle_${cleanPlate}`);
-  }
-  lockKeys.push(`sub_create_${serviceId}`);
-
-  return await withBookingLock(lockKeys, async () => {
+  return await withBookingLock(SCHEDULE_LOCK, async () => {
     // 4. Pre-validate each requested visit slot against Dynamic Continuous Availability Engine
     const validatedVisitSlots: Array<{
       date: string;
@@ -275,7 +269,7 @@ export async function createSubscriptionAtomic(input: CreateSubscriptionInput): 
     // 5. Atomic Creation in PostgreSQL Transaction
     const subId = generateSubscriptionNumber();
 
-    const createdSubscription = await prisma.$transaction(async (tx) => {
+    const createdSubscription = await inDatabaseTransaction(async (tx) => {
       // Create Subscription
       const sub = await tx.subscription.create({
         data: {
@@ -445,116 +439,113 @@ export async function cancelSubscriptionVisit(params: {
 }): Promise<any> {
   const { visitId, actor, actorId, actorName, actorRole, customerPhone, reason, overrideRestrictions } = params;
 
-  const visit = await prisma.subscriptionVisit.findUnique({
-    where: { id: visitId },
-    include: {
-      subscription: {
-        include: { plan: true },
+  return withBookingLock(SCHEDULE_LOCK, async () => {
+    const visit = await prisma.subscriptionVisit.findUnique({
+      where: { id: visitId },
+      include: {
+        subscription: {
+          include: { plan: true },
+        },
       },
-    },
-  });
+    });
 
-  if (!visit) {
-    const err: any = new Error('زيارة الاشتراك غير موجودة');
-    err.statusCode = 404;
-    throw err;
-  }
-
-  // IDOR Protection: If customer, must match phone or customerId
-  if (actor === 'customer') {
-    if (actorId && visit.customerId && visit.customerId !== actorId) {
-      const err: any = new Error('غير مصرح لك بإلغاء موعد هذه الزيارة');
-      err.statusCode = 403;
+    if (!visit) {
+      const err: any = new Error('زيارة الاشتراك غير موجودة');
+      err.statusCode = 404;
       throw err;
     }
-    if (customerPhone && visit.customerPhone !== customerPhone) {
-      const err: any = new Error('رقم الهاتف لا يتطابق مع صاحب الاشتراك');
-      err.statusCode = 403;
-      throw err;
+
+    // IDOR Protection: If customer, must match phone or customerId
+    if (actor === 'customer') {
+      const isOwner = Boolean(actorId && visit.customerId === actorId);
+      if (!isOwner) {
+        throw Object.assign(new Error('غير مصرح لك بتغيير هذا الحجز'), { statusCode: 403, code: 'FORBIDDEN_VISIT' });
+      }
     }
-  }
 
-  if (visit.status === 'completed') {
-    const err: any = new Error('لا يمكن إلغاء زيارة مكتملة بالفعل');
-    err.statusCode = 400;
-    throw err;
-  }
-  if (visit.status === 'cancelled') {
-    const err: any = new Error('الزيارة ملغاة بالفعل');
-    err.statusCode = 400;
-    throw err;
-  }
-  if (visit.status === 'in_progress') {
-    const err: any = new Error('لا يمكن إلغاء الزيارة أثناء تنفيذ الخدمة من قبل الفني');
-    err.statusCode = 400;
-    throw err;
-  }
-
-  // Cancellation rules for customer
-  if (actor === 'customer' && !overrideRestrictions) {
-    // 1. Plan setting: allowCancellation
-    const plan = visit.subscription?.plan;
-    const planSnapshot = (visit.subscription?.planSnapshot as any);
-    const allowCancellation = plan ? plan.allowCancellation : (planSnapshot?.allowCancellation ?? true);
-
-    if (allowCancellation === false) {
-      const err: any = new Error('باقة هذا الاشتراك لا تتيح ميزة الإلغاء الذاتي للزيارات');
+    if (visit.status === 'completed') {
+      const err: any = new Error('لا يمكن إلغاء زيارة مكتملة بالفعل');
       err.statusCode = 400;
-      err.code = 'CANCELLATION_NOT_ALLOWED_BY_PLAN';
       throw err;
     }
-
-    // 2. 12-hour rule
-    const settings = await getSubscriptionSettings();
-    const noticeHours = plan?.cancellationNoticeHours || settings.subscriptionCancellationNoticeHours || 12;
-    const { isAllowed } = isNoticeSufficient(visit.date, visit.scheduledStart || visit.time, noticeHours);
-
-    if (!isAllowed) {
-      const err: any = new Error(
-        `لا يمكن إلغاء موعد الاشتراك قبل الموعد بأقل من ${noticeHours} ساعة. يُرجى التواصل مع الدعم للمساعدة.`
-      );
+    if (visit.status === 'cancelled') return visit;
+    if (visit.status === 'in_progress' || (Array.isArray(visit.timeline) && visit.timeline.some((event: any) => event.status === 'in_progress'))) {
+      const err: any = new Error('لا يمكن إلغاء الزيارة أثناء تنفيذ الخدمة من قبل الفني');
       err.statusCode = 400;
-      err.code = 'CANCELLATION_RESTRICTED_12H';
       throw err;
     }
-  }
 
-  const updatedTimeline = Array.isArray(visit.timeline) ? [...(visit.timeline as any[])] : [];
-  updatedTimeline.push({
-    status: 'cancelled',
-    label: actor === 'admin' ? 'تم إلغاء الموعد بواسطة الإدارة' : 'تم إلغاء الموعد بواسطة العميل',
-    labelEn: actor === 'admin' ? 'Cancelled by Admin' : 'Cancelled by Customer',
-    timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
-    completed: true,
-    description: reason || (actor === 'admin' ? 'إلغاء إداري للموعد' : 'إلغاء من قبل المشترك'),
-    changedBy: actorName || (actor === 'admin' ? 'admin' : 'customer'),
-  });
+    const cancelledAt = new Date();
 
-  const updated = await prisma.subscriptionVisit.update({
-    where: { id: visit.id },
-    data: {
+    // Cancellation rules for customer
+    if (actor === 'customer' && !overrideRestrictions) {
+      // 1. Plan setting: allowCancellation
+      const plan = visit.subscription?.plan;
+      const planSnapshot = (visit.subscription?.planSnapshot as any);
+      const allowCancellation = plan ? plan.allowCancellation : (planSnapshot?.allowCancellation ?? true);
+
+      if (allowCancellation === false) {
+        const err: any = new Error('باقة هذا الاشتراك لا تتيح ميزة الإلغاء الذاتي للزيارات');
+        err.statusCode = 400;
+        err.code = 'CANCELLATION_NOT_ALLOWED_BY_PLAN';
+        throw err;
+      }
+
+      // 2. 12-hour rule
+      const settings = await getSubscriptionSettings();
+      const noticeHours = plan?.cancellationNoticeHours || settings.subscriptionCancellationNoticeHours || 12;
+      const { isAllowed } = isNoticeSufficient(visit.date, visit.scheduledStart || visit.time, noticeHours);
+
+      const start = timeStringToMinutes(visit.scheduledStart || visit.time);
+      const end = timeStringToMinutes(visit.scheduledEnd) || start + (visit.totalOccupiedMinutes || visit.duration);
+      const waitingDuringAppointment = isDuringCairoAppointment(visit.date, start, end, cancelledAt);
+      if (!isAllowed && !waitingDuringAppointment) {
+        const err: any = new Error(
+          `لا يمكن إلغاء موعد الاشتراك قبل الموعد بأقل من ${noticeHours} ساعة. يُرجى التواصل مع الدعم للمساعدة.`
+        );
+        err.statusCode = 400;
+        err.code = 'CANCELLATION_RESTRICTED_12H';
+        throw err;
+      }
+    }
+
+    const updatedTimeline = Array.isArray(visit.timeline) ? [...(visit.timeline as any[])] : [];
+    updatedTimeline.push({
       status: 'cancelled',
-      cancelledAt: new Date(),
-      cancellationSource: actor,
-      cancellationReason: reason || 'إلغاء الموعد',
-      timeline: updatedTimeline,
-    },
-  });
+      label: actor === 'admin' ? 'تم إلغاء الموعد بواسطة الإدارة' : 'تم إلغاء الموعد بواسطة العميل',
+      labelEn: actor === 'admin' ? 'Cancelled by Admin' : 'Cancelled by Customer',
+      timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
+      completed: true,
+      description: reason || (actor === 'admin' ? 'إلغاء إداري للموعد' : 'إلغاء من قبل المشترك'),
+      changedBy: actorName || (actor === 'admin' ? 'admin' : 'customer'),
+    });
 
-  // Log activity
-  await AuditLog.create({
-    adminId: actorId || (actor === 'admin' ? 'admin' : 'customer'),
-    adminName: actorName || 'User',
-    adminRole: actorRole || actor,
-    action: 'إلغاء موعد زيارة اشتراك',
-    module: 'subscriptions',
-    entityType: 'subscription_visit',
-    entityId: visit.id,
-    target: visit.id,
-    details: `تم إلغاء زيارة الاشتراك #${visit.id} (اشتراك #${visit.subscriptionId}) بواسطة ${actorName || actor}`,
-  });
+    const updated = await prisma.subscriptionVisit.update({
+      where: { id: visit.id, updatedAt: visit.updatedAt },
+      data: {
+        status: 'cancelled',
+        cancelledAt,
+        cancellationSource: actor,
+        cancellationReason: reason || 'إلغاء الموعد',
+        timeline: updatedTimeline,
+      },
+    });
 
-  return updated;
+    // Log activity
+    await AuditLog.create({
+      adminId: actorId || (actor === 'admin' ? 'admin' : 'customer'),
+      adminName: actorName || 'User',
+      adminRole: actorRole || actor,
+      action: 'إلغاء موعد زيارة اشتراك',
+      module: 'subscriptions',
+      entityType: 'subscription_visit',
+      entityId: visit.id,
+      target: visit.id,
+      details: `تم إلغاء زيارة الاشتراك #${visit.id} (اشتراك #${visit.subscriptionId}) بواسطة ${actorName || actor}`,
+    });
+
+    return updated;
+  });
 }
 
 /**
@@ -598,15 +589,9 @@ export async function rescheduleSubscriptionVisit(params: {
 
   // IDOR Protection: If customer, must match ownership
   if (actor === 'customer') {
-    if (actorId && visit.customerId && visit.customerId !== actorId) {
-      const err: any = new Error('غير مصرح لك بتغيير موعد هذه الزيارة');
-      err.statusCode = 403;
-      throw err;
-    }
-    if (customerPhone && visit.customerPhone !== customerPhone) {
-      const err: any = new Error('رقم الهاتف لا يتطابق مع صاحب الاشتراك');
-      err.statusCode = 403;
-      throw err;
+    const isOwner = Boolean(actorId && visit.customerId === actorId);
+    if (!isOwner) {
+      throw Object.assign(new Error('غير مصرح لك بتغيير هذا الحجز'), { statusCode: 403, code: 'FORBIDDEN_VISIT' });
     }
   }
 
@@ -655,22 +640,14 @@ export async function rescheduleSubscriptionVisit(params: {
     }
   }
 
-  const visitCat = normalizeCategory((visit.serviceSnapshot as any)?.category) || 'car';
-  const rescheduleLocks = [`${newDate}_${visitCat}`, `sub_reschedule_${visit.serviceId}`];
-  const vPlate = (visit.vehicleDetails as any)?.plateNumber || (visit.subscription?.vehicleDetails as any)?.plateNumber;
-  const cleanVPlate = canonicalizePlateNumber(vPlate);
-  if (cleanVPlate) {
-    rescheduleLocks.push(`vehicle_${cleanVPlate}`);
-  }
-
-  return await withBookingLock(rescheduleLocks, async () => {
+  return await withBookingLock(SCHEDULE_LOCK, async () => {
     // 1. Validate new appointment slot BEFORE touching old reservation
     const slotTiming = await assertSlotAvailability({
       dateStr: newDate,
       timeStr: newTime,
       serviceId: visit.serviceId,
       excludeVisitId: visit.id,
-      vehiclePlate: vPlate,
+      vehiclePlate: (visit as any).vehiclePlate || (visit as any).metadata?.vehiclePlate,
     });
 
     // 2. Atomic update: modify visit to new slot
@@ -690,7 +667,7 @@ export async function rescheduleSubscriptionVisit(params: {
     });
 
     const updated = await prisma.subscriptionVisit.update({
-      where: { id: visit.id },
+      where: { id: visit.id, updatedAt: visit.updatedAt },
       data: {
         date: newDate,
         time: newTimeLabel,
@@ -782,7 +759,7 @@ export async function completeSubscriptionVisit(params: {
 
     // 1. Update Visit
     const updatedVisit = await tx.subscriptionVisit.update({
-      where: { id: visit.id },
+      where: { id: visit.id, updatedAt: visit.updatedAt },
       data: {
         status: 'completed',
         completedAt: new Date(),
@@ -834,102 +811,106 @@ export async function renewSubscription(params: {
 }): Promise<any> {
   const { subscriptionId, newPlanId, visits, customerActor, adminActor } = params;
 
-  const previousSub = await prisma.subscription.findUnique({
-    where: { id: subscriptionId },
-    include: { plan: true },
-  });
+  return withBookingLock(SCHEDULE_LOCK, async () => {
+    const previousSub = await prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+      include: { plan: true },
+    });
 
-  if (!previousSub) {
-    const err: any = new Error('الاشتراك المراد تجديده غير موجود');
-    err.statusCode = 404;
-    throw err;
-  }
-
-  // IDOR Protection: If customerActor, verify ownership
-  if (customerActor) {
-    if (customerActor.id && previousSub.customerId && previousSub.customerId !== customerActor.id) {
-      const err: any = new Error('غير مصرح لك بتجديد هذا الاشتراك');
-      err.statusCode = 403;
+    if (!previousSub) {
+      const err: any = new Error('الاشتراك المراد تجديده غير موجود');
+      err.statusCode = 404;
       throw err;
     }
-  }
 
-  const targetPlanId = newPlanId || previousSub.planId;
-  const targetPlan = await prisma.subscriptionPlan.findUnique({ where: { id: targetPlanId } });
+    if (customerActor) {
+      const isOwner = Boolean(customerActor.id && previousSub.customerId === customerActor.id);
+      if (!isOwner) {
+        throw Object.assign(new Error('غير مصرح لك بتجديد هذا الاشتراك'), { statusCode: 403 });
+      }
+    }
 
-  if (!targetPlan || targetPlan.status !== 'active') {
-    const err: any = new Error('باقة التجديد المختارة غير متاحة حالياً');
-    err.statusCode = 400;
-    throw err;
-  }
+    if (previousSub.renewedToId) {
+      throw Object.assign(new Error('تم تجديد هذا الاشتراك بالفعل'), { statusCode: 409, code: 'SUBSCRIPTION_ALREADY_RENEWED' });
+    }
 
-  // Create new subscription for the renewal cycle
-  const newSubData = await createSubscriptionAtomic({
-    customerId: previousSub.customerId || customerActor?.id,
-    customerName: customerActor?.name || previousSub.customerName,
-    customerPhone: customerActor?.phone || previousSub.customerPhone,
-    planId: targetPlan.id,
-    serviceId: targetPlan.serviceId,
-    vehicleDetails: (previousSub.vehicleDetails as any) || undefined,
-    address: previousSub.address,
-    visits,
-    notes: `تجديد للاشتراك السابق #${previousSub.id}`,
-  });
+    const targetPlanId = newPlanId || previousSub.planId;
+    const targetPlan = await prisma.subscriptionPlan.findUnique({ where: { id: targetPlanId } });
 
-  // Link previous and new subscription records & record renewal cycle
-  const renewalCycle = (previousSub.renewalCycle || 1) + 1;
+    if (!targetPlan || targetPlan.status !== 'active') {
+      const err: any = new Error('باقة التجديد المختارة غير متاحة حالياً');
+      err.statusCode = 400;
+      throw err;
+    }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.subscription.update({
-      where: { id: previousSub.id },
-      data: {
-        renewedToId: newSubData.id,
-      },
+    // Create new subscription for the renewal cycle
+    const newSubData = await createSubscriptionAtomic({
+      customerId: previousSub.customerId || customerActor?.id,
+      customerName: customerActor?.name || previousSub.customerName,
+      customerPhone: customerActor?.phone || previousSub.customerPhone,
+      planId: targetPlan.id,
+      serviceId: targetPlan.serviceId,
+      vehicleDetails: (previousSub.vehicleDetails as any) || undefined,
+      address: previousSub.address,
+      visits,
+      notes: `تجديد للاشتراك السابق #${previousSub.id}`,
     });
 
-    await tx.subscription.update({
+    // Link previous and new subscription records & record renewal cycle
+    const renewalCycle = (previousSub.renewalCycle || 1) + 1;
+
+    await inDatabaseTransaction(async (tx) => {
+      await tx.subscription.update({
+        where: { id: previousSub.id },
+        data: {
+          renewedToId: newSubData.id,
+        },
+      });
+
+      await tx.subscription.update({
+        where: { id: newSubData.id },
+        data: {
+          renewedFromId: previousSub.id,
+          renewalCycle,
+        },
+      });
+
+      await tx.subscriptionRenewal.create({
+        data: {
+          subscriptionId: previousSub.id,
+          customerId: previousSub.customerId || null,
+          customerPhone: previousSub.customerPhone,
+          oldPlanId: previousSub.planId,
+          newPlanId: targetPlan.id,
+          newSubscriptionId: newSubData.id,
+          renewalCycle,
+          renewalPrice: targetPlan.price,
+          status: 'completed',
+          notes: `تم التجديد بنجاح من الدورة (${previousSub.renewalCycle || 1}) إلى الدورة (${renewalCycle})`,
+        },
+      });
+    });
+
+    // Log activity
+    await AuditLog.create({
+      adminId: adminActor?.id || customerActor?.id || 'customer',
+      adminName: adminActor?.name || customerActor?.name || 'Customer',
+      adminRole: adminActor?.role || 'customer',
+      action: 'تجديد اشتراك',
+      module: 'subscriptions',
+      entityType: 'subscription',
+      entityId: newSubData.id,
+      target: newSubData.id,
+      details: `تم تجديد الاشتراك #${previousSub.id} بنجاح برقم جديد #${newSubData.id} (الدورة ${renewalCycle})`,
+    });
+
+    return await prisma.subscription.findUnique({
       where: { id: newSubData.id },
-      data: {
-        renewedFromId: previousSub.id,
-        renewalCycle,
+      include: {
+        plan: true,
+        visits: { orderBy: { visitIndex: 'asc' } },
       },
     });
-
-    await tx.subscriptionRenewal.create({
-      data: {
-        subscriptionId: previousSub.id,
-        customerId: previousSub.customerId || null,
-        customerPhone: previousSub.customerPhone,
-        oldPlanId: previousSub.planId,
-        newPlanId: targetPlan.id,
-        newSubscriptionId: newSubData.id,
-        renewalCycle,
-        renewalPrice: targetPlan.price,
-        status: 'completed',
-        notes: `تم التجديد بنجاح من الدورة (${previousSub.renewalCycle || 1}) إلى الدورة (${renewalCycle})`,
-      },
-    });
-  });
-
-  // Log activity
-  await AuditLog.create({
-    adminId: adminActor?.id || customerActor?.id || 'customer',
-    adminName: adminActor?.name || customerActor?.name || 'Customer',
-    adminRole: adminActor?.role || 'customer',
-    action: 'تجديد اشتراك',
-    module: 'subscriptions',
-    entityType: 'subscription',
-    entityId: newSubData.id,
-    target: newSubData.id,
-    details: `تم تجديد الاشتراك #${previousSub.id} بنجاح برقم جديد #${newSubData.id} (الدورة ${renewalCycle})`,
-  });
-
-  return await prisma.subscription.findUnique({
-    where: { id: newSubData.id },
-    include: {
-      plan: true,
-      visits: { orderBy: { visitIndex: 'asc' } },
-    },
   });
 }
 

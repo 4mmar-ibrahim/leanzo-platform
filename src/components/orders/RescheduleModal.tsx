@@ -18,22 +18,21 @@ import { Order } from '@/types';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useOrderStore } from '@/store/useOrderStore';
-import { getUpcomingBookingDates } from '@/lib/bookingEngine';
+import { getUpcomingBookingDates, getBookingTimeInterval } from '@/lib/bookingEngine';
 import { formatTimeTo12Hour } from '@/lib/timeUtils';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
-import { useAuthStore } from '@/store/useAuthStore';
-import { useBookingStore } from '@/store/useBookingStore';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 interface RescheduleModalProps {
+  isAdmin?: boolean;
   isOpen: boolean;
   onClose: () => void;
   order: Order;
   onSuccess?: (updatedOrder: Order) => void;
 }
 
-export function RescheduleModal({ isOpen, onClose, order, onSuccess }: RescheduleModalProps) {
+export function RescheduleModal({ isOpen, onClose, order, onSuccess, isAdmin = false }: RescheduleModalProps) {
   const { locale } = useLocaleStore();
   const isAr = locale === 'ar';
   const bookingSettings = useSettingsStore((s) => s.settings.booking);
@@ -70,11 +69,8 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
 
   const serviceIdsKey = serviceIds.join(',');
 
-  const duration =
-    order.totalOccupiedMinutes ||
-    order.duration ||
-    (order.service as any)?.duration ||
-    60;
+  const interval = getBookingTimeInterval(order);
+  const duration = interval.endMin - interval.startMin;
 
   // Upcoming valid dates
   const dateOptions = useMemo(
@@ -100,6 +96,7 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
   useEffect(() => {
     if (!isOpen || !selectedDate) return;
 
+    const controller = new AbortController();
     let isMounted = true;
     const abortCtrl = new AbortController();
     const timeoutTimer = setTimeout(() => {
@@ -114,7 +111,7 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
     const targetCategory = order.category || (order as any).serviceSnapshot?.category || order.service?.category;
 
     cleanzoApi.availability
-      .checkDate(selectedDate, targetServiceId, duration, serviceIds, order.id, targetCategory)
+      .checkDate(selectedDate, targetServiceId, duration, serviceIds, order.id, targetCategory, controller.signal)
       .then((res) => {
         if (!isMounted) return;
         setIsDayAvailable(res?.isDayAvailable ?? true);
@@ -144,8 +141,7 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
 
     return () => {
       isMounted = false;
-      clearTimeout(timeoutTimer);
-      abortCtrl.abort();
+      controller.abort();
     };
   }, [isOpen, selectedDate, order.id, order.serviceId, duration, serviceIdsKey, isAr, reloadTrigger]);
 
@@ -155,12 +151,6 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
       return;
     }
 
-    const customerPhone =
-      order.customerPhone ||
-      useAuthStore.getState().user?.phone ||
-      useBookingStore.getState().guestPhone ||
-      '';
-
     setIsSubmitting(true);
     try {
       const updated = await rescheduleOrder(
@@ -168,7 +158,7 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess }: Reschedul
         selectedDate,
         selectedSlotTime,
         reason.trim() || undefined,
-        customerPhone || undefined
+        isAdmin
       );
 
       if (typeof window !== 'undefined') {

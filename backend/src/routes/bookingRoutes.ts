@@ -5,8 +5,10 @@ import {
   getCustomerBookings,
   getBookingById,
   trackOrderPublic,
+  submitBookingReview,
   getAllBookingsAdmin,
   updateBookingStatus,
+  updateBookingNotes,
   assignTechnicianToBooking,
   deleteBookingAdmin,
   cancelBookingCustomer,
@@ -23,8 +25,10 @@ router.post('/calculate-price', calculateBookingPriceHandler);
 
 // Customer booking endpoints
 router.post('/', optionalCustomerAuth, createBooking);
+router.post('/admin/create', authenticateAdmin, authorize('orders', 'edit'), createBooking);
 router.get('/my', authenticateCustomer, getCustomerBookings);
-router.get('/track/:id', trackOrderPublic);
+router.post('/:id/review', optionalCustomerAuth, submitBookingReview);
+router.get('/track/:id', optionalCustomerAuth, trackOrderPublic);
 router.post(['/:id/cancel', '/cancel/:id'], optionalCustomerAuth, cancelBookingCustomer);
 router.post(['/:id/reschedule', '/reschedule/:id'], optionalCustomerAuth, rescheduleBookingCustomer);
 
@@ -32,6 +36,7 @@ router.post(['/:id/reschedule', '/reschedule/:id'], optionalCustomerAuth, resche
 router.get('/admin/all', authenticateAdmin, authorize('orders', 'view'), getAllBookingsAdmin);
 router.get('/admin/:id', authenticateAdmin, authorize('orders', 'view'), getBookingById);
 router.put('/admin/:id/status', authenticateAdmin, authorize('orders', 'edit'), recordAuditLog('update_order_status', 'orders'), updateBookingStatus);
+router.patch('/admin/:id/notes', authenticateAdmin, authorize('orders', 'edit'), recordAuditLog('update_order_notes', 'orders'), updateBookingNotes);
 router.put('/admin/:id/assign', authenticateAdmin, authorize('orders', 'assign'), recordAuditLog('assign_technician', 'orders'), assignTechnicianToBooking);
 router.post(['/admin/:id/reschedule', '/admin/reschedule/:id'], authenticateAdmin, authorize('orders', 'edit'), recordAuditLog('reschedule_order', 'orders'), rescheduleBookingCustomer);
 router.delete('/admin/:id', authenticateAdmin, authorize('orders', 'delete'), recordAuditLog('delete_order', 'orders'), deleteBookingAdmin);

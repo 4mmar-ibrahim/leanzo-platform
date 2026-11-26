@@ -26,6 +26,9 @@ async function run() {
   console.log('============================================================\n');
 
   await connectDB();
+  if (!(await SystemSettings.exists({ key: 'global_settings' }))) {
+    await SystemSettings.create({ key: 'global_settings' });
+  }
 
   // 1. Setup clean test service (30 min service + 15 min travel = 45 min total occupancy)
   const testService45 = await Service.findOneAndUpdate(
@@ -47,7 +50,10 @@ async function run() {
     { upsert: true, new: true }
   );
 
-  const testDate = '2026-10-25';
+  const sunday = new Date();
+  sunday.setUTCDate(sunday.getUTCDate() + 7 + (7 - sunday.getUTCDay()) % 7);
+  const dateAtOffset = (offset: number) => new Date(sunday.getTime() + offset * 86_400_000).toISOString().slice(0, 10);
+  const testDate = dateAtOffset(0);
   await Booking.deleteMany({ date: testDate });
 
   // =========================================================================
@@ -99,7 +105,7 @@ async function run() {
     });
     createdBookingId = b.id;
 
-    const res = await getAvailableSlots(testDate, testService45.id);
+    const res = await getAvailableSlots(testDate, testService45.id, undefined, undefined, undefined, undefined, true);
     const s0900 = res.slots.find((s) => s.time === '09:00 – 09:45');
     const s0945 = res.slots.find((s) => s.time === '09:45 – 10:30');
 
@@ -142,7 +148,7 @@ async function run() {
       { upsert: true, new: true }
     );
 
-    const date20 = '2026-10-26';
+    const date20 = dateAtOffset(1);
     await Booking.deleteMany({ date: date20 });
 
     // Book 10:30 – 10:50 (exactly 20 minutes, NOT 30)
@@ -167,7 +173,7 @@ async function run() {
       status: 'confirmed',
     });
 
-    const res = await getAvailableSlots(date20, srv20.id);
+    const res = await getAvailableSlots(date20, srv20.id, undefined, undefined, undefined, undefined, true);
     // Slot at 10:30 should be unavailable, next available slot should be at 10:45 (snapped to 15-min)
     const s1030 = res.slots.find((s) => s.start === '10:30');
     assert(s1030 !== undefined, '10:30 slot is present');
@@ -198,7 +204,7 @@ async function run() {
       { upsert: true, new: true }
     );
 
-    const date75 = '2026-10-27';
+    const date75 = dateAtOffset(2);
     await Booking.deleteMany({ date: date75 });
 
     const res = await getAvailableSlots(date75, srv75.id);
@@ -217,16 +223,17 @@ async function run() {
       { key: 'global_settings' },
       {
         $set: {
+          'booking.enableBreak': true,
           'booking.breakStart': '13:00',
           'booking.breakEnd': '14:00',
         },
       }
     );
 
-    const dateBreak = '2026-10-28';
+    const dateBreak = dateAtOffset(3);
     await Booking.deleteMany({ date: dateBreak });
 
-    const res = await getAvailableSlots(dateBreak, testService45.id);
+    const res = await getAvailableSlots(dateBreak, testService45.id, undefined, undefined, undefined, undefined, true);
     // Find any slot that starts at 13:00 and is marked as break
     const breakSlot = res.slots.find((s) => s.start === '13:00' && s.available === false);
 
@@ -239,6 +246,7 @@ async function run() {
       { key: 'global_settings' },
       {
         $set: {
+          'booking.enableBreak': currentBooking.enableBreak ?? false,
           'booking.breakStart': currentBooking.breakStart || null,
           'booking.breakEnd': currentBooking.breakEnd || null,
         },
@@ -250,7 +258,7 @@ async function run() {
   // BACKEND REVALIDATION TEST: Prevent Double Booking
   // =========================================================================
   await test('Backend Authority: assertSlotAvailability rejects double booking with 409 SLOT_UNAVAILABLE', async () => {
-    const dateReval = '2026-10-29';
+    const dateReval = dateAtOffset(4);
     await Booking.deleteMany({ date: dateReval });
 
     // Active booking at 11:00 (45 min service)

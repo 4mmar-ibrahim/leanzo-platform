@@ -4,6 +4,13 @@ import { randomUUID } from 'node:crypto';
 /**
  * Translates Mongoose-style query filters to Prisma 'where' input
  */
+export interface RepositoryRecord {
+  _id: string;
+  id: string;
+  toObject(): Record<string, unknown>;
+  save(expectedUpdatedAt?: Date): Promise<RepositoryRecord>;
+}
+
 export function translateFilter(filter: any = {}, modelName?: string): any {
   if (!filter || typeof filter !== 'object') return {};
 
@@ -217,7 +224,6 @@ function attachDocHelpers(doc: any, delegate?: any) {
   if (doc.password && !doc.comparePassword) {
     doc.comparePassword = async function (candidate: string) {
       if (!this.password) return false;
-      if (this.password === candidate) return true;
       try {
         return await bcrypt.compare(candidate, this.password);
       } catch {
@@ -237,7 +243,7 @@ function attachDocHelpers(doc: any, delegate?: any) {
     }
   }
   if (!doc.save && delegate) {
-    doc.save = async function () {
+    doc.save = async function (expectedUpdatedAt?: Date) {
       const targetId = this.id || this._id;
       const data: any = {};
       for (const k of Object.keys(this)) {
@@ -279,8 +285,12 @@ function attachDocHelpers(doc: any, delegate?: any) {
       if (delegate === prisma.systemSettings) {
         delete data.contact;
       }
+      delete data.updatedAt;
+      if (expectedUpdatedAt) {
+        data.updatedAt = new Date(Math.max(Date.now(), expectedUpdatedAt.getTime() + 1));
+      }
       const updated = await delegate.update({
-        where: { id: targetId },
+        where: { id: targetId, ...(expectedUpdatedAt ? { updatedAt: expectedUpdatedAt } : {}) },
         data,
       });
       return attachDocHelpers(updated, delegate);
@@ -347,7 +357,13 @@ function expandDotNotation(data: any): any {
 }
 
 export function createPrismaRepository(prismaDelegateName: keyof typeof prisma) {
-  const delegate = prisma[prismaDelegateName] as any;
+  const delegate: any = new Proxy({}, {
+    get(_target, property) {
+      const current = prisma[prismaDelegateName] as any;
+      const value = current[property];
+      return typeof value === 'function' ? value.bind(current) : value;
+    },
+  });
   const modelName = prismaDelegateName as string;
 
   return {

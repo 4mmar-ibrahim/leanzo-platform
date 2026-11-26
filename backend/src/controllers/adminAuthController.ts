@@ -1,5 +1,5 @@
+import { ENV } from '../config/env.js';
 import { Request, Response } from 'express';
-import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { AdminUser, IAdminUser, PermissionLevel } from '../models/AdminUser.js';
 import { Role, IRole, ADMIN_MODULES, getDefaultRolePermissions } from '../models/Role.js';
@@ -8,7 +8,6 @@ import { AuditLog } from '../models/AuditLog.js';
 import { auditService } from '../services/auditService.js';
 import {
   generateAdminToken,
-  verifyAdminToken,
   generateAdminRefreshToken,
   verifyAdminRefreshToken,
 } from '../utils/jwt.js';
@@ -203,13 +202,7 @@ export async function loginAdmin(req: Request, res: Response): Promise<void> {
       }
     }
 
-    let isMatch = await admin.comparePassword(password);
-    if (!isMatch && admin.username === 'superadmin' && (password === 'password123' || password === 'adminPassword123')) {
-      isMatch = true;
-    }
-    if (!isMatch && admin.username === 'ahmed.owner' && password === 'password123') {
-      isMatch = true;
-    }
+    const isMatch = await admin.comparePassword(password);
     if (!isMatch) {
       auditService.log({
         actorId: admin._id.toString(),
@@ -268,13 +261,13 @@ export async function loginAdmin(req: Request, res: Response): Promise<void> {
       userAgent,
     });
 
-    const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    const isHttps = ENV.IS_PRODUCTION || req.secure;
     res.cookie('cleanzo_admin_token', token, {
       path: '/',
       sameSite: 'lax',
       maxAge: 30 * 24 * 60 * 60 * 1000,
       secure: isHttps,
-      httpOnly: false,
+      httpOnly: true,
     });
 
     sendSuccess(
@@ -1143,53 +1136,18 @@ export async function updateRoleAdmin(req: AuthenticatedAdminRequest, res: Respo
  */
 export async function refreshTokenAdmin(req: Request, res: Response): Promise<void> {
   try {
-    // 1. Look for dedicated cleanzo_admin_refresh_token cookie
-    let refreshToken = getCookieFromRequest(req, COOKIE_NAMES.ADMIN_REFRESH);
-
-    // 2. Fallback to body or authorization header / cleanzo_admin_token cookie
-    if (!refreshToken && req.body?.refreshToken) {
-      refreshToken = req.body.refreshToken;
-    }
-    if (!refreshToken) {
-      const authHeader = req.headers.authorization;
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        refreshToken = authHeader.split(' ')[1];
-      }
-    }
-    if (!refreshToken) {
-      refreshToken = getCookieFromRequest(req, 'cleanzo_admin_token');
-    }
-
-    if (!refreshToken || refreshToken === 'demo-admin-owner-jwt-token' || refreshToken.startsWith('demo-admin')) {
+    const refreshToken = getCookieFromRequest(req, COOKIE_NAMES.ADMIN_REFRESH);
+    let adminId: string;
+    try {
+      if (!refreshToken) throw new Error('MISSING_ADMIN_REFRESH_TOKEN');
+      adminId = verifyAdminRefreshToken(refreshToken).id;
+    } catch {
       clearRefreshCookie(req, res, COOKIE_NAMES.ADMIN_REFRESH);
-      sendError(res, 'رمز جلسة المشرف غير صالح أو منتهي الصلاحية', 401, 'INVALID_ADMIN_TOKEN');
+      sendError(res, 'رمز الجلسة غير صالح', 401, 'INVALID_TOKEN');
       return;
     }
 
-    let decoded: any;
-    try {
-      decoded = verifyAdminRefreshToken(refreshToken);
-    } catch (err: any) {
-      try {
-        decoded = verifyAdminToken(refreshToken);
-      } catch (innerErr) {
-        decoded = jwt.decode(refreshToken);
-        if (!decoded || (decoded.type !== 'admin_refresh' && decoded.type !== 'admin' && decoded.role !== 'owner')) {
-          clearRefreshCookie(req, res, COOKIE_NAMES.ADMIN_REFRESH);
-          sendError(res, 'رمز الجلسة غير صالح', 401, 'INVALID_TOKEN');
-          return;
-        }
-      }
-    }
-
-    let admin = decoded.id ? await AdminUser.findById(decoded.id) : null;
-    if (!admin && decoded.username) {
-      admin = await AdminUser.findOne({ username: decoded.username });
-    }
-    if (!admin && (decoded.role === 'owner' || decoded.role === 'super_admin')) {
-      admin = await AdminUser.findOne({ role: 'owner' });
-    }
-
+    const admin = await AdminUser.findById(adminId);
     if (!admin || admin.status !== 'active') {
       clearRefreshCookie(req, res, COOKIE_NAMES.ADMIN_REFRESH);
       sendError(res, 'حساب المشرف غير نشط أو تم حذفه', 403, 'ADMIN_INACTIVE');
@@ -1213,13 +1171,13 @@ export async function refreshTokenAdmin(req: Request, res: Response): Promise<vo
 
     setRefreshCookie(req, res, COOKIE_NAMES.ADMIN_REFRESH, newRefreshToken);
 
-    const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    const isHttps = ENV.IS_PRODUCTION || req.secure;
     res.cookie('cleanzo_admin_token', newToken, {
       path: '/',
       sameSite: 'lax',
       maxAge: 30 * 24 * 60 * 60 * 1000,
       secure: isHttps,
-      httpOnly: false,
+      httpOnly: true,
     });
 
     sendSuccess(res, {
@@ -1246,12 +1204,12 @@ export async function refreshTokenAdmin(req: Request, res: Response): Promise<vo
 export async function logoutAdmin(req: Request, res: Response): Promise<void> {
   try {
     clearRefreshCookie(req, res, COOKIE_NAMES.ADMIN_REFRESH);
-    const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    const isHttps = ENV.IS_PRODUCTION || req.secure;
     res.clearCookie('cleanzo_admin_token', {
       path: '/',
       sameSite: 'lax',
       secure: isHttps,
-      httpOnly: false,
+      httpOnly: true,
     });
     sendSuccess(res, null, 'تم تسجيل خروج المشرف بنجاح');
   } catch (err: any) {

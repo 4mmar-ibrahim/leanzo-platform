@@ -1,3 +1,4 @@
+import { inDatabaseTransaction } from '../config/prisma.js';
 import { Booking, IBooking } from '../models/Booking.js';
 import { SubscriptionVisit } from '../models/SubscriptionVisit.js';
 import { Service } from '../models/Service.js';
@@ -224,9 +225,7 @@ export function doIntervalsOverlap(
  * Examples: 607 (10:07) -> 615 (10:15), 540 (9:00) -> 540, 541 -> 555 (9:15)
  * This ensures all displayed/accepted times are :00, :15, :30, or :45.
  */
-export function snapTo15Minutes(minutes: number): number {
-  return Math.ceil(minutes / 15) * 15;
-}
+
 
 /**
  * Gets default booking settings from database or fallback configuration
@@ -301,50 +300,14 @@ export async function resolveServiceTiming(
   };
 }
 
-/**
- * In-memory concurrency lock to serialize simultaneous booking submissions per (date, category/resource, plate).
- * Supports multiple keys atomically (sorted to avoid deadlocks).
- */
-const bookingResourceLocks = new Map<string, Promise<void>>();
+// A shared PostgreSQL lock covers every service and subscription reservation.
+export const SCHEDULE_LOCK = 'cleanzo:booking-schedule';
 
-export async function withBookingLock<T>(
-  lockKeysInput: string | string[],
-  task: () => Promise<T>
-): Promise<T> {
-  const keys = (Array.isArray(lockKeysInput) ? lockKeysInput : [lockKeysInput])
-    .filter(Boolean)
-    .map(String);
-  const uniqueKeys = Array.from(new Set(keys)).sort();
-
-  if (uniqueKeys.length === 0) {
-    return await task();
-  }
-
-  // Wait for all locks in deterministic order
-  for (const key of uniqueKeys) {
-    while (bookingResourceLocks.has(key)) {
-      await bookingResourceLocks.get(key);
-    }
-  }
-
-  const releaseCallbacks: Array<() => void> = [];
-  for (const key of uniqueKeys) {
-    let releaseLock: () => void;
-    const lockPromise = new Promise<void>((resolve) => {
-      releaseLock = resolve;
-    });
-    bookingResourceLocks.set(key, lockPromise);
-    releaseCallbacks.push(releaseLock!);
-  }
-
-  try {
-    return await task();
-  } finally {
-    for (let i = 0; i < uniqueKeys.length; i++) {
-      bookingResourceLocks.delete(uniqueKeys[i]);
-      releaseCallbacks[i]();
-    }
-  }
+export function withBookingLock<T>(lockKey: string, task: () => Promise<T>): Promise<T> {
+  return inDatabaseTransaction(async tx => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+    return task();
+  });
 }
 
 /**
@@ -785,6 +748,47 @@ export function getRecordCategory(record: any): string | undefined {
  * 4. Boundary Awareness: Previous booking boundaries (e.g. 9:45 end) are available start times.
  * 5. Dynamic Duration: Exact service duration + sum of addons duration.
  */
+export function isBookingDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function isBookingTime(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const parts = value.trim().split(/\s*[–—-]\s*/);
+  return parts.length <= 2 && parts.every(part => {
+    const match = /^(\d{1,2}):[0-5]\d\s*(AM|PM|ص|م|صباحاً|مساءً|صباح|مساء|ظهراً|عصراً)?$/i.exec(part);
+    return Boolean(match && (match[2] ? Number(match[1]) >= 1 && Number(match[1]) <= 12 : Number(match[1]) < 24));
+  });
+}
+
+export function isDuringCairoAppointment(date: string, start: number, end: number, now: Date): boolean {
+  if (date !== getCairoDateFromDate(now)) return false;
+  const minute = timeStringToMinutes(getCairoTimeFromDate(now));
+  return minute >= start && minute < end;
+}
+
+function occupiedUntil(
+  appointment: { status: string; timeline?: unknown; cancelledAt?: Date | string | null },
+  date: string,
+  start: number,
+  end: number,
+): number {
+  if (appointment.status.toLowerCase() !== 'cancelled' ||
+      (Array.isArray(appointment.timeline) && appointment.timeline.some(event => event.status === 'in_progress'))) {
+    return end;
+  }
+  if (!appointment.cancelledAt) return start;
+
+  const cancelledAt = new Date(appointment.cancelledAt);
+  const cancellationDate = getCairoDateFromDate(cancelledAt);
+  if (cancellationDate < date) return start;
+  if (cancellationDate > date) return end;
+  const cancellationMinute = timeStringToMinutes(getCairoTimeFromDate(cancelledAt));
+  return Math.max(start, Math.min(end, cancellationMinute));
+}
+
 export async function getAvailableSlots(
   dateStr: string,
   serviceId?: string,
@@ -852,7 +856,14 @@ export async function getAvailableSlots(
   }
 
   // 3. Minimum notice check if booking is today
-  const todayStr = getCurrentCairoDateString();
+  const now = new Date();
+  const todayStr = getCairoDateFromDate(now);
+  if (dateStr < todayStr) {
+    return {
+      date: dateStr, isDayAvailable: false, dayReason: 'تاريخ الحجز قد مضى',
+      serviceTiming: timing, slots: [],
+    };
+  }
   const isToday = dateStr === todayStr;
 
   if (isToday && settings.sameDayBooking === false) {
@@ -865,7 +876,7 @@ export async function getAvailableSlots(
     };
   }
 
-  const currentCairoTimeStr = getCurrentCairoTimeString();
+  const currentCairoTimeStr = getCairoTimeFromDate(now);
   const currentMinutesNow = timeStringToMinutes(currentCairoTimeStr);
   const earliestAllowedMinutes = isToday
     ? currentMinutesNow + (settings.minNoticeHours || 0) * 60
@@ -896,7 +907,7 @@ export async function getAvailableSlots(
   interface DetailedInterval {
     start: number;
     end: number;
-    type: 'break' | 'booking' | 'elapsed';
+    type: 'break' | 'booking';
     reason: string;
   }
   const occupiedIntervals: DetailedInterval[] = [];
@@ -906,32 +917,14 @@ export async function getAvailableSlots(
       continue;
     }
 
-    if (b.status === 'cancelled') {
-      const wasStarted = Array.isArray(b.timeline) && b.timeline.some((e: any) => e.status === 'in_progress');
-      if (wasStarted) {
-        let bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
-        let bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + (b.duration || 45);
-        occupiedIntervals.push({ start: bStart, end: bEnd, type: 'booking', reason: 'محجوز بالكامل' });
-      } else if (b.cancelledAt) {
-        const cancelDateStr = getCairoDateFromDate(new Date(b.cancelledAt));
-        if (isToday || cancelDateStr === dateStr) {
-          const cancelTimeStr = getCairoTimeFromDate(new Date(b.cancelledAt));
-          const cancelMin = timeStringToMinutes(cancelTimeStr);
-          let bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
-          let bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + (b.duration || 45);
-          if (cancelMin > bStart && cancelMin < bEnd) {
-            occupiedIntervals.push({ start: bStart, end: cancelMin, type: 'elapsed', reason: 'وقت منقضي' });
-          }
-        }
-      }
-      continue;
-    }
+
 
     // Active booking: extract intervals matching targetCategory (handles both single & composite orders)
     if (targetCategory) {
       const intervals = extractBookingResourceIntervals(b, targetCategory, serviceToCatMap);
       for (const inv of intervals) {
-        occupiedIntervals.push({ start: inv.start, end: inv.end, type: 'booking', reason: inv.reason });
+        const end = occupiedUntil(b, dateStr, inv.start, inv.end);
+        if (end > inv.start) occupiedIntervals.push({ start: inv.start, end, type: 'booking', reason: inv.reason });
       }
     } else if (requestedServiceIds.length > 0) {
       const bServices = getBookingServiceIds(b);
@@ -939,7 +932,8 @@ export async function getAvailableSlots(
       if (matches) {
         let bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
         let bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + (b.duration || 45);
-        occupiedIntervals.push({ start: bStart, end: bEnd, type: 'booking', reason: 'محجوز بالكامل' });
+        const end = occupiedUntil(b, dateStr, bStart, bEnd);
+        if (end > bStart) occupiedIntervals.push({ start: bStart, end, type: 'booking', reason: 'محجوز بالكامل' });
       }
     }
   }
@@ -950,20 +944,13 @@ export async function getAvailableSlots(
   );
 
   for (const v of allVisits) {
-    if (v.status === 'cancelled') {
-      const wasStarted = Array.isArray(v.timeline) && v.timeline.some((e: any) => e.status === 'in_progress');
-      if (wasStarted) {
-        let vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart || v.time);
-        let vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + (v.duration || 45);
-        occupiedIntervals.push({ start: vStart, end: vEnd, type: 'booking', reason: 'محجوز بالكامل' });
-      }
-      continue;
-    }
+
 
     if (targetCategory) {
       const intervals = extractBookingResourceIntervals(v, targetCategory, serviceToCatMap);
       for (const inv of intervals) {
-        occupiedIntervals.push({ start: inv.start, end: inv.end, type: 'booking', reason: inv.reason });
+        const end = occupiedUntil(v, dateStr, inv.start, inv.end);
+        if (end > inv.start) occupiedIntervals.push({ start: inv.start, end, type: 'booking', reason: inv.reason });
       }
     } else if (requestedServiceIds.length > 0) {
       const vServices = getBookingServiceIds(v);
@@ -971,7 +958,8 @@ export async function getAvailableSlots(
       if (matches) {
         let vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart || v.time);
         let vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + (v.duration || 45);
-        occupiedIntervals.push({ start: vStart, end: vEnd, type: 'booking', reason: 'محجوز بالكامل' });
+        const end = occupiedUntil(v, dateStr, vStart, vEnd);
+        if (end > vStart) occupiedIntervals.push({ start: vStart, end, type: 'booking', reason: 'محجوز بالكامل' });
       }
     }
   }
@@ -1045,13 +1033,7 @@ export async function getAvailableSlots(
   // Slots start at block.start and step sequentially by requiredDuration
   // Example for 45 min: 09:00 -> 09:45 -> 10:30 -> 11:15...
   for (const block of freeBlocks) {
-    let slotCursor = snapTo15Minutes(block.start);
-    // If today and prior slots elapsed, skip to the next upcoming sequential slot
-    if (isToday && earliestAllowedMinutes > slotCursor) {
-      while (slotCursor < earliestAllowedMinutes && slotCursor + requiredDuration <= block.end) {
-        slotCursor += requiredDuration;
-      }
-    }
+    let slotCursor = Math.ceil(Math.max(block.start, earliestAllowedMinutes));
     while (slotCursor + requiredDuration <= block.end) {
       candidateStarts.add(slotCursor);
       slotCursor += requiredDuration;
@@ -1062,7 +1044,7 @@ export async function getAvailableSlots(
   if (includeUnavailable) {
     for (const occ of mergedOccupied) {
       if (occ.type === 'booking' || occ.type === 'break') {
-        candidateStarts.add(snapTo15Minutes(occ.start));
+        candidateStarts.add(occ.start);
       }
     }
   }
@@ -1071,11 +1053,6 @@ export async function getAvailableSlots(
   const slots: TimeSlotOption[] = [];
 
   for (const slotStart of sortedStarts) {
-    // Strict 15-minute grid check: start must be multiple of 15 (:00, :15, :30, :45)
-    if (slotStart % 15 !== 0) {
-      continue;
-    }
-
     const slotEnd = slotStart + requiredDuration;
 
     // Check service completion before end of working hours (allow 1440 for 23:59 end-of-day)
@@ -1189,6 +1166,18 @@ export async function assertSlotAvailability(params: {
   suggestedSlots?: string[];
 }> {
   const { dateStr, timeStr, serviceId, serviceIds, category, customDuration, excludeBookingId, excludeVisitId, technicianId, vehiclePlate, compositeServices } = params;
+  if (!isBookingDate(dateStr) || !isBookingTime(timeStr)) {
+    throw Object.assign(new Error('تاريخ أو وقت الحجز غير صالح'), {
+      statusCode: 422,
+      code: 'INVALID_BOOKING_DATE_TIME',
+    });
+  }
+
+  const now = new Date();
+  const todayStr = getCairoDateFromDate(now);
+  if (dateStr < todayStr) {
+    throw Object.assign(new Error('تاريخ الحجز قد مضى'), { statusCode: 422, code: 'BOOKING_DATE_PAST' });
+  }
 
   const targetCategory = await resolveTargetCategory(category, serviceId, serviceIds);
 
@@ -1259,9 +1248,7 @@ export async function assertSlotAvailability(params: {
     throw err;
   }
 
-  // Snap the requested time to the nearest clean 15-minute boundary
-  const rawStartMin = timeStringToMinutes(timeStr);
-  const slotStartMin = snapTo15Minutes(rawStartMin);
+  const slotStartMin = timeStringToMinutes(timeStr);
   const slotEndMin = slotStartMin + timing.totalOccupiedMinutes;
 
   const workStartMin = timeStringToMinutes(settings.workingHoursStart);
@@ -1300,21 +1287,21 @@ export async function assertSlotAvailability(params: {
     }
   }
 
-  // 4. Past time and same-day check if today
-  const todayStr = getCurrentCairoDateString();
+  // 4. Enforce the same-day policy.
   const isToday = dateStr === todayStr;
   if (isToday) {
     if (settings.sameDayBooking === false) {
       throw new Error('الحجز في نفس اليوم غير متاح حسب قواعد وسياسة الحجز');
     }
-    const currentCairoMin = timeStringToMinutes(getCurrentCairoTimeString());
+    const currentCairoMin = timeStringToMinutes(getCairoTimeFromDate(now));
     const minAllowed = currentCairoMin + (settings.minNoticeHours || 0) * 60;
     if (slotStartMin < minAllowed) {
-      throw new Error(
-        settings.minNoticeHours > 0
+      const hasNotice = settings.minNoticeHours > 0;
+      throw Object.assign(new Error(
+        hasNotice
           ? `لا يمكن الحجز قبل مضي الحد الأدنى للإشعار المسبق (${settings.minNoticeHours} ساعة)`
           : 'لا يمكن حجز موعد في وقت قد مضى'
-      );
+      ), { statusCode: 422, code: hasNotice ? 'BOOKING_NOTICE_REQUIRED' : 'BOOKING_TIME_PAST' });
     }
   }
 
@@ -1375,9 +1362,10 @@ export async function assertSlotAvailability(params: {
 
       // Check against bookings
       for (const b of existingBookings) {
-        if (b.status === 'cancelled') continue;
-        if (excludeBookingId && (b.id === excludeBookingId || String(b._id) === excludeBookingId || (b as any).bookingNumber === excludeBookingId)) continue;
-        const occupieds = extractBookingResourceIntervals(b, itemCategory, assertServiceCatMap);
+          if (excludeBookingId && (b.id === excludeBookingId || String(b._id) === excludeBookingId || (b as any).bookingNumber === excludeBookingId)) continue;
+        const occupieds = extractBookingResourceIntervals(b, itemCategory, assertServiceCatMap)
+          .map((interval) => ({ ...interval, end: occupiedUntil(b, dateStr, interval.start, interval.end) }))
+          .filter((interval) => interval.end > interval.start);
         for (const occ of occupieds) {
           if (doIntervalsOverlap(itemStart, itemEnd, occ.start, occ.end)) {
             const nearest = await findNearestAvailableSlots(dateStr, serviceId, targetCategory, timing.totalOccupiedMinutes, slotStartMin);
@@ -1395,9 +1383,10 @@ export async function assertSlotAvailability(params: {
 
       // Check against subscription visits
       for (const v of existingVisits) {
-        if (v.status === 'cancelled') continue;
-        if (excludeVisitId && (v.id === excludeVisitId || String(v._id) === excludeVisitId)) continue;
-        const occupieds = extractBookingResourceIntervals(v, itemCategory, assertServiceCatMap);
+          if (excludeVisitId && (v.id === excludeVisitId || String(v._id) === excludeVisitId)) continue;
+        const occupieds = extractBookingResourceIntervals(v, itemCategory, assertServiceCatMap)
+          .map((interval) => ({ ...interval, end: occupiedUntil(v, dateStr, interval.start, interval.end) }))
+          .filter((interval) => interval.end > interval.start);
         for (const occ of occupieds) {
           if (doIntervalsOverlap(itemStart, itemEnd, occ.start, occ.end)) {
             const nearest = await findNearestAvailableSlots(dateStr, serviceId, targetCategory, timing.totalOccupiedMinutes, slotStartMin);
@@ -1416,14 +1405,13 @@ export async function assertSlotAvailability(params: {
   } else {
     // Single service / homogeneous category
     for (const b of existingBookings) {
-      if (b.status === 'cancelled') continue;
       if (excludeBookingId && (b.id === excludeBookingId || String(b._id) === excludeBookingId || (b as any).bookingNumber === excludeBookingId)) continue;
 
       const isSameTechnician = Boolean(technicianId && b.assignedTechnicianId && b.assignedTechnicianId === technicianId);
       if (isSameTechnician) {
         let bStart = timeStringToMinutes(b.scheduledStart || b.time);
         let bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + (b.duration || 45);
-        if (doIntervalsOverlap(slotStartMin, slotEndMin, bStart, bEnd)) {
+        if (doIntervalsOverlap(slotStartMin, slotEndMin, bStart, occupiedUntil(b, dateStr, bStart, bEnd))) {
           const nearest = await findNearestAvailableSlots(dateStr, serviceId, targetCategory, timing.totalOccupiedMinutes, slotStartMin);
           const suggestionText = nearest.length > 0 ? ` أقرب المواعيد المتاحة لهذا اليوم: ${nearest.join(' ، ')}.` : '';
           const conflictErr: any = new Error(`الفني المطلوب لديه حجز آخر في هذا الموعد (${minutesToDisplayTime(bStart).time24} – ${minutesToDisplayTime(bEnd).time24}).${suggestionText}`);
@@ -1435,7 +1423,9 @@ export async function assertSlotAvailability(params: {
       }
 
       if (targetCategory) {
-        const occupieds = extractBookingResourceIntervals(b, targetCategory, assertServiceCatMap);
+        const occupieds = extractBookingResourceIntervals(b, targetCategory, assertServiceCatMap)
+          .map((interval) => ({ ...interval, end: occupiedUntil(b, dateStr, interval.start, interval.end) }))
+          .filter((interval) => interval.end > interval.start);
         for (const occ of occupieds) {
           if (doIntervalsOverlap(slotStartMin, slotEndMin, occ.start, occ.end)) {
             const nearest = await findNearestAvailableSlots(dateStr, serviceId, targetCategory, timing.totalOccupiedMinutes, slotStartMin);
@@ -1453,14 +1443,13 @@ export async function assertSlotAvailability(params: {
     }
 
     for (const v of existingVisits) {
-      if (v.status === 'cancelled') continue;
       if (excludeVisitId && (v.id === excludeVisitId || String(v._id) === excludeVisitId)) continue;
 
       const isSameTechnician = Boolean(technicianId && v.assignedTechnicianId && v.assignedTechnicianId === technicianId);
       if (isSameTechnician) {
         let vStart = timeStringToMinutes(v.scheduledStart || v.time);
         let vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + (v.duration || 45);
-        if (doIntervalsOverlap(slotStartMin, slotEndMin, vStart, vEnd)) {
+        if (doIntervalsOverlap(slotStartMin, slotEndMin, vStart, occupiedUntil(v, dateStr, vStart, vEnd))) {
           const nearest = await findNearestAvailableSlots(dateStr, serviceId, targetCategory, timing.totalOccupiedMinutes, slotStartMin);
           const suggestionText = nearest.length > 0 ? ` أقرب المواعيد المتاحة لهذا اليوم: ${nearest.join(' ، ')}.` : '';
           const conflictErr: any = new Error(`الفني المطلوب لديه زيارة اشتراك في هذا الموعد (${minutesToDisplayTime(vStart).time24} – ${minutesToDisplayTime(vEnd).time24}).${suggestionText}`);
@@ -1472,7 +1461,9 @@ export async function assertSlotAvailability(params: {
       }
 
       if (targetCategory) {
-        const occupieds = extractBookingResourceIntervals(v, targetCategory, assertServiceCatMap);
+        const occupieds = extractBookingResourceIntervals(v, targetCategory, assertServiceCatMap)
+          .map((interval) => ({ ...interval, end: occupiedUntil(v, dateStr, interval.start, interval.end) }))
+          .filter((interval) => interval.end > interval.start);
         for (const occ of occupieds) {
           if (doIntervalsOverlap(slotStartMin, slotEndMin, occ.start, occ.end)) {
             const nearest = await findNearestAvailableSlots(dateStr, serviceId, targetCategory, timing.totalOccupiedMinutes, slotStartMin);

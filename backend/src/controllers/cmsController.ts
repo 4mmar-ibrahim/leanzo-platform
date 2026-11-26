@@ -262,10 +262,10 @@ export async function getPublishedCMSContent(req: Request, res: Response): Promi
     const { published, draft } = await ensureDefaultContent();
 
     // Check if client requested preview mode and has admin authorization
-    const isPreview = req.query.preview === 'true';
+    const isPreview = Boolean((req as Request & { admin?: unknown }).admin) && req.query.preview === 'true';
     if (isPreview) {
       // Return draft content enriched with isDraft flag for admin preview
-      const enrichedDraft = {
+      const enrichedDraft: Partial<ICMSContent> & { isDraft: boolean } = {
         ...(draft.toObject ? draft.toObject() : draft),
         isDraft: true,
       };

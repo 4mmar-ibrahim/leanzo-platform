@@ -8,21 +8,19 @@ import {
   Car,
   Clock,
   CheckCircle2,
-  Phone,
   Sparkles,
   ArrowRight,
   ArrowLeft,
   ShieldCheck,
 } from 'lucide-react';
 import { useOrderStore } from '@/store/useOrderStore';
-import { useLocaleStore } from '@/store/useLocaleStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useLocaleStore } from '@/store/useLocaleStore';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { OrderTracker } from '@/components/orders/OrderTracker';
 import { OrderReviewModal } from '@/components/reviews/OrderReviewModal';
 import { Button } from '@/components/ui/Button';
 import { Loader2 } from 'lucide-react';
-import { validateEgyptianPhone } from '@/lib/validation/phoneValidation';
 
 export default function OrderTrackPage() {
   const router = useRouter();
@@ -30,12 +28,10 @@ export default function OrderTrackPage() {
   const isAr = locale === 'ar';
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
 
-  const orders = useOrderStore((s) => s.orders);
+  const authStatus = useAuthStore(state => state.authStatus);
   const addOrder = useOrderStore((s) => s.addOrder);
-  const currentUser = useAuthStore((s) => s.user);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [phoneQuery, setPhoneQuery] = useState('');
   const [searchedOrder, setSearchedOrder] = useState<any | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -44,51 +40,14 @@ export default function OrderTrackPage() {
 
   const handleTrackSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (authStatus === 'AUTH_LOADING') return;
     const q = searchQuery.trim();
-    const p = phoneQuery.trim() || currentUser?.phone || '';
-
-    if (p) {
-      const phoneVal = validateEgyptianPhone(p);
-      if (!phoneVal.isValid) {
-        setErrorMessage(phoneVal.message || 'يرجى إدخال رقم هاتف مصري صحيح (مثال: 01012345678).');
-        return;
-      }
-    }
-
     setIsSearching(true);
     setErrorMessage(null);
     setHasSearched(false);
 
-    // First check in-memory store
-    const inMemory = orders.find((o) => {
-      const matchId = o.id?.toLowerCase() === q.toLowerCase();
-      const matchPhone = !p || (o.address && o.address.details?.includes(p)) || (o as any).customerPhone === p;
-      return matchId && matchPhone;
-    });
-
-    if (inMemory) {
-      setSearchedOrder(inMemory);
-      setHasSearched(true);
-      setIsSearching(false);
-      return;
-    }
-
-    // Otherwise, query Backend Database
     try {
-      let foundBooking: any = null;
-
-      if (currentUser) {
-        try {
-          foundBooking = await cleanzoApi.bookings.getBookingById(q);
-        } catch {
-          // fallback to track endpoint
-        }
-      }
-
-      if (!foundBooking) {
-        foundBooking = await cleanzoApi.bookings.trackOrder(q, p);
-      }
-
+      const foundBooking = await cleanzoApi.bookings.trackOrder(q);
       if (foundBooking) {
         const mappedOrder: any = {
           ...foundBooking,
@@ -108,13 +67,9 @@ export default function OrderTrackPage() {
       }
     } catch (err: any) {
       setSearchedOrder(null);
-      if (err?.code === 'FORBIDDEN_PHONE_MISMATCH') {
-        setErrorMessage(isAr ? 'رقم الهاتف المدخل غير مطابق لبيانات هذا الحجز.' : 'Phone number does not match this booking.');
-      } else if (err?.code === 'PHONE_REQUIRED') {
-        setErrorMessage(isAr ? 'يرجى إدخال رقم الهاتف المسجل بالحجز للمتابعة والتحقق الأمني.' : 'Registered phone number is required for tracking verification.');
-      } else {
-        setErrorMessage(err?.message || (isAr ? 'لم يتم العثور على طلب مطابق.' : 'No matching order found.'));
-      }
+      setErrorMessage(err?.code === 'ORDER_NOT_FOUND'
+        ? (isAr ? 'سجّل الدخول أو استخدم نفس المتصفح اللي حجزت منه.' : 'Sign in or use the browser where you booked.')
+        : (err?.message || (isAr ? 'تعذر تحميل الحجز.' : 'Could not load booking.')));
     } finally {
       setHasSearched(true);
       setIsSearching(false);
@@ -142,7 +97,7 @@ export default function OrderTrackPage() {
       {/* Tracking Search Input Card */}
       <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xl shadow-sky-500/5">
         <form onSubmit={handleTrackSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <div className="space-y-1 text-start">
               <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
                 {isAr ? 'رقم الطلب (Order ID) *' : 'Order ID *'}
@@ -160,31 +115,13 @@ export default function OrderTrackPage() {
               </div>
             </div>
 
-            <div className="space-y-1 text-start">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                {isAr ? 'رقم الهاتف المسجل (اختياري للتأكيد)' : 'Registered Phone (Optional)'}
-              </label>
-              <div className="relative">
-                <input
-                  type="tel"
-                  inputMode="numeric"
-                  maxLength={11}
-                  value={phoneQuery}
-                  onChange={(e) => setPhoneQuery(e.target.value.replace(/[^0-9]/g, '').slice(0, 11))}
-                  placeholder="01012345678"
-                  className="w-full ps-10 pe-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-mono text-slate-900 dark:text-white focus:outline-hidden focus:border-sky-500"
-                  dir="ltr"
-                />
-                <Phone className="w-4 h-4 text-slate-400 absolute start-3.5 top-3.5 pointer-events-none" />
-              </div>
-            </div>
           </div>
 
           <Button
             type="submit"
             variant="primary"
             size="lg"
-            disabled={isSearching}
+            disabled={isSearching || authStatus === 'AUTH_LOADING'}
             className="w-full justify-center rounded-2xl font-bold shadow-lg shadow-sky-500/25 text-xs sm:text-sm"
           >
             {isSearching ? (
@@ -206,6 +143,7 @@ export default function OrderTrackPage() {
             <OrderTracker
               order={searchedOrder}
               onOpenReview={() => setReviewModalOpen(true)}
+              onOrderUpdate={setSearchedOrder}
             />
           ) : (
             <div className="p-10 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center space-y-3">
@@ -217,8 +155,8 @@ export default function OrderTrackPage() {
               </h3>
               <p className="text-xs text-slate-400 max-w-sm mx-auto">
                 {isAr
-                  ? 'يرجى التأكد من كتابة رقم الحجز ورقم الهاتف المسجل بشكل صحيح.'
-                  : 'Please make sure your order reference and registered phone number are correct.'}
+                  ? 'تأكد من كتابة رقم الحجز بشكل صحيح.'
+                  : 'Check your booking reference.'}
               </p>
             </div>
           )}

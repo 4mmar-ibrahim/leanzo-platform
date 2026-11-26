@@ -721,7 +721,6 @@ export function QuickBookingBottomSheet({
         services: [{ serviceId: selectedService.id, packageId: selectedPkg?.id, addonIds: selectedAddonsList.map((a) => a.id) }],
         packageId: selectedPkg?.id,
         addonIds: selectedAddonsList.map((a) => a.id),
-        totalOccupiedMinutes: serviceDuration,
         category: selectedService.category,
         date: selectedDate,
         time: selectedTime,

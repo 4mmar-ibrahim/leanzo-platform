@@ -76,30 +76,41 @@ export function verifyAdminToken(token: string): AdminTokenPayload {
 export function generateAdminRefreshToken(payload: Omit<AdminRefreshTokenPayload, 'type'>): string {
   return jwt.sign({ ...payload, type: 'admin_refresh' }, ENV.ADMIN_REFRESH_SECRET, {
     expiresIn: ENV.JWT_REFRESH_EXPIRES_IN as any,
+    issuer: 'cleanzo',
+    audience: 'cleanzo-admin-refresh',
   });
 }
 
 export function verifyAdminRefreshToken(token: string): AdminRefreshTokenPayload {
-  try {
-    const decoded = jwt.verify(token, ENV.ADMIN_REFRESH_SECRET) as AdminRefreshTokenPayload;
-    if (decoded && decoded.type === 'admin_refresh') {
-      return decoded;
-    }
-  } catch (err: any) {
-    // If signed with admin JWT secret as fallback
-    try {
-      const fallbackDecoded = jwt.verify(token, ENV.ADMIN_JWT_SECRET) as any;
-      if (fallbackDecoded && (fallbackDecoded.type === 'admin' || fallbackDecoded.role)) {
-        return {
-          id: fallbackDecoded.id,
-          username: fallbackDecoded.username,
-          role: fallbackDecoded.role,
-          type: 'admin_refresh',
-        };
-      }
-    } catch {}
-    throw err;
+  const decoded = jwt.verify(token, ENV.ADMIN_REFRESH_SECRET, {
+    algorithms: ['HS256'],
+    issuer: 'cleanzo',
+    audience: 'cleanzo-admin-refresh',
+  }) as AdminRefreshTokenPayload & { exp?: number };
+  if (decoded.type !== 'admin_refresh' || typeof decoded.id !== 'string' || typeof decoded.exp !== 'number') {
+    throw new Error('INVALID_ADMIN_REFRESH_TOKEN');
   }
-  throw new Error('INVALID_ADMIN_REFRESH_TOKEN');
+  return decoded;
 }
 
+export function generateBookingAccessToken(bookingId: string): string {
+  return jwt.sign({ type: 'booking_access' }, ENV.JWT_SECRET, {
+    subject: bookingId,
+    audience: 'cleanzo-booking',
+    expiresIn: '90d',
+  });
+}
+
+export function verifyBookingAccessToken(token: string | undefined, bookingId: string): boolean {
+  if (!token) return false;
+  try {
+    const claims = jwt.verify(token, ENV.JWT_SECRET, {
+      algorithms: ['HS256'],
+      subject: bookingId,
+      audience: 'cleanzo-booking',
+    });
+    return typeof claims !== 'string' && claims.type === 'booking_access';
+  } catch {
+    return false;
+  }
+}
