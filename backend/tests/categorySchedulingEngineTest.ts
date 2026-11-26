@@ -662,14 +662,24 @@ async function runCategorySchedulingEngineTests() {
         'The stored status matches the result of the winning operation');
       const liveCustomerToken = generateCustomerToken({ id: subscriptionUser.id, phone: subscriptionUser.phone });
       const subscriptionHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${liveCustomerToken}` };
-      const liveSubscription = await fetch(`${baseUrl}/api/subscriptions`, {
+      const submitLiveSubscription = (time: string, headers = subscriptionHeaders) => fetch(`${baseUrl}/api/subscriptions`, {
         method: 'POST',
-        headers: subscriptionHeaders,
-        body: JSON.stringify({ ...bookingPayload, planId: plan.id, visits: [{ date: liveDay, time: '16:00' }] }),
+        headers,
+        body: JSON.stringify({ ...bookingPayload, planId: plan.id, visits: [{ date: liveDay, time }] }),
       });
-      assert(liveSubscription.status === 201, 'A subscription visit can reserve the next appointment');
-      const liveSubscriptionData = (await liveSubscription.json() as any).data;
+      const submissions = await Promise.all([submitLiveSubscription('16:00'), submitLiveSubscription('16:00')]);
+      assert(submissions.map(response => response.status).sort().join(',') === '201,409',
+        'Concurrent submission of the same subscription creates only one reservation');
+      const liveSubscriptionData = (await submissions.find(response => response.status === 201)!.json() as any).data;
       liveSubscriptionId = liveSubscriptionData.id;
+      const ownerView = await fetch(`${baseUrl}/api/subscriptions/my/${liveSubscriptionId}`, { headers: subscriptionHeaders });
+      const adminView = await fetch(`${baseUrl}/api/subscriptions/admin/${liveSubscriptionId}`, { headers: currentAdminHeaders });
+      const ownerDetails = (await ownerView.json() as any).data;
+      const adminDetails = (await adminView.json() as any).data?.subscription;
+      assert(ownerView.ok && adminView.ok && ownerDetails?.visits[0].id === adminDetails?.visits[0].id,
+        'Customer and admin see the same stored subscription visit');
+      assert(adminDetails.user && !('password' in adminDetails.user),
+        'Subscription details exclude customer password data');
       stoppedAt = realDate.parse(`${liveDay}T14:10:00Z`);
       const currentCustomerToken = generateCustomerToken({ id: subscriptionUser.id, phone: subscriptionUser.phone });
       const visitCancellation = await fetch(`${baseUrl}/api/subscriptions/visits/${liveSubscriptionData.visits[0].id}/cancel`, {
@@ -680,6 +690,13 @@ async function runCategorySchedulingEngineTests() {
       assert(visitCancellation.status === 200, 'Customer can cancel an unstarted subscription visit within its appointment');
       const afterVisit = await getAvailableSlots(liveDay, tireWash.id);
       assert(afterVisit.slots[0]?.start === '16:10', 'Subscription cancellation releases the rest of the visit at the exact minute');
+      const cancelledVisitId = liveSubscriptionData.visits[0].id;
+      const blockedStart = await fetch(`${baseUrl}/api/subscriptions/admin/visits/${cancelledVisitId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${generateAdminToken({ id: testAdmin.id, username: testAdmin.username, role: testAdmin.role })}` },
+        body: JSON.stringify({ status: 'in_progress' }),
+      });
+      assert(blockedStart.status === 409, 'Admin cannot start a visit after the customer releases the reservation');
       const finishedWindow = await request(`/${nextAppointment.json.data.id}/cancel`, {}, {
         'X-Booking-Access': nextAppointment.json.data.bookingAccess,
       });
@@ -698,6 +715,32 @@ async function runCategorySchedulingEngineTests() {
         'A customer cannot release an appointment after the service starts');
       const whileWorking = await getAvailableSlots(liveDay, tireWash.id);
       assert(!whileWorking.slots.some(slot => slot.start < '18:00'), 'An appointment receiving service still occupies the time');
+      const raceToken = () => generateCustomerToken({ id: subscriptionUser.id, phone: subscriptionUser.phone });
+      const reservation = await submitLiveSubscription('19:00', { ...subscriptionHeaders, Authorization: `Bearer ${raceToken()}` });
+      assert(reservation.status === 201, 'Reserve a visit for the simultaneous start and cancel test');
+      const raceSubscription = (await reservation.json() as any).data;
+      try {
+        stoppedAt = realDate.parse(`${liveDay}T17:10:00Z`);
+        const visitId = raceSubscription.visits[0].id;
+        const visitPath = `${baseUrl}/api/subscriptions`;
+        const cancelHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${raceToken()}` };
+        const adminHeaders = { 'Content-Type': 'application/json',
+          Authorization: `Bearer ${generateAdminToken({ id: testAdmin.id, username: testAdmin.username, role: testAdmin.role })}` };
+        const [cancel, start] = await Promise.all([
+          fetch(`${visitPath}/visits/${visitId}/cancel`, { method: 'POST', headers: cancelHeaders, body: '{}' }),
+          fetch(`${visitPath}/admin/visits/${visitId}/status`, {
+            method: 'PUT', headers: adminHeaders, body: JSON.stringify({ status: 'in_progress' }),
+          }),
+        ]);
+        const storedVisit = await prisma.subscriptionVisit.findUniqueOrThrow({ where: { id: visitId } });
+        assert(Number(cancel.ok) + Number(start.ok) === 1 &&
+          storedVisit.status === (cancel.ok ? 'cancelled' : 'in_progress'),
+          'Only one of subscription visit start and cancellation succeeds');
+      } finally {
+        await prisma.subscriptionVisit.deleteMany({ where: { subscriptionId: raceSubscription.id } });
+        await prisma.subscription.delete({ where: { id: raceSubscription.id } });
+      }
+
     } finally {
       global.Date = realDate;
       if (liveSubscriptionId) {

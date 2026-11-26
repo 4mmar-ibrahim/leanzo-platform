@@ -572,82 +572,84 @@ export async function rescheduleSubscriptionVisit(params: {
     throw err;
   }
 
-  const visit = await prisma.subscriptionVisit.findUnique({
-    where: { id: visitId },
-    include: {
-      subscription: {
-        include: { plan: true },
+  return withBookingLock(SCHEDULE_LOCK, async () => {
+    const visit = await prisma.subscriptionVisit.findUnique({
+      where: { id: visitId },
+      include: {
+        subscription: {
+          include: { plan: true },
+        },
       },
-    },
-  });
+    });
 
-  if (!visit) {
-    const err: any = new Error('زيارة الاشتراك غير موجودة');
-    err.statusCode = 404;
-    throw err;
-  }
-
-  // IDOR Protection: If customer, must match ownership
-  if (actor === 'customer') {
-    const isOwner = Boolean(actorId && visit.customerId === actorId);
-    if (!isOwner) {
-      throw Object.assign(new Error('غير مصرح لك بتغيير هذا الحجز'), { statusCode: 403, code: 'FORBIDDEN_VISIT' });
-    }
-  }
-
-  if (visit.status === 'completed') {
-    const err: any = new Error('لا يمكن تغيير موعد زيارة مكتملة بالفعل');
-    err.statusCode = 400;
-    throw err;
-  }
-  if (visit.status === 'cancelled') {
-    const err: any = new Error('لا يمكن تغيير موعد زيارة ملغاة');
-    err.statusCode = 400;
-    throw err;
-  }
-  if (visit.status === 'in_progress') {
-    const err: any = new Error('لا يمكن تغيير موعد الزيارة أثناء تقديم الخدمة فعلياً');
-    err.statusCode = 400;
-    throw err;
-  }
-
-  // Rescheduling rules for customer
-  if (actor === 'customer' && !overrideRestrictions) {
-    // 1. Plan setting: allowRescheduling
-    const plan = visit.subscription?.plan;
-    const planSnapshot = (visit.subscription?.planSnapshot as any);
-    const allowRescheduling = plan ? plan.allowRescheduling : (planSnapshot?.allowRescheduling ?? true);
-
-    if (allowRescheduling === false) {
-      const err: any = new Error('باقة هذا الاشتراك لا تتيح ميزة إعادة الجدولة الذاتية للزيارات');
-      err.statusCode = 400;
-      err.code = 'RESCHEDULE_NOT_ALLOWED_BY_PLAN';
+    if (!visit) {
+      const err: any = new Error('زيارة الاشتراك غير موجودة');
+      err.statusCode = 404;
       throw err;
     }
 
-    // 2. 12-hour rule
-    const settings = await getSubscriptionSettings();
-    const noticeHours = plan?.rescheduleNoticeHours || settings.subscriptionRescheduleNoticeHours || 12;
-    const { isAllowed } = isNoticeSufficient(visit.date, visit.scheduledStart || visit.time, noticeHours);
+    // IDOR Protection: If customer, must match ownership
+    if (actor === 'customer') {
+      const isOwner = Boolean(actorId && visit.customerId === actorId);
+      if (!isOwner) {
+        throw Object.assign(new Error('غير مصرح لك بتغيير هذا الحجز'), { statusCode: 403, code: 'FORBIDDEN_VISIT' });
+      }
+    }
 
-    if (!isAllowed) {
-      const err: any = new Error(
-        `لا يمكن تعديل موعد الاشتراك قبل الموعد بأقل من ${noticeHours} ساعة. يُرجى التواصل مع الدعم للمساعدة.`
-      );
+    if (visit.status === 'completed') {
+      const err: any = new Error('لا يمكن تغيير موعد زيارة مكتملة بالفعل');
       err.statusCode = 400;
-      err.code = 'RESCHEDULE_RESTRICTED_12H';
       throw err;
     }
-  }
+    if (visit.status === 'cancelled') {
+      const err: any = new Error('لا يمكن تغيير موعد زيارة ملغاة');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (visit.status === 'in_progress') {
+      const err: any = new Error('لا يمكن تغيير موعد الزيارة أثناء تقديم الخدمة فعلياً');
+      err.statusCode = 400;
+      throw err;
+    }
 
-  return await withBookingLock(SCHEDULE_LOCK, async () => {
+    // Rescheduling rules for customer
+    if (actor === 'customer' && !overrideRestrictions) {
+      // 1. Plan setting: allowRescheduling
+      const plan = visit.subscription?.plan;
+      const planSnapshot = (visit.subscription?.planSnapshot as any);
+      const allowRescheduling = plan ? plan.allowRescheduling : (planSnapshot?.allowRescheduling ?? true);
+
+      if (allowRescheduling === false) {
+        const err: any = new Error('باقة هذا الاشتراك لا تتيح ميزة إعادة الجدولة الذاتية للزيارات');
+        err.statusCode = 400;
+        err.code = 'RESCHEDULE_NOT_ALLOWED_BY_PLAN';
+        throw err;
+      }
+
+      // 2. 12-hour rule
+      const settings = await getSubscriptionSettings();
+      const noticeHours = plan?.rescheduleNoticeHours || settings.subscriptionRescheduleNoticeHours || 12;
+      const { isAllowed } = isNoticeSufficient(visit.date, visit.scheduledStart || visit.time, noticeHours);
+
+      if (!isAllowed) {
+        const err: any = new Error(
+          `لا يمكن تعديل موعد الاشتراك قبل الموعد بأقل من ${noticeHours} ساعة. يُرجى التواصل مع الدعم للمساعدة.`
+        );
+        err.statusCode = 400;
+        err.code = 'RESCHEDULE_RESTRICTED_12H';
+        throw err;
+      }
+    }
+
     // 1. Validate new appointment slot BEFORE touching old reservation
     const slotTiming = await assertSlotAvailability({
       dateStr: newDate,
       timeStr: newTime,
       serviceId: visit.serviceId,
       excludeVisitId: visit.id,
-      vehiclePlate: (visit as any).vehiclePlate || (visit as any).metadata?.vehiclePlate,
+      technicianId: visit.assignedTechnicianId || undefined,
+      customDuration: visit.totalOccupiedMinutes || undefined,
+      vehiclePlate: (visit.vehicleDetails as { plateNumber?: string } | null)?.plateNumber,
     });
 
     // 2. Atomic update: modify visit to new slot
@@ -707,8 +709,8 @@ export async function completeSubscriptionVisit(params: {
 }): Promise<any> {
   const { visitId, adminActor } = params;
 
-  return await prisma.$transaction(async (tx) => {
-    const visit = await tx.subscriptionVisit.findUnique({
+  return withBookingLock(SCHEDULE_LOCK, async () => {
+    const visit = await prisma.subscriptionVisit.findUnique({
       where: { id: visitId },
       include: {
         subscription: {
@@ -721,6 +723,10 @@ export async function completeSubscriptionVisit(params: {
       const err: any = new Error('زيارة الاشتراك غير موجودة');
       err.statusCode = 404;
       throw err;
+    }
+
+    if (visit.status === 'cancelled') {
+      throw Object.assign(new Error('لا يمكن إكمال زيارة ملغاة'), { statusCode: 409, code: 'VISIT_ALREADY_CANCELLED' });
     }
 
     if (visit.status === 'completed') {
@@ -758,7 +764,7 @@ export async function completeSubscriptionVisit(params: {
     });
 
     // 1. Update Visit
-    const updatedVisit = await tx.subscriptionVisit.update({
+    const updatedVisit = await prisma.subscriptionVisit.update({
       where: { id: visit.id, updatedAt: visit.updatedAt },
       data: {
         status: 'completed',
@@ -771,7 +777,7 @@ export async function completeSubscriptionVisit(params: {
     });
 
     // 2. Update Subscription Balance
-    await tx.subscription.update({
+    await prisma.subscription.update({
       where: { id: sub.id },
       data: {
         usedVisits: newUsed,
@@ -782,7 +788,7 @@ export async function completeSubscriptionVisit(params: {
 
     // 3. Record Cashback if applicable
     if (cashbackAmount > 0) {
-      await tx.subscriptionCashback.create({
+      await prisma.subscriptionCashback.create({
         data: {
           subscriptionId: sub.id,
           visitId: visit.id,
@@ -828,6 +834,11 @@ export async function renewSubscription(params: {
       if (!isOwner) {
         throw Object.assign(new Error('غير مصرح لك بتجديد هذا الاشتراك'), { statusCode: 403 });
       }
+    }
+
+    const planSnapshot = previousSub.planSnapshot as { allowRenewal?: boolean } | null;
+    if (customerActor && (previousSub.plan?.allowRenewal ?? planSnapshot?.allowRenewal) === false) {
+      throw Object.assign(new Error('باقة هذا الاشتراك لا تسمح بالتجديد'), { statusCode: 400, code: 'RENEWAL_NOT_ALLOWED_BY_PLAN' });
     }
 
     if (previousSub.renewedToId) {

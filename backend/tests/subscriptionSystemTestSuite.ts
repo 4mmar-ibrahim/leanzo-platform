@@ -8,7 +8,7 @@ import {
   getSubscriptionAnalytics,
   isNoticeSufficient,
 } from '../src/services/subscriptionService.js';
-import { assertSlotAvailability, getAvailableSlots } from '../src/services/availabilityService.js';
+import { assertSlotAvailability, getCairoDateFromDate, getCairoTimeFromDate } from '../src/services/availabilityService.js';
 
 let passedTests = 0;
 let failedTests = 0;
@@ -102,11 +102,10 @@ async function runTestSuite() {
     const now = new Date();
 
     const formatLocal = (d: Date) => ({
-      date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
-      time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+      date: getCairoDateFromDate(d),
+      time: getCairoTimeFromDate(d),
     });
 
-    // 13 hours in future -> should pass 12h check
     const future13h = formatLocal(new Date(now.getTime() + 13 * 3600 * 1000));
     assert(isNoticeSufficient(future13h.date, future13h.time, 12).isAllowed === true, '13 hours before appointment passes 12-hour policy');
 
@@ -141,7 +140,7 @@ async function runTestSuite() {
       { date: makeDate(15), time: '14:00' },
     ];
 
-    const subscription = await createSubscriptionAtomic({
+    const subscribe = (visits: typeof requestedVisits) => createSubscriptionAtomic({
       customerId: testUserId,
       customerName: 'Test Customer 1',
       customerPhone: '966500000001',
@@ -149,8 +148,26 @@ async function runTestSuite() {
       serviceId: testServiceId,
       vehicleDetails: { make: 'Toyota', model: 'Camry', plateNumber: 'XYZ-123' },
       address: { label: 'المنزل', governorate: 'القاهرة', city: 'مدينة نصر' },
-      visits: requestedVisits,
+      visits,
     });
+
+    const invalidSubmissions = await Promise.allSettled([
+      subscribe(requestedVisits.slice(1)),
+      subscribe([requestedVisits[0], ...requestedVisits.slice(0, 3)]),
+    ]);
+    assert(invalidSubmissions.every(result => result.status === 'rejected'),
+      'Incomplete and overlapping visit schedules are rejected');
+    assert(await prisma.subscription.count({ where: { planId: testPlanId } }) === 0 &&
+      await prisma.subscriptionVisit.count({ where: { customerId: testUserId } }) === 0,
+      'Rejected subscriptions leave no partial subscription or visit record');
+
+    await prisma.subscriptionPlan.update({ where: { id: testPlanId }, data: { status: 'inactive' } });
+    const [inactive] = await Promise.allSettled([subscribe(requestedVisits)]);
+    assert(inactive.status === 'rejected' && inactive.reason.statusCode === 400,
+      'Inactive plans cannot accept new subscriptions');
+    await prisma.subscriptionPlan.update({ where: { id: testPlanId }, data: { status: 'active' } });
+
+    const subscription = await subscribe(requestedVisits);
 
     testSubId = subscription.id;
     createdVisitIds = subscription.visits.map((v: any) => v.id);
@@ -246,6 +263,18 @@ async function runTestSuite() {
     const newRescheduleDate = makeDate(6);
     const newRescheduleTime = '15:00';
 
+    const [conflictingReschedule] = await Promise.allSettled([rescheduleSubscriptionVisit({
+      visitId: secondVisitId,
+      newDate: requestedVisits[2].date,
+      newTime: requestedVisits[2].time,
+      actor: 'customer',
+      actorId: testUserId,
+    })]);
+    const unchangedVisit = await prisma.subscriptionVisit.findUniqueOrThrow({ where: { id: secondVisitId } });
+    assert(conflictingReschedule.status === 'rejected' && conflictingReschedule.reason.statusCode === 409 &&
+      unchangedVisit.date === requestedVisits[1].date && unchangedVisit.scheduledStart === requestedVisits[1].time,
+      'A failed reschedule leaves the original reservation intact');
+
     const rescheduledVisit = await rescheduleSubscriptionVisit({
       visitId: secondVisitId,
       newDate: newRescheduleDate,
@@ -276,6 +305,14 @@ async function runTestSuite() {
     const subAfterCancel = await prisma.subscription.findUnique({ where: { id: testSubId } });
     // Cancelled visit must NOT consume used visits
     assert(subAfterCancel?.usedVisits === 1, 'Cancelled visit did not consume visit balance');
+    const cancelledCompletion = await Promise.allSettled([completeSubscriptionVisit({
+      visitId: thirdVisitId,
+      adminActor: { id: 'admin_test', name: 'Admin QA', role: 'admin' },
+    })]);
+    const completion = cancelledCompletion[0];
+    assert(completion.status === 'rejected' && completion.reason.code === 'VISIT_ALREADY_CANCELLED',
+      'Completing a cancelled visit is rejected without awarding cashback');
+
 
     // ========================================================
     // TEST 8: Customer Isolation / IDOR Protection
@@ -308,16 +345,42 @@ async function runTestSuite() {
       { date: makeDate(45), time: '14:00' },
     ];
 
-    const renewedSub = await renewSubscription({
+    const renew = () => renewSubscription({
       subscriptionId: testSubId,
       visits: renewedVisits,
       customerActor: { id: testUserId, phone: '966500000001', name: 'Test Customer 1' },
     });
+    await prisma.subscriptionPlan.update({ where: { id: testPlanId }, data: { allowRenewal: false } });
+    const [disabledRenewal] = await Promise.allSettled([renew()]);
+    assert(disabledRenewal.status === 'rejected' && disabledRenewal.reason.code === 'RENEWAL_NOT_ALLOWED_BY_PLAN',
+      'Customer renewal is blocked when the plan disables it');
+    await prisma.subscriptionPlan.update({ where: { id: testPlanId }, data: { allowRenewal: true } });
+
+    const attempts = await Promise.allSettled([renew(), renew()]);
+    const success = attempts.find(result => result.status === 'fulfilled');
+    const rejected = attempts.find(result => result.status === 'rejected');
+    assert(Boolean(success && rejected?.reason.code === 'SUBSCRIPTION_ALREADY_RENEWED'),
+      'Simultaneous renewal makes exactly one new cycle');
+    const renewedSub = success?.value;
 
     assert(!!renewedSub.id, 'New subscription cycle created');
     assert(renewedSub.id !== testSubId, 'New subscription has a distinct ID');
     assert(renewedSub.renewalCycle === 2, 'New subscription has renewalCycle = 2');
     assert(renewedSub.totalVisits === 4 && renewedSub.usedVisits === 0, 'New subscription has fresh 0/4 balance');
+    const completedVisits = await prisma.subscriptionVisit.findMany({
+      where: { subscriptionId: renewedSub.id },
+      take: 2,
+    });
+    await Promise.all(completedVisits.map(visit => completeSubscriptionVisit({
+      visitId: visit.id,
+      adminActor: { id: 'admin_test', name: 'Admin QA', role: 'admin' },
+    })));
+    const updatedRenewal = await prisma.subscription.findUniqueOrThrow({ where: { id: renewedSub.id } });
+    assert(updatedRenewal.usedVisits === 2 && updatedRenewal.remainingVisits === 2,
+      'Two visits completed concurrently both update the subscription balance');
+    assert(await prisma.subscriptionCashback.count({ where: { subscriptionId: renewedSub.id } }) === 2,
+      'Each completed visit awards cashback exactly once');
+
 
     // Check old subscription still exists and is untouched/completed
     const oldSub = await prisma.subscription.findUnique({ where: { id: testSubId } });
@@ -386,6 +449,7 @@ async function runTestSuite() {
     console.log('======================================================\n');
   } catch (error) {
     console.error('Test suite failed with unhandled exception:', error);
+    process.exitCode = 1;
   } finally {
     // ========================================================
     // TEARDOWN: Clean up temporary QA test data

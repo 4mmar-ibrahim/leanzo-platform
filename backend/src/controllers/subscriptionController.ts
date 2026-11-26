@@ -440,7 +440,7 @@ export async function getSubscriptionByIdAdmin(req: AuthenticatedAdminRequest, r
     const subscription: any = await prisma.subscription.findUnique({
       where: { id },
       include: {
-        user: true,
+        user: { select: { id: true, name: true, phone: true, email: true, avatar: true } },
         plan: true,
         service: true,
         visits: {
@@ -865,47 +865,59 @@ export async function updateVisitStatusAdmin(req: AuthenticatedAdminRequest, res
       return;
     }
 
-    const visit = await prisma.subscriptionVisit.findUnique({ where: { id: visitId } });
-    if (!visit) {
-      sendError(res, 'زيارة الاشتراك غير موجودة', 404, 'VISIT_NOT_FOUND');
+    if (status === 'cancelled') {
+      await cancelVisitAdmin(req, res);
       return;
     }
 
-    const updatedTimeline = Array.isArray(visit.timeline) ? [...(visit.timeline as any[])] : [];
-    updatedTimeline.push({
-      status,
-      label: `تحديث الحالة إلى (${status})`,
-      labelEn: `Status updated to ${status}`,
-      timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
-      completed: true,
-      description: notes || `تم تحديث حالة الزيارة بواسطة المشرف ${req.admin?.name}`,
-      changedBy: req.admin?.name || 'Admin',
-    });
+    const updated = await withBookingLock(SCHEDULE_LOCK, async () => {
+      const visit = await prisma.subscriptionVisit.findUnique({ where: { id: visitId } });
+      if (!visit) {
+        throw Object.assign(new Error('زيارة الاشتراك غير موجودة'), { statusCode: 404, code: 'VISIT_NOT_FOUND' });
+      }
+      if (['cancelled', 'completed'].includes(visit.status) || (visit.status === 'in_progress' && status !== 'in_progress')) {
+        throw Object.assign(new Error('لا يمكن تغيير حالة الزيارة الحالية'), { statusCode: 409, code: 'INVALID_VISIT_TRANSITION' });
+      }
+      if (visit.status === status) return visit;
 
-    const updated = await prisma.subscriptionVisit.update({
-      where: { id: visitId, updatedAt: visit.updatedAt },
-      data: {
+      const updatedTimeline = Array.isArray(visit.timeline) ? [...(visit.timeline as any[])] : [];
+      updatedTimeline.push({
         status,
-        ...(notes ? { notes: String(notes) } : {}),
-        timeline: updatedTimeline,
-      },
-    });
+        label: `تحديث الحالة إلى (${status})`,
+        labelEn: `Status updated to ${status}`,
+        timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
+        completed: true,
+        description: notes || `تم تحديث حالة الزيارة بواسطة المشرف ${req.admin?.name}`,
+        changedBy: req.admin?.name || 'Admin',
+      });
 
-    await AuditLog.create({
-      adminId: req.admin?._id?.toString() || 'admin',
-      adminName: req.admin?.name || 'Admin',
-      adminRole: req.admin?.role || 'manager',
-      action: 'تحديث حالة زيارة اشتراك',
-      module: 'subscriptions',
-      entityType: 'subscription_visit',
-      entityId: visitId,
-      target: visitId,
-      details: `تم تحديث حالة الزيارة #${visitId} إلى (${status})`,
+      const updated = await prisma.subscriptionVisit.update({
+        where: { id: visitId, updatedAt: visit.updatedAt },
+        data: {
+          status,
+          ...(notes ? { notes: String(notes) } : {}),
+          timeline: updatedTimeline,
+        },
+      });
+
+      await AuditLog.create({
+        adminId: req.admin?._id?.toString() || 'admin',
+        adminName: req.admin?.name || 'Admin',
+        adminRole: req.admin?.role || 'manager',
+        action: 'تحديث حالة زيارة اشتراك',
+        module: 'subscriptions',
+        entityType: 'subscription_visit',
+        entityId: visitId,
+        target: visitId,
+        details: `تم تحديث حالة الزيارة #${visitId} إلى (${status})`,
+      });
+
+      return updated;
     });
 
     sendSuccess(res, updated, 'تم تحديث حالة الزيارة بنجاح');
   } catch (err: any) {
-    sendError(res, err.message, 500);
+    sendError(res, err.message, err.statusCode || 500, err.code);
   }
 }
 
