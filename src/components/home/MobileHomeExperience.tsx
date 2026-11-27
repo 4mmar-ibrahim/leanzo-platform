@@ -114,6 +114,9 @@ export function MobileHomeExperience() {
     });
   }, [storeOffers]);
 
+  const hasLoadedCategories = useServiceStore((state) => state.hasLoadedCategories);
+  const hasPublishedHero = useCMSStore((state) => state.hasPublishedHero);
+  const hasPublicSettings = useSettingsStore((state) => state.version !== null);
   const hero = useCMSStore((s) => s.hero);
   const faqs = useCMSStore((s) => s.faqs);
   const contact = useCMSStore((s) => s.contact);
@@ -220,10 +223,10 @@ export function MobileHomeExperience() {
 
               <div className="text-center">
                 <h1 className="text-xl sm:text-2xl font-black text-[#07345C] dark:text-white tracking-tight leading-snug">
-                  {isAr ? 'أهلاً بك في كلينزو 👋' : 'Welcome to Cleanzo 👋'}
+                  {isAr ? hero.headline : hero.headlineEn || hero.headline}
                 </h1>
                 <p className="text-xs sm:text-sm font-bold text-[#0866C6] dark:text-[#3894ec] mt-2.5 sm:mt-3">
-                  {isAr ? 'اختر الخدمة واحجز في ثوانٍ' : 'Choose a service & book in seconds'}
+                  {isAr ? hero.description : hero.descriptionEn || hero.description}
                 </p>
               </div>
 
@@ -350,9 +353,10 @@ export function MobileHomeExperience() {
                       className="pt-1 pb-2 px-1 flex items-center justify-center cursor-pointer"
                     >
                       <div className="relative w-28 h-28 sm:w-36 sm:h-36 rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-transparent">
-                        {imageSrc ? (
+                        {hasLoadedCategories && hasPublishedHero && hasPublicSettings && imageSrc ? (
                           <CleanzoImage
                             src={imageSrc}
+                            fallbackSrc=""
                             alt={titleText}
                             fit="cover"
                             position="center"

@@ -3,6 +3,7 @@
 import { readHomeCopy } from '@/data/homeCopy';
 import React from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import {
   Car,
   Home,
@@ -35,6 +36,22 @@ import { HeroSection } from '@/components/home/HeroSection';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { CoverageSection } from '@/components/home/CoverageSection';
 
+const MobileHomeExperience = dynamic(
+  () => import('@/components/home/MobileHomeExperience').then((mod) => mod.MobileHomeExperience),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 space-y-4 pb-24">
+        <div className="h-28 rounded-3xl bg-slate-100 dark:bg-slate-800/50 animate-pulse" />
+        <div className="grid grid-cols-2 gap-3">
+          <div className="h-32 rounded-3xl bg-slate-100 dark:bg-slate-800/50 animate-pulse" />
+          <div className="h-32 rounded-3xl bg-slate-100 dark:bg-slate-800/50 animate-pulse" />
+        </div>
+      </div>
+    ),
+  }
+);
+
 export default function HomePage() {
   const [mounted, setMounted] = React.useState(false);
 
@@ -48,6 +65,9 @@ export default function HomePage() {
 
   const hasLoadedCategories = useServiceStore((state) => state.hasLoadedCategories);
   const hasPublicSettings = useSettingsStore((state) => state.version !== null);
+  const mobileSettings = useSettingsStore((state) => state.settings.mobileExperience);
+  const enableMobileLayout = mobileSettings?.enableMobileLayout !== false;
+  const showHeroOnMobile = mobileSettings?.showHeroOnMobile === true;
   const branding = useSettingsStore((s) => s.settings.branding);
 
   const storeServices = useServiceStore((s) => s.services);
@@ -105,6 +125,13 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col w-full overflow-hidden">
+      {enableMobileLayout && (
+        <div className="lg:hidden">
+          {showHeroOnMobile && checkSectionVisible('hero') && <HeroSection />}
+          <MobileHomeExperience />
+        </div>
+      )}
+      <div className={enableMobileLayout ? 'hidden lg:block' : undefined}>
       {checkSectionVisible('hero') && <HeroSection />}
 
       {/* ======================= SECTION TRANSITION: SERVICES FOCUS ======================= */}
@@ -522,6 +549,7 @@ export default function HomePage() {
         </div>
       </section>
       )}
+      </div>
     </div>
   );
 }

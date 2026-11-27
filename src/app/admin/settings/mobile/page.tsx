@@ -5,12 +5,21 @@ import Link from 'next/link';
 import {
   Smartphone,
   Layers,
+  Sparkles,
   Save,
   RotateCcw,
   ArrowRight,
+  Eye,
+  CheckCircle2,
   Navigation,
+  Flame,
+  HelpCircle,
+  PhoneCall,
   Zap,
+  Star,
   Megaphone,
+  Sliders,
+  Car,
 } from 'lucide-react';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useActivityLogStore } from '@/store/useActivityLogStore';
@@ -151,8 +160,7 @@ export default function AdminMobileSettingsPage() {
             <span>إعدادات تجربة الموبايل (Mobile Experience)</span>
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            اضبط شريطي التنقل والإعلانات على الهاتف. لتعديل محتوى الرئيسية على كل الشاشات، افتح
-            <Link href="/admin/content/home" className="ms-1 font-bold text-sky-700 dark:text-sky-300">محرر الصفحة الرئيسية</Link>
+            تحكم كامل في مظهر وسلوك وأقسام الموقع على الهواتف الذكية وتطبيق التغييرات لحظياً
           </p>
         </div>
 
@@ -189,6 +197,22 @@ export default function AdminMobileSettingsPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Enable Mobile Layout */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="font-bold text-slate-900 dark:text-white">تفعيل تجربة تطبيق الموبايل (App-Like Experience)</p>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  تحويل الواجهة الرئيسية على الموبايل إلى واجهة تطبيق سريع يركز على سهولة الحجز وتصفح الخدمات.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={formData.enableMobileLayout}
+                onChange={() => handleToggle('enableMobileLayout')}
+                className="w-5 h-5 rounded-md accent-sky-500 cursor-pointer mt-1"
+              />
+            </div>
+
             {/* Enable Bottom Navigation */}
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3">
               <div className="space-y-1">
@@ -205,6 +229,75 @@ export default function AdminMobileSettingsPage() {
               />
             </div>
 
+            {/* Enable Quick Booking */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="font-bold text-slate-900 dark:text-white">الحجز السريع المباشر (Quick Booking Bottom Sheet)</p>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  فتح قائمة حجز منزلقة من أسفل الشاشة لإتمام الحجز في خطوات معدودة دون مغادرة الصفحة.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={formData.enableQuickBooking}
+                onChange={() => handleToggle('enableQuickBooking')}
+                className="w-5 h-5 rounded-md accent-sky-500 cursor-pointer mt-1"
+              />
+            </div>
+
+            {/* Show Floating Booking Button */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="font-bold text-slate-900 dark:text-white">زر الحجز العائم عند التمرير (Floating Button)</p>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  إظهار زر "احجز الآن" العائم في الزاوية السفلية بمجرد تمرير الصفحة للأسفل لسهولة الطلب.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={formData.showFloatingBookingButton}
+                onChange={() => handleToggle('showFloatingBookingButton')}
+                className="w-5 h-5 rounded-md accent-sky-500 cursor-pointer mt-1"
+              />
+            </div>
+
+            {/* Micro-animations */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="font-bold text-slate-900 dark:text-white">المؤثرات الحركية والتفاعل (Micro-animations)</p>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  تأثيرات الضغط التفاعلي وانزلاق القوائم ونبض أزرار العروض لتجربة مستخدم عصرية وسلسة.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={formData.animations}
+                onChange={() => handleToggle('animations')}
+                className="w-5 h-5 rounded-md accent-sky-500 cursor-pointer mt-1"
+              />
+            </div>
+
+            {/* Default Section Order */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="font-bold text-slate-900 dark:text-white">القسم التمهيدي الأول (Default Focus)</p>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  اختيار القسم الذي يظهر أولاً للعميل في واجهة الموبايل.
+                </p>
+              </div>
+              <select
+                value={formData.defaultHomeSection}
+                onChange={(e) => {
+                  const val = e.target.value as any;
+                  setFormData((prev) => ({ ...prev, defaultHomeSection: val }));
+                  updateMobileExperience({ defaultHomeSection: val });
+                }}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold"
+              >
+                <option value="categories">فئات الخدمات (السيارات والمنازل)</option>
+                <option value="offers">العروض والخصومات الحصرية</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -218,6 +311,157 @@ export default function AdminMobileSettingsPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Show Welcome Card */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-sky-500" />
+                  <span>كارت الترحيب الذكي (Welcome Header)</span>
+                </p>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  عرض كارت الترحيب الذكي بأعلى الصفحة "أهلاً بك في كلينزو - ماذا تريد تنظيفه اليوم؟".
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={formData.showWelcomeCard}
+                onChange={() => handleToggle('showWelcomeCard')}
+                className="w-5 h-5 rounded-md accent-sky-500 cursor-pointer mt-1"
+              />
+            </div>
+
+            {/* Show Services Cards */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Car className="w-3.5 h-3.5 text-blue-500" />
+                  <span>كروت خدمات السيارات والمنازل (Services Cards)</span>
+                </p>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  عرض الكارتين البارزين لاختيار باقات غسيل السيارات وباقات نظافة المنازل بالبخار.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={formData.showServices}
+                onChange={() => handleToggle('showServices')}
+                className="w-5 h-5 rounded-md accent-sky-500 cursor-pointer mt-1"
+              />
+            </div>
+
+            {/* Show Desktop Hero */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="font-bold text-slate-900 dark:text-white">قسم الهيرو الكبير للديسكتوب (Desktop Hero)</p>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  {formData.showHeroOnMobile
+                    ? 'الوضع الحالي: مفعل (يظهر الهيرو الكامل مع خلفية السيارة)'
+                    : 'الوضع الحالي: مخفي ومستبدل بكروت الخدمات السريعة (الموصى به للهواتف)'}
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={formData.showHeroOnMobile}
+                onChange={() => handleToggle('showHeroOnMobile')}
+                className="w-5 h-5 rounded-md accent-sky-500 cursor-pointer mt-1"
+              />
+            </div>
+
+            {/* Show Offers */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Flame className="w-3.5 h-3.5 text-red-500" />
+                  <span>شريط العروض والخصومات (Offers Section)</span>
+                </p>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  عرض كروت العروض الموسمية وأكواد الخصم السريعة للعملاء على الموبايل.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={formData.showOffers}
+                onChange={() => handleToggle('showOffers')}
+                className="w-5 h-5 rounded-md accent-sky-500 cursor-pointer mt-1"
+              />
+            </div>
+
+            {/* Show Gallery */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Eye className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>معرض أعمالنا قبل وبعد (Recent Work Slider)</span>
+                </p>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  عرض سلايدر التمرير التفاعلي لنتائج غسيل السيارات وتلميع المنازل قبل وبعد.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={formData.showGallery}
+                onChange={() => handleToggle('showGallery')}
+                className="w-5 h-5 rounded-md accent-sky-500 cursor-pointer mt-1"
+              />
+            </div>
+
+            {/* Show Reviews */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                  <span>آراء وتقييمات العملاء (Customer Reviews)</span>
+                </p>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  عرض آراء العملاء الحقيقية وتجاربهم وتقييمات النجوم على شاشات الموبايل.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={formData.showReviews}
+                onChange={() => handleToggle('showReviews')}
+                className="w-5 h-5 rounded-md accent-sky-500 cursor-pointer mt-1"
+              />
+            </div>
+
+            {/* Show FAQ */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <HelpCircle className="w-3.5 h-3.5 text-sky-500" />
+                  <span>أكورديون الأسئلة الشائعة (FAQ Accordion)</span>
+                </p>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  عرض إجابات أهم الأسئلة التي تهم العميل مباشرة في الصفحة الرئيسية.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={formData.showFAQ}
+                onChange={() => handleToggle('showFAQ')}
+                className="w-5 h-5 rounded-md accent-sky-500 cursor-pointer mt-1"
+              />
+            </div>
+
+            {/* Show Fast Contact Bar */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <PhoneCall className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>قسم التواصل السريع والمباشر (Fast Contact Bar)</span>
+                </p>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  عرض أزرار المحادثة الفورية عبر واتساب والاتصال الهاتفي السريع.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={formData.showContact}
+                onChange={() => handleToggle('showContact')}
+                className="w-5 h-5 rounded-md accent-sky-500 cursor-pointer mt-1"
+              />
+            </div>
+
             {/* Show Top Banner On Mobile */}
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3">
               <div className="space-y-1">
