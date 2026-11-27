@@ -140,7 +140,11 @@ export default function AdminContentHomePage() {
     applyLocalChanges();
     const success = await saveDraftToDatabase();
     if (success) {
-      await publishToDatabase();
+      const published = await publishToDatabase();
+      if (!published) {
+        toast.error('تم حفظ المسودة، وتعذّر نشرها للعملاء.');
+        return;
+      }
       addLog({
         adminName: currentAdmin?.name || 'Admin',
         adminRole: currentAdmin?.role || 'owner',
@@ -243,7 +247,10 @@ export default function AdminContentHomePage() {
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">العناوين والوصف</h3>
 
               <div>
-                <label className="block text-xs font-semibold mb-1">شريط الإعلان العلوي (Announcement Bar)</label>
+                <label className="block text-xs font-semibold mb-1">النص الترويجي أسفل أزرار الحجز</label>
+                <Link href="/admin/settings/branding#top-banner" className="mb-2 inline-block text-xs font-semibold text-sky-700 dark:text-sky-300">
+                  تعديل الشريط الإعلاني المتحرك أعلى الموقع
+                </Link>
                 <input
                   type="text"
                   value={announcement}

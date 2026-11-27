@@ -1,5 +1,6 @@
 'use client';
 
+import { normalizeMediaUrl } from '@/lib/utils';
 import { useSupportWhatsApp } from '@/lib/supportWhatsApp';
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
@@ -314,6 +315,7 @@ export function MobileHomeExperience() {
                 const isCar = cat.slug === 'car';
                 const isHome = cat.slug === 'home';
                 const imageSrc =
+                  normalizeMediaUrl(isCar ? hero.carImage : isHome ? hero.homeImage : undefined) ||
                   cat.image ||
                   branding?.heroImages?.[cat.slug as 'car' | 'home'] ||
                   (isCar ? '/brand/zo/cleanzo-van-hero.png' : '');

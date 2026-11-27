@@ -54,8 +54,8 @@ export default function AdminBrandingSettingsPage() {
     footerTextEn: branding?.footerTextEn || 'CLEANZO — Cleaner Spaces, Happier Days',
     topBanner: {
       enabled: branding?.topBanner?.enabled ?? true,
-      text: branding?.topBanner?.text || 'خصم 20% لفترة محدودة على الحجوزات بمناسبة التحديث الجديد! كود: WELCOME20 (للطلبات من 200 ج.م)',
-      textEn: branding?.topBanner?.textEn || 'Limited time 20% OFF on bookings celebrating the new update! Code: WELCOME20 (Orders from 200 EGP)',
+      text: branding?.topBanner?.text ?? 'خصم 20% لفترة محدودة على الحجوزات بمناسبة التحديث الجديد! كود: WELCOME20 (للطلبات من 200 ج.م)',
+      textEn: branding?.topBanner?.textEn ?? 'Limited time 20% OFF on bookings celebrating the new update! Code: WELCOME20 (Orders from 200 EGP)',
       discountBadge: branding?.topBanner?.discountBadge || 'خصم 20%',
       link: branding?.topBanner?.link || '/booking',
       bgColor: branding?.topBanner?.bgColor || 'from-[#07345C] to-[#0866C6]',
@@ -89,8 +89,8 @@ export default function AdminBrandingSettingsPage() {
         footerTextEn: branding.footerTextEn || 'CLEANZO — Cleaner Spaces, Happier Days',
         topBanner: {
           enabled: branding.topBanner?.enabled ?? true,
-          text: branding.topBanner?.text || 'خصم 20% لفترة محدودة على جميع باقات الغسيل والديتيلينج بمناسبة إطلاق هوية كلينزو الجديدة! كود: CLEANZO20',
-          textEn: branding.topBanner?.textEn || 'Limited time: 20% OFF celebrating the new Cleanzo launch!',
+          text: branding.topBanner?.text ?? 'خصم 20% لفترة محدودة على جميع باقات الغسيل والديتيلينج بمناسبة إطلاق هوية كلينزو الجديدة! كود: CLEANZO20',
+          textEn: branding.topBanner?.textEn ?? 'Limited time: 20% OFF celebrating the new Cleanzo launch!',
           discountBadge: branding.topBanner?.discountBadge || 'هوية جديدة ✨',
           link: branding.topBanner?.link || '/booking',
           bgColor: branding.topBanner?.bgColor || 'from-[#0866C6] to-[#06529E]',
@@ -155,7 +155,6 @@ export default function AdminBrandingSettingsPage() {
     const updated = { ...form, [key]: val };
     setForm(updated);
     applyLiveColors(updated.primaryColor, updated.secondaryColor, updated.accentColor);
-    updateBranding({ [key]: val } as any);
   };
 
   const updateLiveFavicon = (url: string) => {
@@ -204,7 +203,6 @@ export default function AdminBrandingSettingsPage() {
     };
 
     setForm(cleanedForm);
-    updateBranding(cleanedForm as any);
     const success = await saveSettingsToDatabase({
       branding: cleanedForm as any,
       appearance: {
@@ -219,11 +217,8 @@ export default function AdminBrandingSettingsPage() {
 
     applyLiveColors(cleanedForm.primaryColor, cleanedForm.secondaryColor, cleanedForm.accentColor);
 
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('cleanzo:settings-updated'));
-    }
-
     if (success) {
+      window.dispatchEvent(new Event('cleanzo:settings-updated'));
       addLog({
         adminName: currentAdmin?.name || 'Admin',
         adminRole: currentAdmin?.role || 'owner',
@@ -246,11 +241,6 @@ export default function AdminBrandingSettingsPage() {
       accentColor: preset.accent,
     }));
     applyLiveColors(preset.primary, preset.secondary, preset.accent);
-    updateBranding({
-      primaryColor: preset.primary,
-      secondaryColor: preset.secondary,
-      accentColor: preset.accent,
-    } as any);
     toast.info(`تم تطبيق لوحة ألوان "${preset.name}" فوراً`);
   };
 
@@ -621,7 +611,7 @@ export default function AdminBrandingSettingsPage() {
                 <div className="flex items-center gap-2">
                   <Megaphone className="w-5 h-5 text-amber-500" />
                   <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                    الشريط الإعلاني والترويجي العلوي (Top Banner)
+                    <span id="top-banner" className="scroll-mt-24">الشريط الإعلاني والترويجي العلوي (Top Banner)</span>
                   </h3>
                   {form.topBanner.enabled ? (
                     <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 inline-flex items-center gap-1.5">

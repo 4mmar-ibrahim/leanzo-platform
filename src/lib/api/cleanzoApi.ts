@@ -1079,7 +1079,7 @@ export const cleanzoApi = {
   // Central CMS Content Management System
   content: {
     getPublished: (preview?: boolean) =>
-      apiRequest<CMSContentData>(preview ? '/content?preview=true' : '/content'),
+      apiRequest<CMSContentData>(preview ? '/content?preview=true' : '/content', { cache: 'no-store' }),
     getDraft: () => apiRequest<CMSContentData>('/content/admin/draft', { isAdmin: true }),
     updateDraft: (data: Partial<{
       hero: Partial<CMSHeroSection>;

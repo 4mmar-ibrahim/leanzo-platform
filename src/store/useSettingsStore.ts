@@ -109,22 +109,6 @@ export const useSettingsStore = create<SettingsState>()(
 
       saveSettingsToDatabase: async (updates) => {
         set({ isSaving: true });
-        if (updates) {
-          set((state) => ({
-            settings: {
-              ...state.settings,
-              ...(updates.general ? { general: { ...state.settings.general, ...updates.general } } : {}),
-              ...(updates.booking ? { booking: { ...state.settings.booking, ...updates.booking } } : {}),
-              ...(updates.appearance ? { appearance: { ...state.settings.appearance, ...updates.appearance } } : {}),
-              ...(updates.branding ? { branding: { ...state.settings.branding, ...updates.branding } } : {}),
-              ...(updates.mobileExperience ? { mobileExperience: { ...state.settings.mobileExperience, ...updates.mobileExperience } } : {}),
-              ...(updates.social ? { social: { ...state.settings.social, ...updates.social } } : {}),
-              ...(updates.notifications ? { notifications: { ...state.settings.notifications, ...updates.notifications } } : {}),
-            },
-            hasUnsavedChanges: false,
-          }));
-        }
-
         try {
           const payload = updates ? updates : get().settings;
           const res = await cleanzoApi.settings.updateAdmin(payload);
@@ -158,11 +142,11 @@ export const useSettingsStore = create<SettingsState>()(
             return true;
           }
           set({ isSaving: false });
-          return true;
+          return false;
         } catch (err) {
-          console.warn('Backend offline or sync error, settings saved locally:', err);
-          set({ isSaving: false, hasUnsavedChanges: false });
-          return true;
+          console.warn('Could not save settings to the server:', err);
+          set({ isSaving: false, hasUnsavedChanges: true });
+          return false;
         }
       },
 

@@ -30,17 +30,12 @@ export function HeroSection() {
   const { locale, direction } = useLocaleStore();
   const { setCategory } = useBookingStore();
   const heroContent = useCMSStore((s) => s.hero);
-  const fetchPublishedContent = useCMSStore((s) => s.fetchPublishedContent);
   const branding = useSettingsStore((s) => s.settings.branding);
   const speak = useZoStore((s) => s.speak);
   const heroPlacement = useZoStore((s) => s.settings.pagePlacements?.home_hero);
   const isAr = locale === 'ar';
   const supportWhatsApp = useSupportWhatsApp();
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
-
-  React.useEffect(() => {
-    fetchPublishedContent();
-  }, [fetchPublishedContent]);
 
   const [activeCategory, setActiveCategory] = useState<'car' | 'home'>('car');
 
@@ -299,8 +294,8 @@ export function HeroSection() {
                 <img
                   src={
                     activeCategory === 'car'
-                      ? (normalizeMediaUrl(branding?.heroImages?.car) || heroContent.carImage || heroContent.image || '/brand/zo/cleanzo-van-hero.png')
-                      : (normalizeMediaUrl(branding?.heroImages?.home) || heroContent.homeImage || heroContent.image || '/brand/zo/cleanzo-van-hero.png')
+                      ? (normalizeMediaUrl(heroContent.carImage || branding?.heroImages?.car || heroContent.image) || '/brand/zo/cleanzo-van-hero.png')
+                      : (normalizeMediaUrl(heroContent.homeImage || branding?.heroImages?.home || heroContent.image) || '/brand/zo/cleanzo-van-hero.png')
                   }
                   alt={activeCategory === 'car' ? 'Cleanzo Mobile Car Detailing' : 'Cleanzo Home Steam Cleaning'}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"

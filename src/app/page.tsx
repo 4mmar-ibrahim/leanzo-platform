@@ -84,6 +84,8 @@ export default function HomePage() {
     fetchOffers();
     fetchPublishedContent();
     fetchReviews();
+    window.addEventListener('focus', fetchPublishedContent);
+    return () => window.removeEventListener('focus', fetchPublishedContent);
   }, [fetchServices, fetchCategories, fetchOffers, fetchPublishedContent, fetchReviews]);
 
   const activeCategories = React.useMemo(() => {

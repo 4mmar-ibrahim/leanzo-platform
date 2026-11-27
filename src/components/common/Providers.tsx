@@ -130,14 +130,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
     };
 
     window.addEventListener('cleanzo:settings-updated', handleSettingsUpdate);
-    window.addEventListener('storage', (e) => {
-      if (e.key === 'cleanzo-settings-storage') {
-        useSettingsStore.getState().fetchPublicSettings();
-      }
-    });
+    const refreshPublicSettingsOnFocus = () => {
+      if (!window.location.pathname.startsWith('/admin')) handleSettingsUpdate();
+    };
+    window.addEventListener('focus', refreshPublicSettingsOnFocus);
 
     return () => {
       window.removeEventListener('cleanzo:settings-updated', handleSettingsUpdate);
+      window.removeEventListener('focus', refreshPublicSettingsOnFocus);
     };
   }, []);
 

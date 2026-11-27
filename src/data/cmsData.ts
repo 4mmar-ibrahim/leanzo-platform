@@ -6,8 +6,6 @@ export const initialHeroContent: CMSHeroSection = {
   description: 'خدمات غسيل وتلميع متنقلة للسيارات وتنظيف عميق بالبخار للمنازل بأحدث المعدات الألمانية والمواد الآمنة حتى باب بيتك.',
   descriptionEn: 'Mobile car detailing and deep home steam sanitation with professional German equipment right at your doorstep.',
   image: '/brand/zo/cleanzo-van-hero.png',
-  carImage: '/brand/zo/cleanzo-van-hero.png',
-  homeImage: '/brand/zo/cleanzo-van-hero.png',
   primaryCtaText: 'احجز خدمتك الآن',
   primaryCtaTextEn: 'Book Your Service',
   primaryCtaLink: '/booking',

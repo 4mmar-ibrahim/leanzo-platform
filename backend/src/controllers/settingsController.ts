@@ -326,7 +326,16 @@ export async function updateSettingsAdmin(req: Request, res: Response): Promise<
         settings.markModified('appearance');
       }
       if (updates.branding) {
-        settings.branding = { ...settings.branding, ...updates.branding };
+        settings.branding = {
+          ...settings.branding,
+          ...updates.branding,
+          ...(updates.branding.topBanner && {
+            topBanner: { ...settings.branding?.topBanner, ...updates.branding.topBanner },
+          }),
+          ...(updates.branding.heroImages && {
+            heroImages: { ...settings.branding?.heroImages, ...updates.branding.heroImages },
+          }),
+        };
         settings.markModified('branding');
       }
       if (updates.mobileExperience) {

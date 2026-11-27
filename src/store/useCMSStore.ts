@@ -214,7 +214,7 @@ export const useCMSStore = create<CMSState>((set, get) => ({
       ]);
 
       set((state) => ({
-        hero: contentData?.hero ? { ...state.hero, ...contentData.hero } : state.hero,
+        hero: contentData?.hero ? { ...initialHeroContent, ...contentData.hero } : state.hero,
         about: mergeDefined(state.about, contentData?.about),
         contact: mergeDefined(state.contact, contentData?.contact),
         social: mergeDefined(state.social, contentData?.social),
