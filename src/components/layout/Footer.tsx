@@ -1,5 +1,6 @@
 'use client';
 
+import { useSupportWhatsApp } from '@/lib/supportWhatsApp';
 import React from 'react';
 import Link from 'next/link';
 import {
@@ -18,7 +19,7 @@ import { usePathname } from 'next/navigation';
 import { normalizeMediaUrl } from '@/lib/utils';
 
 import { DEFAULT_FOOTER_QUICK_LINKS, DEFAULT_FOOTER_CATEGORY_LINKS } from '@/data/settingsData';
-import { SocialBrandIcon, resolveSocialItems } from '@/components/common/SocialBrandIcon';
+import { SocialBrandIcon, resolvePublicSocialItems } from '@/components/common/SocialBrandIcon';
 
 export function Footer() {
   const { t, locale } = useLocaleStore();
@@ -29,6 +30,7 @@ export function Footer() {
   const settingsContact = useSettingsStore((s) => s.settings.contact);
   const settingsSocial = useSettingsStore((s) => s.settings.social);
   const activeContact = (contact && (contact.phone || contact.email || contact.address)) ? contact : (settingsContact || contact);
+  const supportWhatsApp = useSupportWhatsApp();
   const activeSocial = (social && (social.facebook || social.whatsapp || (social.items && social.items.length > 0))) ? social : (settingsSocial || social);
   const isLoading = useCMSStore((s) => s.isLoading);
   const fetchPublishedContent = useCMSStore((s) => s.fetchPublishedContent);
@@ -52,7 +54,7 @@ export function Footer() {
     fetchPublishedContent();
   }, [fetchPublishedContent]);
 
-  const socialItems = resolveSocialItems(activeSocial).filter(
+  const socialItems = resolvePublicSocialItems(activeSocial, supportWhatsApp).filter(
     (item) => item.visible !== false && Boolean(item.url?.trim())
   );
 
@@ -108,10 +110,7 @@ export function Footer() {
             ) : socialItems.length > 0 ? (
               <div className="flex flex-wrap items-center gap-2.5 pt-2">
                 {socialItems.map((item) => {
-                  const href =
-                    item.platform === 'whatsapp' && !item.url.startsWith('http')
-                      ? `https://wa.me/${item.url.replace(/\D/g, '')}`
-                      : item.url;
+                  const href = item.url;
                   const label = isAr ? item.name : (item.nameEn || item.name);
 
                   return (

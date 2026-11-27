@@ -127,12 +127,20 @@ export function detectDestinationType(val: string): CMSActionDestinationType {
  */
 export function resolveActionButtonUrl(
   btn: CMSActionButton,
-  context?: { activeCategory?: string }
+  context?: { activeCategory?: string; supportWhatsApp?: string }
 ): string | null {
   if (!btn || btn.enabled === false) return null;
 
   const rawVal = (btn.destinationValue || '').trim();
   if (!rawVal) return null;
+
+  if (/^(?:https?:\/\/)?(?:wa\.me|(?:api\.|web\.)?whatsapp\.com)\//i.test(rawVal)) {
+    const url = new URL(/^https?:\/\//i.test(rawVal) ? rawVal : `https://${rawVal}`);
+    const message = url.searchParams.get('text');
+    return context?.supportWhatsApp
+      ? `${context.supportWhatsApp}${message ? `?text=${encodeURIComponent(message)}` : ''}`
+      : null;
+  }
 
   // 1. External URL or protocol
   if (

@@ -398,6 +398,7 @@ export const useCMSStore = create<CMSState>((set, get) => ({
         isSaving: false,
         hasUnsavedChanges: false,
       });
+      window.dispatchEvent(new Event('cleanzo:settings-updated'));
       return true;
     } catch (err) {
       console.error('Failed to publish CMS content:', err);

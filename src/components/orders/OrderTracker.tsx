@@ -1,5 +1,6 @@
 'use client';
 
+import { useSupportWhatsApp } from '@/lib/supportWhatsApp';
 import React, { useState } from 'react';
 import Link from 'next/link';
 import {
@@ -42,6 +43,7 @@ interface OrderTrackerProps {
 }
 
 export function OrderTracker({ order, onOpenReview, onOrderUpdate }: OrderTrackerProps) {
+  const supportWhatsApp = useSupportWhatsApp();
   const { locale, direction } = useLocaleStore();
   const isAr = locale === 'ar';
   const router = useRouter();
@@ -307,15 +309,15 @@ export function OrderTracker({ order, onOpenReview, onOrderUpdate }: OrderTracke
               <Phone className="w-3.5 h-3.5" />
               <span>اتصال بالفني</span>
             </a>
-            <a
-              href={`https://wa.me/201012345678?text=${encodeURIComponent(`مرحباً، أود متابعة طلبي رقم #${order.id}`)}`}
+            {supportWhatsApp && <a
+              href={`${supportWhatsApp}?text=${encodeURIComponent(`مرحباً، أود متابعة طلبي رقم #${order.id}`)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
             >
               <MessageCircle className="w-3.5 h-3.5" />
               <span>واتساب</span>
-            </a>
+            </a>}
           </div>
         </div>
 

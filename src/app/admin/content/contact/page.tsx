@@ -125,9 +125,13 @@ export default function AdminContentContactPage() {
       if (item.platform === 'youtube' && youtube) return { ...item, url: youtube };
       if (item.platform === 'twitter' && twitter) return { ...item, url: twitter };
       if (item.platform === 'linkedin' && linkedin) return { ...item, url: linkedin };
-      if (item.platform === 'whatsapp' && whatsapp) return { ...item, url: whatsapp };
+      if (item.platform === 'whatsapp') return { ...item, url: whatsapp };
       return item;
     });
+
+    if (whatsapp && !updatedItems.some(item => item.platform === 'whatsapp')) {
+      updatedItems.push({ id: 'support-whatsapp', platform: 'whatsapp', name: 'واتساب', nameEn: 'WhatsApp', url: whatsapp, visible: true, order: 0 });
+    }
 
     updateSocial({
       facebook,
@@ -136,7 +140,7 @@ export default function AdminContentContactPage() {
       youtube,
       twitter,
       linkedin,
-      whatsapp: whatsapp || contact.whatsapp,
+      whatsapp,
       ...(updatedItems.length > 0 ? { items: updatedItems } : {}),
     });
   };
@@ -278,7 +282,7 @@ export default function AdminContentContactPage() {
               </label>
               <input
                 type="text"
-                required
+                placeholder="+20…"
                 value={whatsapp}
                 onChange={(e) => {
                   setWhatsapp(e.target.value);

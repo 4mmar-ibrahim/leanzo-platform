@@ -1,5 +1,6 @@
 'use client';
 
+import { useSupportWhatsApp } from '@/lib/supportWhatsApp';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X,
@@ -26,7 +27,6 @@ import { useOrderStore } from '@/store/useOrderStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
-import { useCMSStore } from '@/store/useCMSStore';
 import { useLocationStore } from '@/store/useLocationStore';
 import { useCustomerStore } from '@/store/useCustomerStore';
 import { useAddressStore, isSameAddress } from '@/store/useAddressStore';
@@ -192,9 +192,7 @@ export function QuickBookingBottomSheet({
 
   // Address & Contact info
   const prevIsOpenRef = useRef(false);
-  const socialSettings = useSettingsStore((s) => s.settings.social);
-  const cmsContact = useCMSStore((s) => s.contact);
-  const cmsSocial = useCMSStore((s) => s.social);
+  const supportWhatsApp = useSupportWhatsApp();
   const [governorateId, setGovernorateId] = useState<string>('');
   const [cityId, setCityId] = useState<string>('');
   const [label, setLabel] = useState<string>(user?.addresses?.[0]?.label || (isAr ? 'المنزل' : 'Home'));
@@ -1691,14 +1689,7 @@ export function QuickBookingBottomSheet({
 
               <div className="flex flex-col gap-2.5 w-full pt-2">
                 {(() => {
-                  const rawWa =
-                    cmsContact?.whatsapp ||
-                    cmsSocial?.whatsapp ||
-                    cmsSocial?.items?.find((i) => i.platform === 'whatsapp')?.url ||
-                    socialSettings?.whatsapp ||
-                    socialSettings?.items?.find((i) => i.platform === 'whatsapp')?.url ||
-                    '201012345678';
-                  const cleanWa = rawWa.replace(/[^0-9]/g, '') || '201012345678';
+                  if (!supportWhatsApp) return null;
                   const timeText = selectedSlotObj ? (isAr ? selectedSlotObj.label : selectedSlotObj.labelEn) : selectedTime;
                   const pkgText = selectedPkg ? ` (${isAr ? selectedPkg.name : (selectedPkg.nameEn || selectedPkg.name)})` : '';
                   const svcTitle = isAr ? (selectedService?.title || '') : (selectedService?.titleEn || selectedService?.title || '');
@@ -1709,7 +1700,7 @@ export function QuickBookingBottomSheet({
                   );
                   return (
                     <a
-                      href={`https://wa.me/${cleanWa}?text=${waText}`}
+                      href={`${supportWhatsApp}?text=${waText}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"

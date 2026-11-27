@@ -1,5 +1,6 @@
 'use client';
 
+import { useSupportWhatsApp } from '@/lib/supportWhatsApp';
 import React, { useState } from 'react';
 import Link from 'next/link';
 import {
@@ -34,6 +35,7 @@ export function HeroSection() {
   const speak = useZoStore((s) => s.speak);
   const heroPlacement = useZoStore((s) => s.settings.pagePlacements?.home_hero);
   const isAr = locale === 'ar';
+  const supportWhatsApp = useSupportWhatsApp();
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
 
   React.useEffect(() => {
@@ -155,7 +157,7 @@ export function HeroSection() {
                   .filter((b) => b.enabled !== false)
                   .sort((a, b) => (a.order || 0) - (b.order || 0))
                   .map((btn, idx) => {
-                    const resolvedUrl = resolveActionButtonUrl(btn, { activeCategory });
+                    const resolvedUrl = resolveActionButtonUrl(btn, { activeCategory, supportWhatsApp });
                     if (!resolvedUrl) return null; // Prevent broken links, '#' or 'undefined'
 
                     const label = (isAr ? btn.label : (btn.labelEn || autoTranslate(btn.label, 'en') || btn.label)) || (isAr ? 'إجراء' : 'Action');

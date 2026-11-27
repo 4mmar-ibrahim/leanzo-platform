@@ -1,5 +1,6 @@
 'use client';
 
+import { useSupportWhatsApp } from '@/lib/supportWhatsApp';
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -33,6 +34,7 @@ import { Order } from '@/types';
 export default function OrderDetailsPage() {
   const params = useParams();
   const router = useRouter();
+  const supportWhatsApp = useSupportWhatsApp();
   const { t, locale, direction } = useLocaleStore();
   const { getOrderById, addOrder } = useOrderStore();
   const isAr = locale === 'ar';
@@ -522,14 +524,14 @@ export default function OrderDetailsPage() {
             <Button variant="ghost" size="sm" onClick={() => setIsSupportModalOpen(false)}>
               {isAr ? 'إغلاق' : 'Close'}
             </Button>
-            <a
-              href="https://wa.me/201012345678"
+            {supportWhatsApp && <a
+              href={supportWhatsApp}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition"
             >
               {isAr ? 'تواصل مع الدعم عبر واتساب' : 'Contact Support'}
-            </a>
+            </a>}
           </div>
         </div>
       </Dialog>

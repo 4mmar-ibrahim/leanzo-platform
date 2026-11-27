@@ -1,11 +1,13 @@
 'use client';
 
+import { useSupportWhatsApp } from '@/lib/supportWhatsApp';
 import React from 'react';
 import { Wrench, MessageCircle, Phone, Clock } from 'lucide-react';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useLocaleStore } from '@/store/useLocaleStore';
 
 export function MaintenanceScreen() {
+  const supportWhatsApp = useSupportWhatsApp();
   const { locale } = useLocaleStore();
   const isAr = locale === 'ar';
   const maintenanceMessage = useSettingsStore(
@@ -36,15 +38,15 @@ export function MaintenanceScreen() {
           <p className="font-bold text-white">هل لديك حجز عاجل ترغب في تنفيذه؟</p>
           <p className="text-[11px] text-slate-400">فريق خدمة العملاء متواجد على مدار الساعة عبر واتساب لحجز المواعيد يدوياً فوراً.</p>
           <div className="pt-2 flex items-center justify-center gap-3">
-            <a
-              href="https://wa.me/201012345678"
+            {supportWhatsApp && <a
+              href={supportWhatsApp}
               target="_blank"
               rel="noopener noreferrer"
               className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-2 shadow-md transition-colors"
             >
               <MessageCircle className="w-4 h-4" />
               <span>واتساب مباشر</span>
-            </a>
+            </a>}
             <a
               href="tel:01012345678"
               className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-2 transition-colors"

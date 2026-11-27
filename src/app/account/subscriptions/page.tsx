@@ -1,5 +1,6 @@
 'use client';
 
+import { useSupportWhatsApp } from '@/lib/supportWhatsApp';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
@@ -23,7 +24,6 @@ import {
 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useAuthStore } from '@/store/useAuthStore';
-import { useSettingsStore } from '@/store/useSettingsStore';
 import { apiGet, apiPost } from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -63,8 +63,7 @@ export default function AccountSubscriptionsPage() {
   const { locale, direction } = useLocaleStore();
   const isAr = locale === 'ar';
   const { user } = useAuthStore();
-  const settings = useSettingsStore((s) => s.settings);
-  const supportPhone = settings?.social?.whatsapp || '01012345678';
+  const supportWhatsApp = useSupportWhatsApp();
 
   const [loading, setLoading] = useState(true);
   const [subscriptions, setSubscriptions] = useState<ISubscription[]>([]);
@@ -437,8 +436,8 @@ export default function AccountSubscriptionsPage() {
                                       {isAr ? 'أقل من 12 ساعة' : '< 12h remaining'}
                                     </span>
                                     <div>
-                                      <a
-                                        href={`https://wa.me/${supportPhone.replace(/\+/g, '')}?text=${encodeURIComponent(
+                                      {supportWhatsApp && <a
+                                        href={`${supportWhatsApp}?text=${encodeURIComponent(
                                           `مرحباً، أود المساعدة في تعديل أو إلغاء موعد الزيارة رقم (${visit.visitIndex}) في اشتراكي #${sub.id}`
                                         )}`}
                                         target="_blank"
@@ -447,7 +446,7 @@ export default function AccountSubscriptionsPage() {
                                       >
                                         <PhoneCall className="w-3 h-3" />
                                         <span>{isAr ? 'تواصل مع الدعم' : 'Contact Support'}</span>
-                                      </a>
+                                      </a>}
                                     </div>
                                   </div>
                                 )}

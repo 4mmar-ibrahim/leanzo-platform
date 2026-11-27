@@ -1,5 +1,6 @@
 'use client';
 
+import { useSupportWhatsApp } from '@/lib/supportWhatsApp';
 import React, { useState } from 'react';
 import { Phone, Mail, MapPin, Clock, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
@@ -11,7 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { toast } from 'sonner';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { useZoStudioStore } from '@/store/useZoStudioStore';
-import { SocialBrandIcon, resolveSocialItems } from '@/components/common/SocialBrandIcon';
+import { SocialBrandIcon, resolvePublicSocialItems } from '@/components/common/SocialBrandIcon';
 
 import { CMSPreviewBanner } from '@/components/common/CMSPreviewBanner';
 
@@ -22,6 +23,7 @@ export default function ContactPage() {
   const settingsContact = useSettingsStore((s) => s.settings.contact);
   const settingsSocial = useSettingsStore((s) => s.settings.social);
   const activeContact = (contact && (contact.phone || contact.email || contact.address)) ? contact : (settingsContact || contact);
+  const supportWhatsApp = useSupportWhatsApp();
   const activeSocial = (social && (social.facebook || social.whatsapp || (social.items && social.items.length > 0))) ? social : (settingsSocial || social);
   const isLoading = useCMSStore((s) => s.isLoading);
   const fetchPublishedContent = useCMSStore((s) => s.fetchPublishedContent);
@@ -131,7 +133,7 @@ export default function ContactPage() {
                       </div>
                     )}
 
-                    {activeContact?.whatsapp && (
+                    {supportWhatsApp && (
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600 flex items-center justify-center shrink-0">
                           <MessageSquare className="w-5 h-5" />
@@ -139,13 +141,13 @@ export default function ContactPage() {
                         <div>
                           <p className="text-[11px] text-slate-400 font-bold uppercase">WhatsApp</p>
                           <a
-                            href={activeContact.whatsapp.startsWith('http') ? activeContact.whatsapp : `https://wa.me/${activeContact.whatsapp.replace(/\D/g, '')}`}
+                            href={supportWhatsApp}
                             target="_blank"
                             rel="noreferrer"
                             dir="ltr"
                             className="font-bold text-slate-900 dark:text-white hover:text-emerald-600"
                           >
-                            {activeContact.whatsapp}
+                            {supportWhatsApp?.replace('https://wa.me/', '+')}
                           </a>
                         </div>
                       </div>
@@ -193,7 +195,7 @@ export default function ContactPage() {
                       </div>
                     )}
 
-                    {!isLoading && !activeContact?.phone && !activeContact?.whatsapp && !activeContact?.email && !activeContact?.workingHours && !activeContact?.address && (
+                    {!isLoading && !activeContact?.phone && !supportWhatsApp && !activeContact?.email && !activeContact?.workingHours && !activeContact?.address && (
                       <p className="text-xs text-slate-400 py-3">
                         {isAr
                           ? 'لم يتم تعيين بيانات تواصل مباشرة حتى الآن. يمكنك إرسال استفسارك من خلال النموذج وسنقوم بالرد عليك.'
@@ -206,7 +208,7 @@ export default function ContactPage() {
             </div>
 
             {/* Social Media Channels Card */}
-            {isLoading && resolveSocialItems(activeSocial).filter((item) => item.visible !== false && Boolean(item.url?.trim())).length === 0 ? (
+            {isLoading && resolvePublicSocialItems(activeSocial, supportWhatsApp).filter((item) => item.visible !== false && Boolean(item.url?.trim())).length === 0 ? (
               <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-4 animate-pulse">
                 <div className="w-32 h-4 rounded-md bg-slate-200 dark:bg-slate-800" />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -214,19 +216,16 @@ export default function ContactPage() {
                   <div className="h-10 rounded-2xl bg-slate-100 dark:bg-slate-800" />
                 </div>
               </div>
-            ) : resolveSocialItems(activeSocial).filter((item) => item.visible !== false && Boolean(item.url?.trim())).length > 0 ? (
+            ) : resolvePublicSocialItems(activeSocial, supportWhatsApp).filter((item) => item.visible !== false && Boolean(item.url?.trim())).length > 0 ? (
               <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-4">
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">
                   {isAr ? 'تابعنا على وسائل التواصل' : 'Follow Us On Social Media'}
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {resolveSocialItems(activeSocial)
+                  {resolvePublicSocialItems(activeSocial, supportWhatsApp)
                     .filter((item) => item.visible !== false && Boolean(item.url?.trim()))
                     .map((item) => {
-                      const href =
-                        item.platform === 'whatsapp' && !item.url.startsWith('http')
-                          ? `https://wa.me/${item.url.replace(/\D/g, '')}`
-                          : item.url;
+                      const href = item.url;
                       const label = isAr ? item.name : (item.nameEn || item.name);
 
                       return (

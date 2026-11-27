@@ -1234,7 +1234,7 @@ export const cleanzoApi = {
 
   // System Settings & Security / Encryption API
   settings: {
-    getPublic: () => apiRequest<any>('/settings/public'),
+    getPublic: () => apiRequest<any>('/settings/public', { cache: 'no-store' }),
     getAllAdmin: () => apiRequest<any>('/settings/admin', { isAdmin: true }),
     updateAdmin: (data: any) =>
       apiRequest<any>('/settings/admin', {

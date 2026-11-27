@@ -9,11 +9,10 @@ const DEFAULT_SOCIAL = {
   instagram: 'https://instagram.com/cleanzo.app',
   tiktok: 'https://tiktok.com/@cleanzo.app',
   youtube: 'https://youtube.com/@cleanzo',
-  whatsapp: 'https://wa.me/201012345678',
+  whatsapp: '',
   twitter: 'https://twitter.com/cleanzo_app',
   linkedin: 'https://linkedin.com/company/cleanzo',
   items: [
-    { id: 'soc-whatsapp', platform: 'whatsapp', name: 'واتساب كلينزو الرسمي', nameEn: 'Cleanzo Official WhatsApp', url: 'https://wa.me/201012345678', visible: true, order: 1 },
     { id: 'soc-facebook', platform: 'facebook', name: 'صفحة فيسبوك', nameEn: 'Facebook Page', url: 'https://facebook.com/cleanzo.app', visible: true, order: 2 },
     { id: 'soc-instagram', platform: 'instagram', name: 'إنستجرام', nameEn: 'Instagram', url: 'https://instagram.com/cleanzo.app', visible: true, order: 3 },
     { id: 'soc-tiktok', platform: 'tiktok', name: 'تيك توك', nameEn: 'TikTok', url: 'https://tiktok.com/@cleanzo.app', visible: true, order: 4 },
@@ -25,7 +24,7 @@ const DEFAULT_SOCIAL = {
 
 const DEFAULT_CONTACT = {
   phone: '01012345678',
-  whatsapp: '+201012345678',
+  whatsapp: '',
   email: 'care@cleanzo.app',
   address: 'المنيا الجديدة، الحي الرابع، المحور المركزي، مصر',
   addressEn: 'New Minya, Fourth District, Central Axis, Egypt',
@@ -86,7 +85,20 @@ export function formatWorkingHoursText(
   };
 }
 
-async function getAuthoritativeContact(settingsContact?: any, bookingSettings?: any): Promise<any> {
+function normalizeWhatsApp(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  let number = value.trim().replace(/[٠-٩۰-۹]/g, digit => String(digit.charCodeAt(0) & 15));
+  if (/^(?:https?:\/\/)?(?:wa\.me|(?:api\.|web\.)?whatsapp\.com)\//i.test(number)) {
+    const url = new URL(/^https?:\/\//i.test(number) ? number : `https://${number}`);
+    number = url.hostname === 'wa.me' ? url.pathname.slice(1).replace(/\/$/, '') : url.searchParams.get('phone') || '';
+  }
+  if (!/^[+\d().\s-]+$/.test(number)) return '';
+  number = number.replace(/\D/g, '').replace(/^00/, '');
+  if (/^01[0125]\d{8}$/.test(number)) number = `20${number.slice(1)}`;
+  return /^[1-9]\d{7,14}$/.test(number) && number !== '201012345678' ? number : '';
+}
+
+async function getAuthoritativeContact(settingsContact?: any, bookingSettings?: any, settingsSocial?: any): Promise<any> {
   let cmsContact: any = null;
   try {
     const published = await CMSContent.findOne({ status: 'published' });
@@ -129,6 +141,10 @@ async function getAuthoritativeContact(settingsContact?: any, bookingSettings?: 
       }
     }
   }
+  const publishedNumber = cmsContact?.whatsapp;
+  const candidates = [publishedNumber, settingsContact?.whatsapp, settingsSocial?.whatsapp,
+    settingsSocial?.items?.find?.((item: any) => item.platform === 'whatsapp')?.url];
+  base.whatsapp = publishedNumber === '' ? '' : candidates.map(normalizeWhatsApp).find(Boolean) || '';
   return base;
 }
 
@@ -184,8 +200,9 @@ export async function getPublicSettings(req: Request, res: Response): Promise<vo
       ).catch(() => {});
     }
 
+    res.setHeader('Cache-Control', 'no-store');
     const authoritativeSocial = await getAuthoritativeSocial(settings.social);
-    const authoritativeContact = await getAuthoritativeContact((settings as any).contact, safeBooking);
+    const authoritativeContact = await getAuthoritativeContact((settings as any).contact, safeBooking, settings.social);
 
     sendSuccess(res, {
       general: settings.general,
@@ -253,7 +270,7 @@ export async function getAllSettingsAdmin(req: Request, res: Response): Promise<
     const adminSettingsObj = typeof (settings as any).toObject === 'function' ? (settings as any).toObject() : { ...settings };
     adminSettingsObj.booking = safeBookingAdmin;
     adminSettingsObj.social = await getAuthoritativeSocial(settings.social);
-    adminSettingsObj.contact = await getAuthoritativeContact((settings as any).contact, safeBookingAdmin);
+    adminSettingsObj.contact = await getAuthoritativeContact((settings as any).contact, safeBookingAdmin, settings.social);
     sendSuccess(res, adminSettingsObj);
   } catch (err: any) {
     sendError(res, err.message, 500);
@@ -358,7 +375,7 @@ export async function updateSettingsAdmin(req: Request, res: Response): Promise<
 
     const updatedSettingsObj = typeof (settings as any).toObject === 'function' ? (settings as any).toObject() : { ...settings };
     updatedSettingsObj.social = await getAuthoritativeSocial(settings.social);
-    updatedSettingsObj.contact = await getAuthoritativeContact((settings as any).contact);
+    updatedSettingsObj.contact = await getAuthoritativeContact((settings as any).contact, settings.booking, settings.social);
     sendSuccess(res, updatedSettingsObj, 'تم حفظ وتحديث إعدادات النظام بنجاح');
   } catch (err: any) {
     sendError(res, err.message, 500);

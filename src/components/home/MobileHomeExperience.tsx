@@ -1,5 +1,6 @@
 'use client';
 
+import { useSupportWhatsApp } from '@/lib/supportWhatsApp';
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -115,6 +116,7 @@ export function MobileHomeExperience() {
   const hero = useCMSStore((s) => s.hero);
   const faqs = useCMSStore((s) => s.faqs);
   const contact = useCMSStore((s) => s.contact);
+  const supportWhatsApp = useSupportWhatsApp();
   const settingsContact = useSettingsStore((s) => s.settings.contact);
   const activeContact = (contact && (contact.phone || contact.whatsapp)) ? contact : (settingsContact || contact);
   const storeReviews = useCMSStore((s) => s.reviews);
@@ -231,7 +233,7 @@ export function MobileHomeExperience() {
                     .filter((b) => b.enabled !== false)
                     .sort((a, b) => (a.order || 0) - (b.order || 0))
                     .map((btn, idx) => {
-                      const resolvedUrl = resolveActionButtonUrl(btn, { activeCategory });
+                      const resolvedUrl = resolveActionButtonUrl(btn, { activeCategory, supportWhatsApp });
                       if (!resolvedUrl) return null;
                       const label = (isAr ? btn.label : (btn.labelEn || autoTranslate(btn.label, 'en') || btn.label)) || (isAr ? 'إجراء' : 'Action');
                       const isExternal = resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://');
@@ -493,15 +495,15 @@ export function MobileHomeExperience() {
             </p>
 
             <div className="grid grid-cols-2 gap-2 pt-1">
-              <a
-                href={`https://wa.me/${activeContact?.whatsapp?.replace(/[^0-9]/g, '') || '201012345678'}`}
+              {supportWhatsApp && <a
+              href={supportWhatsApp}
                 target="_blank"
                 rel="noreferrer"
                 className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-transform"
               >
                 <MessageCircle className="w-4 h-4" />
                 <span>{isAr ? 'واتساب' : 'WhatsApp'}</span>
-              </a>
+              </a>}
 
               <a
                 href={`tel:${activeContact?.phone || '+201012345678'}`}

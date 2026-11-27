@@ -230,6 +230,9 @@ export default function AdminSocialSettingsPage() {
     };
 
     updateSocial(socialPayload);
+    if (legacyMap.whatsapp || social.whatsapp || social.items?.some(item => item.platform === 'whatsapp')) {
+      useCMSStore.getState().updateContact({ whatsapp: legacyMap.whatsapp || '' });
+    }
     await saveDraftToDatabase();
     await publishToDatabase();
     await saveSettingsToDatabase({ social: socialPayload as any });

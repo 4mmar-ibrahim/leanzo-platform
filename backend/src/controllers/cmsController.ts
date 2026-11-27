@@ -108,7 +108,7 @@ const DEFAULT_ABOUT = {
 
 const DEFAULT_CONTACT = {
   phone: '01012345678',
-  whatsapp: '+201012345678',
+  whatsapp: '',
   email: 'care@cleanzo.app',
   address: 'المنيا الجديدة، الحي الرابع، المحور المركزي، مصر',
   addressEn: 'New Minya, Fourth District, Central Axis, Egypt',
@@ -124,11 +124,10 @@ const DEFAULT_SOCIAL = {
   instagram: 'https://instagram.com/cleanzo.app',
   tiktok: 'https://tiktok.com/@cleanzo.app',
   youtube: 'https://youtube.com/@cleanzo',
-  whatsapp: 'https://wa.me/201012345678',
+  whatsapp: '',
   twitter: 'https://twitter.com/cleanzo_app',
   linkedin: 'https://linkedin.com/company/cleanzo',
   items: [
-    { id: 'soc-whatsapp', platform: 'whatsapp', name: 'واتساب كلينزو الرسمي', nameEn: 'Cleanzo Official WhatsApp', url: 'https://wa.me/201012345678', visible: true, order: 1 },
     { id: 'soc-facebook', platform: 'facebook', name: 'صفحة فيسبوك', nameEn: 'Facebook Page', url: 'https://facebook.com/cleanzo.app', visible: true, order: 2 },
     { id: 'soc-instagram', platform: 'instagram', name: 'إنستجرام', nameEn: 'Instagram', url: 'https://instagram.com/cleanzo.app', visible: true, order: 3 },
     { id: 'soc-tiktok', platform: 'tiktok', name: 'تيك توك', nameEn: 'TikTok', url: 'https://tiktok.com/@cleanzo.app', visible: true, order: 4 },

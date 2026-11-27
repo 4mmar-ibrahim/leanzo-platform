@@ -21,7 +21,7 @@ export const PLATFORMS_META: Record<SocialPlatformKey, PlatformMeta> = {
     nameEn: 'WhatsApp',
     brandColor: '#25D366',
     hoverBg: 'hover:bg-[#25D366]',
-    placeholder: 'https://wa.me/201012345678 أو 201012345678',
+    placeholder: 'https://wa.me/… أو رقم دولي يبدأ بـ +',
   },
   facebook: {
     key: 'facebook',
@@ -397,7 +397,6 @@ export function resolveSocialItems(social?: CMSSocialLinks | null): SocialLinkIt
 
   // Canonical fallback when no items or keys are populated
   return [
-    { id: 'fallback-whatsapp', platform: 'whatsapp', name: 'واتساب كلينزو الرسمي', nameEn: 'Cleanzo WhatsApp', url: 'https://wa.me/201012345678', visible: true, order: 1 },
     { id: 'fallback-facebook', platform: 'facebook', name: 'صفحة فيسبوك', nameEn: 'Facebook Page', url: 'https://facebook.com/cleanzo.app', visible: true, order: 2 },
     { id: 'fallback-instagram', platform: 'instagram', name: 'إنستجرام', nameEn: 'Instagram', url: 'https://instagram.com/cleanzo.app', visible: true, order: 3 },
     { id: 'fallback-tiktok', platform: 'tiktok', name: 'تيك توك', nameEn: 'TikTok', url: 'https://tiktok.com/@cleanzo.app', visible: true, order: 4 },
@@ -405,4 +404,15 @@ export function resolveSocialItems(social?: CMSSocialLinks | null): SocialLinkIt
     { id: 'fallback-twitter', platform: 'twitter', name: 'منصة X (تويتر)', nameEn: 'X (formerly Twitter)', url: 'https://twitter.com/cleanzo_app', visible: true, order: 6 },
     { id: 'fallback-linkedin', platform: 'linkedin', name: 'لينكد إن', nameEn: 'LinkedIn', url: 'https://linkedin.com/company/cleanzo', visible: true, order: 7 },
   ];
+}
+
+export function resolvePublicSocialItems(social: CMSSocialLinks | null | undefined, whatsapp?: string): SocialLinkItem[] {
+  const items = resolveSocialItems(social);
+  const whatsappItem = items.find(item => item.platform === 'whatsapp');
+  if (whatsapp && !whatsappItem) {
+    items.unshift({ id: 'support-whatsapp', platform: 'whatsapp', name: 'واتساب', nameEn: 'WhatsApp', url: whatsapp, visible: true, order: 0 });
+  }
+  return items.flatMap(item => item.platform !== 'whatsapp'
+    ? [item]
+    : whatsapp ? [{ ...item, url: whatsapp }] : []);
 }

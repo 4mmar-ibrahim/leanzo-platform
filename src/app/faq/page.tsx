@@ -1,5 +1,6 @@
 'use client';
 
+import { useSupportWhatsApp } from '@/lib/supportWhatsApp';
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import {
@@ -30,7 +31,7 @@ export default function FAQPage() {
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
 
   const faqs = useCMSStore((s) => s.faqs);
-  const contact = useCMSStore((s) => s.contact);
+  const supportWhatsApp = useSupportWhatsApp();
   const fetchFAQs = useCMSStore((s) => s.fetchFAQs);
   const fetchPublishedContent = useCMSStore((s) => s.fetchPublishedContent);
 
@@ -276,15 +277,15 @@ export default function FAQPage() {
             </div>
 
             <div className="flex flex-col sm:flex-row items-stretch gap-3 w-full sm:w-auto shrink-0">
-              <a
-                href={contact?.whatsapp ? `https://wa.me/${contact.whatsapp.replace(/\+/g, '')}` : 'https://wa.me/201012345678'}
+              {supportWhatsApp && <a
+              href={supportWhatsApp}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-5 py-3 rounded-2xl bg-white text-slate-900 font-bold text-xs flex items-center justify-center gap-2 hover:bg-slate-100 shadow-lg transition-all"
               >
                 <MessageCircle className="w-4 h-4 text-emerald-600" />
                 <span>{isAr ? 'محادثة عبر واتساب' : 'Chat on WhatsApp'}</span>
-              </a>
+              </a>}
 
               <Link href="/contact">
                 <Button

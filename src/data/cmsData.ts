@@ -63,7 +63,7 @@ export const initialAboutContent: CMSAboutSection = {
 
 export const initialContactContent: CMSContactSection = {
   phone: '01012345678',
-  whatsapp: '+201012345678',
+  whatsapp: '',
   email: 'care@cleanzo.app',
   address: 'المنيا الجديدة، الحي الرابع، المحور المركزي، مصر',
   addressEn: 'New Minya, Fourth District, Central Axis, Egypt',
@@ -79,19 +79,10 @@ export const initialSocialLinks: CMSSocialLinks = {
   instagram: 'https://instagram.com/cleanzo.app',
   tiktok: 'https://tiktok.com/@cleanzo.app',
   youtube: 'https://youtube.com/@cleanzo',
-  whatsapp: 'https://wa.me/201012345678',
+  whatsapp: '',
   twitter: 'https://twitter.com/cleanzo_app',
   linkedin: 'https://linkedin.com/company/cleanzo',
   items: [
-    {
-      id: 'soc-whatsapp',
-      platform: 'whatsapp',
-      name: 'واتساب كلينزو الرسمي',
-      nameEn: 'Cleanzo Official WhatsApp',
-      url: 'https://wa.me/201012345678',
-      visible: true,
-      order: 1,
-    },
     {
       id: 'soc-facebook',
       platform: 'facebook',

@@ -1,5 +1,6 @@
 'use client';
 
+import { useSupportWhatsApp } from '@/lib/supportWhatsApp';
 import React, { useEffect } from 'react';
 import Link from 'next/link';
 import {
@@ -30,18 +31,14 @@ export default function ForgotPasswordPage() {
 
   // Clean formatted phone and whatsapp numbers
   const rawPhone = contact?.phone || '01012345678';
-  const rawWhatsApp = contact?.whatsapp || '201012345678';
-
-  const cleanWhatsAppDigits = rawWhatsApp.replace(/[^0-9]/g, '') || '201012345678';
+  const supportWhatsApp = useSupportWhatsApp();
   const whatsappPreFilledMessage = encodeURIComponent(
     isAr
       ? 'مرحباً خدمة عملاء كلينزو، نسيت كلمة المرور لحسابي وأرغب في المساعدة لإنشاء كلمة مرور جديدة.'
       : 'Hello Cleanzo Support, I forgot my account password and need assistance to set a new password.'
   );
 
-  const whatsappUrl = rawWhatsApp.startsWith('http')
-    ? rawWhatsApp
-    : `https://wa.me/${cleanWhatsAppDigits}?text=${whatsappPreFilledMessage}`;
+  const whatsappUrl = supportWhatsApp && `${supportWhatsApp}?text=${whatsappPreFilledMessage}`;
 
   const phoneUrl = `tel:${rawPhone.replace(/[^0-9+]/g, '')}`;
 
@@ -94,7 +91,7 @@ export default function ForgotPasswordPage() {
 
           {/* Primary Contact CTA Button */}
           <div>
-            <a
+            {whatsappUrl && <a
               href={whatsappUrl}
               target="_blank"
               rel="noopener noreferrer"
@@ -103,7 +100,7 @@ export default function ForgotPasswordPage() {
               <MessageSquare className="w-5 h-5 group-hover:scale-110 transition-transform" />
               <span>{isAr ? 'تواصل مع الدعم عبر واتساب' : 'Contact Support via WhatsApp'}</span>
               <ArrowIcon className="w-5 h-5 group-hover:translate-x-1 rtl:group-hover:-translate-x-1 transition-transform" />
-            </a>
+            </a>}
           </div>
 
           {/* Secondary Channels Grid */}
