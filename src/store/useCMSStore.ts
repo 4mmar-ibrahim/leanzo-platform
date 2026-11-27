@@ -23,6 +23,7 @@ import { cleanzoApi } from '@/lib/api/cleanzoApi';
 
 interface CMSState {
   hero: CMSHeroSection;
+  hasPublishedHero: boolean;
   about: CMSAboutSection;
   contact: CMSContactSection;
   social: CMSSocialLinks;
@@ -111,6 +112,7 @@ function mergeDefined<T extends Record<string, any>>(target: T, source: any): T 
 
 export const useCMSStore = create<CMSState>((set, get) => ({
       hero: initialHeroContent,
+      hasPublishedHero: false,
       about: initialAboutContent,
       contact: initialContactContent,
       social: initialSocialLinks,
@@ -214,6 +216,7 @@ export const useCMSStore = create<CMSState>((set, get) => ({
       ]);
 
       set((state) => ({
+        hasPublishedHero: state.hasPublishedHero || Boolean(contentData?.hero),
         hero: contentData?.hero ? { ...initialHeroContent, ...contentData.hero } : state.hero,
         about: mergeDefined(state.about, contentData?.about),
         contact: mergeDefined(state.contact, contentData?.contact),
@@ -630,6 +633,7 @@ export const useCMSStore = create<CMSState>((set, get) => ({
       await cleanzoApi.content.reset();
       set({
         hero: initialHeroContent,
+      hasPublishedHero: false,
         about: initialAboutContent,
         contact: initialContactContent,
         social: initialSocialLinks,

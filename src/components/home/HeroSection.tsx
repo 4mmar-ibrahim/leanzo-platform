@@ -1,6 +1,7 @@
 'use client';
 
 import { useSupportWhatsApp } from '@/lib/supportWhatsApp';
+import { readHomeCopy } from '@/data/homeCopy';
 import React, { useState } from 'react';
 import Link from 'next/link';
 import {
@@ -30,6 +31,8 @@ export function HeroSection() {
   const { locale, direction } = useLocaleStore();
   const { setCategory } = useBookingStore();
   const heroContent = useCMSStore((s) => s.hero);
+  const hasPublishedHero = useCMSStore((s) => s.hasPublishedHero);
+  const hasPublicSettings = useSettingsStore((s) => s.version !== null);
   const branding = useSettingsStore((s) => s.settings.branding);
   const speak = useZoStore((s) => s.speak);
   const heroPlacement = useZoStore((s) => s.settings.pagePlacements?.home_hero);
@@ -52,15 +55,15 @@ export function HeroSection() {
   };
 
   return (
-    <section className="relative overflow-hidden bg-[#EAF8FC] dark:bg-[#041728] text-[#162631] dark:text-[#F6F8FA] pt-8 pb-16 lg:pt-14 lg:pb-24 border-b border-[#DDE7EC] dark:border-[#133B61] transition-colors duration-300 font-sans">
+    <section className="relative overflow-hidden bg-[#EAF8FC] dark:bg-[#041728] text-[#162631] dark:text-[#F6F8FA] pt-6 pb-8 sm:pt-8 sm:pb-12 lg:pt-14 lg:pb-24 border-b border-[#DDE7EC] dark:border-[#133B61] transition-colors duration-300 font-sans">
       {/* Subtle clean atmospheric lighting */}
       <div className="absolute inset-0 bg-gradient-to-b from-[#F6F8FA]/60 via-transparent to-transparent dark:from-slate-900/40 pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 lg:gap-12 items-center">
 
           {/* ================= RIGHT SIDE: BRAND HEADLINE & CONTROLS ================= */}
-          <div className="lg:col-span-6 space-y-6 sm:space-y-7 text-start order-1">
+          <div className="lg:col-span-6 space-y-4 sm:space-y-7 text-start order-1">
 
             {/* Brand Eyebrow with Mini Badge */}
             <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-[#EAF8FC] dark:bg-[#072540] border border-[#0866C6]/20 dark:border-[#0866C6]/40 text-xs font-bold text-[#0866C6] dark:text-[#38BDF8] shadow-2xs font-sans">
@@ -74,7 +77,7 @@ export function HeroSection() {
 
             {/* Powerful Dynamic Headline with Cleanzo Blue Highlight */}
             <div className="space-y-2">
-              <h1 className="text-4xl sm:text-5xl lg:text-[56px] font-black text-[#07345C] dark:text-white tracking-tight leading-[1.15]">
+              <h1 className="text-3xl sm:text-5xl lg:text-[56px] font-black text-[#07345C] dark:text-white tracking-tight leading-[1.15]">
                 {isAr ? (
                   heroContent.headline ? (
                     heroContent.headline.includes('وبمساحتك') ? (
@@ -119,7 +122,7 @@ export function HeroSection() {
                   type="button"
                   onClick={() => handleCategorySwitch('car')}
                   style={{ backgroundColor: activeCategory === 'car' ? 'var(--cleanzo-blue)' : undefined }}
-                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 sm:gap-2.5 px-5 sm:px-6 py-2.5 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 ${
+                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 sm:gap-2.5 px-2 sm:px-6 py-3 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 ${
                     activeCategory === 'car'
                       ? 'text-white shadow-md'
                       : 'text-slate-700 dark:text-white hover:text-[#0866C6] dark:hover:text-[#38BDF8]'
@@ -133,7 +136,7 @@ export function HeroSection() {
                   type="button"
                   onClick={() => handleCategorySwitch('home')}
                   style={{ backgroundColor: activeCategory === 'home' ? 'var(--cleanzo-blue)' : undefined }}
-                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 sm:gap-2.5 px-5 sm:px-6 py-2.5 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 ${
+                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 sm:gap-2.5 px-2 sm:px-6 py-3 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 ${
                     activeCategory === 'home'
                       ? 'text-white shadow-md'
                       : 'text-slate-700 dark:text-white hover:text-[#0866C6] dark:hover:text-[#38BDF8]'
@@ -258,26 +261,26 @@ export function HeroSection() {
             </div>
 
             {/* Trust Badges Row */}
-            <div className="pt-5 border-t border-slate-200 dark:border-[#133B61] flex items-center gap-6 flex-wrap">
+            <div className="pt-5 border-t border-slate-200 dark:border-[#133B61] flex items-center gap-x-4 gap-y-2 sm:gap-6 flex-wrap">
               <div className="flex items-center gap-2 text-xs font-extrabold text-[#07345C] dark:text-white">
                 <span className="w-5 h-5 rounded-full bg-slate-100 dark:bg-[#082845] text-emerald-600 dark:text-emerald-400 border border-slate-200 dark:border-[#133B61] flex items-center justify-center">
                   <Check className="w-3 h-3 stroke-[3]" />
                 </span>
-                <span>{isAr ? 'ضمان كلينزو 100%' : '100% Guaranteed'}</span>
+                <span>{readHomeCopy(heroContent.homeCopy, 'guarantee', isAr)}</span>
               </div>
 
               <div className="flex items-center gap-2 text-xs font-extrabold text-[#07345C] dark:text-white">
                 <span className="w-5 h-5 rounded-full bg-slate-100 dark:bg-[#082845] text-slate-700 dark:text-white border border-slate-200 dark:border-[#133B61] flex items-center justify-center">
                   <Clock className="w-3 h-3" />
                 </span>
-                <span>{isAr ? 'دقة بالمواعيد' : 'Punctual'}</span>
+                <span>{readHomeCopy(heroContent.homeCopy, 'punctual', isAr)}</span>
               </div>
 
               <div className="flex items-center gap-2 text-xs font-extrabold text-[#07345C] dark:text-white">
                 <span className="w-5 h-5 rounded-full bg-slate-100 dark:bg-[#082845] text-slate-700 dark:text-white border border-slate-200 dark:border-[#133B61] flex items-center justify-center">
                   <Award className="w-3 h-3" />
                 </span>
-                <span>{isAr ? 'معدات إيطالية معتمدة' : 'Italian Steam Rigs'}</span>
+                <span>{readHomeCopy(heroContent.homeCopy, 'equipment', isAr)}</span>
               </div>
             </div>
 
@@ -288,9 +291,10 @@ export function HeroSection() {
             <div className="relative mx-auto w-full max-w-lg lg:max-w-none space-y-4">
 
               {/* Main Cinematic Visual Frame */}
-              <div className="relative h-[380px] sm:h-[450px] w-full rounded-[32px] overflow-hidden bg-slate-900 border-2 border-slate-200 dark:border-[#133B61] shadow-2xl transition-all duration-500 group">
+              <div className="relative h-52 sm:h-80 lg:h-[450px] w-full rounded-2xl sm:rounded-[32px] overflow-hidden bg-slate-900 border-2 border-slate-200 dark:border-[#133B61] shadow-2xl transition-all duration-500 group">
                 
                 {/* Visual Image */}
+                {hasPublishedHero && hasPublicSettings && (
                 <img
                   src={
                     activeCategory === 'car'
@@ -300,6 +304,8 @@ export function HeroSection() {
                   alt={activeCategory === 'car' ? 'Cleanzo Mobile Car Detailing' : 'Cleanzo Home Steam Cleaning'}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                 />
+
+                )}
 
                 {/* Subtle vignette overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-[#041728]/95 via-transparent to-black/20" />

@@ -4,13 +4,11 @@ import { useSupportWhatsApp } from '@/lib/supportWhatsApp';
 import React from 'react';
 import Link from 'next/link';
 import {
-  Sparkles,
   Phone,
   Mail,
   MapPin,
   Clock,
   ShieldCheck,
-  Heart,
 } from 'lucide-react';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { useCMSStore } from '@/store/useCMSStore';
@@ -22,7 +20,7 @@ import { DEFAULT_FOOTER_QUICK_LINKS, DEFAULT_FOOTER_CATEGORY_LINKS } from '@/dat
 import { SocialBrandIcon, resolvePublicSocialItems } from '@/components/common/SocialBrandIcon';
 
 export function Footer() {
-  const { t, locale } = useLocaleStore();
+  const { locale } = useLocaleStore();
   const isAr = locale === 'ar';
   const pathname = usePathname();
   const contact = useCMSStore((s) => s.contact);
@@ -35,8 +33,10 @@ export function Footer() {
   const isLoading = useCMSStore((s) => s.isLoading);
   const fetchPublishedContent = useCMSStore((s) => s.fetchPublishedContent);
   const branding = useSettingsStore((s) => s.settings.branding);
-  const isSettingsLoaded = useSettingsStore((s) => s.isLoaded);
   const settingsVersion = useSettingsStore((s) => s.version);
+  const hasBottomNavigation = useSettingsStore((s) => s.settings.mobileExperience?.enableBottomNavigation !== false);
+  const logoSrc = settingsVersion === null ? '' : normalizeMediaUrl(branding?.logoUrl, settingsVersion);
+  const [failedLogo, setFailedLogo] = React.useState('');
   const logoText = branding?.logoText || 'CLEANZO';
   const footerText = isAr ? (branding?.footerText || `جميع الحقوق محفوظة © ${logoText}`) : (branding?.footerTextEn || `All rights reserved © ${logoText}`);
 
@@ -63,29 +63,27 @@ export function Footer() {
   }
 
   return (
-    <footer className="w-full bg-[#07345C] text-[#DDE7EC] border-t border-[#0B467B] transition-colors font-sans">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10">
+    <footer className={`w-full bg-[#07345C] text-[#DDE7EC] border-t border-[#0B467B] font-sans ${hasBottomNavigation ? 'pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0' : ''}`}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-x-4 gap-y-7 lg:gap-10">
           {/* Brand Col */}
-          <div className="lg:col-span-2 space-y-5">
-            <Link href="/" aria-label={logoText} className="inline-flex items-center">
-              <div className="relative h-11 w-auto flex items-center justify-center shrink-0">
-                {!isSettingsLoaded ? (
-                  <div className="h-8 w-28 rounded-lg bg-slate-800/60 animate-pulse" />
-                ) : (
-                  <img
-                    src={normalizeMediaUrl(branding?.logoUrl || '/brand/zo/cleanzo-logo.png', settingsVersion)}
-                    alt={logoText}
-                    className="h-full w-auto max-h-11 object-contain transition-transform duration-200 group-hover:scale-105"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = '/brand/zo/cleanzo-logo.png';
-                    }}
-                  />
-                )}
-              </div>
+          <div className="col-span-2 space-y-4 border-b border-white/15 pb-5 lg:border-0 lg:pb-0">
+            <Link href="/" aria-label={logoText} className="inline-flex min-h-12 min-w-28 max-w-full items-center justify-center rounded-xl bg-white px-3 py-2 text-[#07345C] shadow-sm">
+              {settingsVersion === null ? (
+                <span className="h-6 w-24 animate-pulse rounded bg-slate-200" aria-hidden="true" />
+              ) : logoSrc && failedLogo !== logoSrc ? (
+                <img
+                  src={logoSrc}
+                  alt={logoText}
+                  className="h-8 w-auto max-w-44 object-contain sm:h-10"
+                  onError={() => setFailedLogo(logoSrc)}
+                />
+              ) : (
+                <span className="text-sm font-black tracking-wide">{logoText}</span>
+              )}
             </Link>
 
-            <p className="text-sm text-[#DDE7EC] leading-relaxed max-w-sm">
+            <p className="text-sm text-[#DDE7EC] leading-relaxed max-w-md">
               {isAr
                 ? 'CLEANZO — مساحات نظيفة، أيام أسعد. حلول تنظيف احترافية متنقلة للعناية بالسيارات والمنازل بالبخار والتعقيم بأعلى معايير الجودة والضمان.'
                 : 'CLEANZO — Cleaner Spaces, Happier Days. Premier mobile car detailing and steam home care.'}
@@ -119,7 +117,7 @@ export function Footer() {
                       href={href}
                       target="_blank"
                       rel="noreferrer"
-                      className="w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-[#0866C6] border border-slate-700/60 text-slate-300 hover:text-white flex items-center justify-center transition-all duration-200 hover:scale-105 shadow-xs group"
+                      className="size-11 rounded-xl bg-white hover:bg-sky-100 border border-slate-200 text-[#07345C] flex items-center justify-center transition-all duration-200 hover:scale-105 shadow-xs group"
                       title={label}
                       aria-label={label}
                     >
@@ -137,10 +135,10 @@ export function Footer() {
               <h4 className="text-sm font-bold text-white tracking-wider uppercase">
                 {locale === 'ar' ? 'روابط سريعة' : 'Quick Links'}
               </h4>
-              <ul className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
+              <ul className="space-y-1 text-sm">
                 {quickLinks.map((link) => (
                   <li key={link.id || link.url}>
-                    <Link href={link.url} className="text-[#DDE7EC] hover:text-[#25B8E6] transition-colors">
+                    <Link href={link.url} className="block min-h-9 break-words py-1.5 text-[#DDE7EC] hover:text-white transition-colors">
                       {isAr ? link.label : (link.labelEn || link.label)}
                     </Link>
                   </li>
@@ -155,10 +153,10 @@ export function Footer() {
               <h4 className="text-sm font-bold text-white tracking-wider uppercase">
                 {locale === 'ar' ? 'فئات الخدمات' : 'Service Categories'}
               </h4>
-              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
+              <ul className="space-y-1 text-sm">
                 {categoryLinks.map((link) => (
                   <li key={link.id || link.url}>
-                    <Link href={link.url} className="text-[#DDE7EC] hover:text-[#25B8E6] transition-colors">
+                    <Link href={link.url} className="block min-h-9 break-words py-1.5 text-[#DDE7EC] hover:text-white transition-colors">
                       {isAr ? link.label : (link.labelEn || link.label)}
                     </Link>
                   </li>
@@ -168,7 +166,7 @@ export function Footer() {
           )}
 
             {/* Contact Details */}
-            <div className="space-y-4">
+            <div className="col-span-2 min-w-0 space-y-3 border-t border-white/15 pt-5 lg:col-span-1 lg:border-0 lg:pt-0">
               <h4 className="text-sm font-bold text-white tracking-wider uppercase">
                 {locale === 'ar' ? 'تواصل معنا' : 'Contact Us'}
               </h4>
@@ -193,7 +191,7 @@ export function Footer() {
                     {activeContact?.phone && (
                       <li className="flex items-center gap-3">
                         <Phone className="w-4 h-4 text-sky-400 shrink-0" />
-                        <a href={`tel:${activeContact.phone}`} dir="ltr" className="text-[#DDE7EC] hover:text-white transition-colors">
+                        <a href={`tel:${activeContact.phone}`} dir="ltr" className="min-w-0 break-all text-[#DDE7EC] hover:text-white transition-colors">
                           {activeContact.phone}
                         </a>
                       </li>
@@ -201,7 +199,7 @@ export function Footer() {
                     {activeContact?.email && (
                       <li className="flex items-center gap-3">
                         <Mail className="w-4 h-4 text-[#83AED0] shrink-0" />
-                        <a href={`mailto:${activeContact.email}`} dir="ltr" className="text-[#DDE7EC] hover:text-white transition-colors">
+                        <a href={`mailto:${activeContact.email}`} dir="ltr" className="min-w-0 break-all text-[#DDE7EC] hover:text-white transition-colors">
                           {activeContact.email}
                         </a>
                       </li>
@@ -234,7 +232,7 @@ export function Footer() {
         </div>
 
         {/* Bottom Bar */}
-        <div className="mt-12 pt-8 border-t border-[#0B467B] flex flex-col md:flex-row items-center justify-between gap-5 text-xs text-[#DDE7EC]/70">
+        <div className="mt-7 pt-5 sm:mt-10 border-t border-white/15 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-[#DDE7EC]/70">
           <p className="order-2 md:order-1 text-center md:text-start text-[#DDE7EC]/70">© {new Date().getFullYear()} {footerText}</p>
 
 

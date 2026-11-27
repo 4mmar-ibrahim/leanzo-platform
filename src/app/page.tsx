@@ -1,5 +1,6 @@
 'use client';
 
+import { readHomeCopy } from '@/data/homeCopy';
 import React from 'react';
 import Link from 'next/link';
 import {
@@ -31,25 +32,8 @@ import { SectionHeader } from '@/components/common/SectionHeader';
 import { CleanzoImage } from '@/components/common/CleanzoImage';
 import { Button } from '@/components/ui/Button';
 import { HeroSection } from '@/components/home/HeroSection';
-import dynamic from 'next/dynamic';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { CoverageSection } from '@/components/home/CoverageSection';
-
-const MobileHomeExperience = dynamic(
-  () => import('@/components/home/MobileHomeExperience').then((mod) => mod.MobileHomeExperience),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 space-y-4 pb-24">
-        <div className="h-28 rounded-3xl bg-slate-100 dark:bg-slate-800/50 animate-pulse" />
-        <div className="grid grid-cols-2 gap-3">
-          <div className="h-32 rounded-3xl bg-slate-100 dark:bg-slate-800/50 animate-pulse" />
-          <div className="h-32 rounded-3xl bg-slate-100 dark:bg-slate-800/50 animate-pulse" />
-        </div>
-      </div>
-    ),
-  }
-);
 
 export default function HomePage() {
   const [mounted, setMounted] = React.useState(false);
@@ -62,16 +46,16 @@ export default function HomePage() {
   const isAr = locale === 'ar';
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
 
-  const mobileSettings = useSettingsStore((s) => s.settings.mobileExperience);
+  const hasLoadedCategories = useServiceStore((state) => state.hasLoadedCategories);
+  const hasPublicSettings = useSettingsStore((state) => state.version !== null);
   const branding = useSettingsStore((s) => s.settings.branding);
-  const enableMobileLayout = mobileSettings?.enableMobileLayout ?? true;
-  const showHeroOnMobile = mobileSettings?.showHeroOnMobile ?? false;
 
   const storeServices = useServiceStore((s) => s.services);
   const categories = useServiceStore((s) => s.categories);
   const fetchServices = useServiceStore((s) => s.fetchServices);
   const fetchCategories = useServiceStore((s) => s.fetchCategories);
   const fetchOffers = useOfferStore((s) => s.fetchOffers);
+  const homeCopy = useCMSStore((s) => s.hero.homeCopy);
   const fetchPublishedContent = useCMSStore((s) => s.fetchPublishedContent);
   const sections = useCMSStore((s) => s.sections);
   const isSectionVisible = useCMSStore((s) => s.isSectionVisible);
@@ -121,23 +105,12 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col w-full overflow-hidden">
-      {/* ======================= MOBILE-FIRST APP EXPERIENCE (< 1024px) ======================= */}
-      {enableMobileLayout && (
-        <div className="block lg:hidden">
-          {showHeroOnMobile && checkSectionVisible('hero') && <HeroSection />}
-          <MobileHomeExperience />
-        </div>
-      )}
-
-      {/* ======================= DESKTOP MARKETING EXPERIENCE (>= 1024px) ======================= */}
-      <div className={enableMobileLayout ? 'hidden lg:block' : 'block'}>
-        {/* ======================= REDESIGNED HERO SECTION ======================= */}
-        {checkSectionVisible('hero') && <HeroSection />}
+      {checkSectionVisible('hero') && <HeroSection />}
 
       {/* ======================= SECTION TRANSITION: SERVICES FOCUS ======================= */}
       {checkSectionVisible('services') && activeCategories.length > 0 && (
-      <section id="services-selection" className="py-20 bg-[#F6F8FA] dark:bg-[#072540] border-y border-[#DDE7EC] dark:border-[#133B61]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
+      <section id="services-selection" className="py-10 sm:py-14 lg:py-20 bg-[#F6F8FA] dark:bg-[#072540] border-y border-[#DDE7EC] dark:border-[#133B61]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6 sm:space-y-9 lg:space-y-12">
           <SectionHeader
             title={isAr ? 'اختر الخدمة المناسبة لك' : 'Choose The Right Service For You'}
             subtitle={isAr ? 'تصفح باقات العناية المتكاملة للسيارات والمنازل واحجز موعدك بسهولة' : 'Browse comprehensive packages for your car and home, and book your appointment easily'}
@@ -149,7 +122,7 @@ export default function HomePage() {
               activeCategories.length === 1
                 ? 'max-w-xl mx-auto'
                 : activeCategories.length === 2
-                ? 'grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8'
+                ? 'grid grid-cols-1 min-[360px]:grid-cols-2 gap-3 sm:gap-6 lg:gap-8'
                 : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8'
             }
           >
@@ -210,30 +183,31 @@ export default function HomePage() {
                 return (
                   <div
                     key={cat.id || cat.slug || idx}
-                    className="group relative rounded-[36px] lg:rounded-[44px] overflow-hidden border-2 border-[#0866C6]/20 dark:border-[#133B61] bg-white dark:bg-[#082845] shadow-lg hover:shadow-2xl hover:border-[#0866C6] transition-all duration-300 flex flex-col justify-between"
+                    className="group relative rounded-2xl sm:rounded-[36px] lg:rounded-[44px] overflow-hidden border-2 border-[#0866C6]/20 dark:border-[#133B61] bg-white dark:bg-[#082845] shadow-lg hover:shadow-2xl hover:border-[#0866C6] transition-all duration-300 flex flex-col justify-between"
                   >
                     {/* Clean Circular Category Image Presentation — No Overlays */}
-                    <div className="pt-8 pb-3 px-6 flex items-center justify-center">
-                      <div className="relative w-44 h-44 sm:w-52 sm:h-52 rounded-full overflow-hidden border-4 border-slate-100 dark:border-[#133B61] shadow-xl bg-slate-100 dark:bg-slate-900 shrink-0">
-                        <CleanzoImage
+                    <div className="pt-4 pb-2 px-2 sm:pt-8 sm:pb-3 sm:px-6 flex items-center justify-center">
+                      <div className="relative w-24 h-24 sm:w-44 sm:h-44 lg:w-52 lg:h-52 rounded-full overflow-hidden border-4 border-slate-100 dark:border-[#133B61] shadow-xl bg-slate-100 dark:bg-slate-900 shrink-0">
+                        {hasLoadedCategories && hasPublicSettings && <CleanzoImage
                           src={imageSrc}
+                          fallbackSrc=""
                           alt={titleText}
                           fit="cover"
                           position="center"
                           className="w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-700"
-                        />
+                        />}
                       </div>
                     </div>
 
                     {/* Title & Category Label Outside Image */}
-                    <div className="px-6 text-center space-y-1">
+                    <div className="px-2 sm:px-6 text-center space-y-1">
                       <span className="text-xs font-black uppercase tracking-wider text-[#0866C6] dark:text-[#3894ec]">
                         {categoryLabel}
                       </span>
-                      <h3 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">{titleText}</h3>
+                      <h3 className="text-base sm:text-3xl font-black text-slate-900 dark:text-white">{titleText}</h3>
                     </div>
 
-                    <div className="p-6 sm:p-8 space-y-6 flex-1 flex flex-col justify-between text-start">
+                    <div className="p-3 sm:p-8 space-y-3 sm:space-y-6 flex-1 flex flex-col justify-between text-start">
                       <p className="text-sm sm:text-base text-slate-700 dark:text-slate-100 leading-relaxed font-normal">
                         {descText}
                       </p>
@@ -243,7 +217,7 @@ export default function HomePage() {
                           <Button
                             variant={isCar ? 'primary' : 'outline'}
                             size="lg"
-                            className="w-full justify-center rounded-full font-black shadow-md py-3.5"
+                            className="w-full justify-center rounded-full font-black shadow-md px-1.5 text-xs sm:px-4 sm:text-base py-3.5"
                             style={!isCar ? { borderColor: 'var(--cleanzo-blue)', color: 'var(--cleanzo-blue)' } : undefined}
                           >
                             <span>{btnText}</span>
@@ -263,8 +237,8 @@ export default function HomePage() {
 
       {/* ======================= POPULAR SERVICES SECTION ======================= */}
       {checkSectionVisible('services') && popularServices.length > 0 && (
-      <section className="py-20 bg-slate-50 dark:bg-[#0B1120]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
+      <section className="py-10 sm:py-14 lg:py-20 bg-slate-50 dark:bg-[#0B1120]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6 sm:space-y-9 lg:space-y-12">
           <div className="flex flex-col md:flex-row items-start md:items-end justify-between gap-4">
             <SectionHeader
               align="start"
@@ -291,8 +265,8 @@ export default function HomePage() {
 
       {/* ======================= HOW IT WORKS ======================= */}
       {checkSectionVisible('how_it_works') && (
-      <section className="py-20 bg-[#EAF8FC] dark:bg-[#041728] border-y border-[#DDE7EC] dark:border-[#133B61]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-16">
+      <section className="py-10 sm:py-14 lg:py-20 bg-[#EAF8FC] dark:bg-[#041728] border-y border-[#DDE7EC] dark:border-[#133B61]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8 lg:space-y-16">
           <SectionHeader
             badge={isAr ? 'بساطة وسرعة' : 'Easy 4 Steps'}
             title={t.home.howItWorks}
@@ -364,31 +338,31 @@ export default function HomePage() {
 
       {/* ======================= WHY CHOOSE CLEANZO ======================= */}
       {checkSectionVisible('whyUs') && (
-      <section className="py-20 bg-[#F6F8FA] dark:bg-[#072540] border-y border-[#DDE7EC] dark:border-[#133B61]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-16">
+      <section className="py-10 sm:py-14 lg:py-20 bg-[#F6F8FA] dark:bg-[#072540] border-y border-[#DDE7EC] dark:border-[#133B61]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8 lg:space-y-16">
           <SectionHeader
-            badge={isAr ? 'قيمنا ومعاييرنا' : 'Why Cleanzo'}
-            title={t.home.whyCleanzo}
-            subtitle={t.home.whyCleanzoSub}
+            badge={readHomeCopy(homeCopy, 'whyBadge', isAr)}
+            title={readHomeCopy(homeCopy, 'whyTitle', isAr)}
+            subtitle={readHomeCopy(homeCopy, 'whyDescription', isAr)}
           />
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
               {
-                title: isAr ? 'فريق عمل محترف ومعتمد' : 'Certified Specialists',
-                desc: isAr ? 'يخضع جميع الفنيين لتدريب صارم وفحص أمني لضمان أعلى مستويات الأمان والجودة.' : 'Rigorous vetting and intensive training ensure utmost safety and perfection in every visit.',
+                title: readHomeCopy(homeCopy, 'specialistsTitle', isAr),
+                desc: readHomeCopy(homeCopy, 'specialistsDescription', isAr),
                 icon: BadgeCheck,
                 color: 'text-[#0866C6]',
               },
               {
-                title: isAr ? 'مواعيد دقيقة بدون تأخير' : 'Guaranteed Punctuality',
-                desc: isAr ? 'نلتزم بالموعد الذي تختاره بالدقيقة، مع تتبع حالة الطلب وتحديثات مستمرة.' : 'On-time arrival guarantee with real-time status notifications for zero hassle.',
+                title: readHomeCopy(homeCopy, 'arrivalTitle', isAr),
+                desc: readHomeCopy(homeCopy, 'arrivalDescription', isAr),
                 icon: Clock,
                 color: 'text-[#0866C6]',
               },
               {
-                title: isAr ? 'أسعار شفافة بدون مصاريف خفية' : 'Transparent Pricing',
-                desc: isAr ? 'السعر الذي تراه في الموقع هو السعر النهائي دون أي مفاجآت أو تكاليف إضافية.' : 'Clear upfront pricing with no hidden equipment fees or surprise charges.',
+                title: readHomeCopy(homeCopy, 'pricingTitle', isAr),
+                desc: readHomeCopy(homeCopy, 'pricingDescription', isAr),
                 icon: ShieldCheck,
                 color: 'text-amber-500',
               },
@@ -421,7 +395,7 @@ export default function HomePage() {
 
       {/* ======================= TESTIMONIALS ======================= */}
       {checkSectionVisible('reviews') && displayReviews.length > 0 && (
-      <section className="py-20 bg-[#EAF8FC] dark:bg-[#041728] border-t border-[#DDE7EC] dark:border-[#133B61]">
+      <section className="py-10 sm:py-14 lg:py-20 bg-[#EAF8FC] dark:bg-[#041728] border-t border-[#DDE7EC] dark:border-[#133B61]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-14">
           <SectionHeader
             badge={isAr ? 'تجارب حقيقية' : 'Testimonials'}
@@ -507,7 +481,7 @@ export default function HomePage() {
 
       {/* ======================= FINAL CONVERSION CTA ======================= */}
       {checkSectionVisible('cta') && (
-      <section className="py-20 bg-[#F6F8FA] dark:bg-[#072540] border-t border-[#DDE7EC] dark:border-[#133B61]">
+      <section className="py-10 sm:py-14 lg:py-20 bg-[#F6F8FA] dark:bg-[#072540] border-t border-[#DDE7EC] dark:border-[#133B61]">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="relative rounded-3xl overflow-hidden bg-gradient-to-tr from-[#07345C] via-[#0866C6] to-[#07345C] p-8 sm:p-14 text-center text-white shadow-2xl space-y-6">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-xs font-bold">
@@ -548,7 +522,6 @@ export default function HomePage() {
         </div>
       </section>
       )}
-      </div>
     </div>
   );
 }

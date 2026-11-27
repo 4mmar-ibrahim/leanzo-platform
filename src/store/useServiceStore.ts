@@ -9,6 +9,7 @@ import { cleanzoApi } from '@/lib/api/cleanzoApi';
 interface ServiceState {
   services: Service[];
   categories: ServiceCategoryItem[];
+  hasLoadedCategories: boolean;
   isLoading: boolean;
   error: string | null;
 
@@ -49,6 +50,7 @@ export const useServiceStore = create<ServiceState>()(
     (set, get) => ({
       services: [],
       categories: initialCategories,
+      hasLoadedCategories: false,
       isLoading: false,
       error: null,
 
@@ -105,7 +107,7 @@ export const useServiceStore = create<ServiceState>()(
           active: c.active !== false,
           order: c.order || 0,
         }));
-        set({ categories: normalized });
+        set({ categories: normalized, hasLoadedCategories: true });
         return normalized;
       }
       return [];

@@ -40,7 +40,6 @@ export function Header() {
   const { t, locale, direction } = useLocaleStore();
   const { user, isAuthenticated, logout } = useAuthStore();
   const branding = useSettingsStore((s) => s.settings.branding);
-  const isSettingsLoaded = useSettingsStore((s) => s.isLoaded);
   const settingsVersion = useSettingsStore((s) => s.version);
   const isSectionVisible = useCMSStore((s) => s.isSectionVisible);
   const sections = useCMSStore((s) => s.sections);
@@ -168,16 +167,15 @@ export function Header() {
               className="group flex items-center justify-center py-1 transition-transform duration-200 hover:opacity-95 shrink-0 select-none"
             >
               <div className="relative h-8 sm:h-9 xl:h-10 w-auto flex items-center justify-center shrink-0">
-                {!mounted || !isSettingsLoaded ? (
+                {!mounted || settingsVersion === null ? (
                   <div className="h-7 w-20 rounded-lg bg-slate-200/40 dark:bg-slate-800/40 animate-pulse" />
                 ) : branding?.logoUrl ? (
                   <img
                     src={normalizeMediaUrl(branding.logoUrl, settingsVersion)}
                     alt={logoText}
                     className="h-full w-auto max-h-8 sm:max-h-9 xl:max-h-10 object-contain transition-transform duration-200 group-hover:scale-105"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).src = '/brand/zo/cleanzo-logo.png';
-                    }}
+                    onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }}
+                    onLoad={(event) => { event.currentTarget.style.visibility = ''; }}
                   />
                 ) : (
                   <div className="w-8 h-8 sm:w-9 sm:h-9 xl:w-10 xl:h-10 rounded-xl bg-gradient-to-br from-[#0866C6] to-[#07345C] text-white flex items-center justify-center shadow-xs">

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Save, Calendar, Clock, Plus, Trash2, Loader2, CheckCircle2 } from 'lucide-react';
+import { bookingStepGuide, type BookingGuide, type BookingGuideStep } from '@/data/bookingStepGuide';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useActivityLogStore } from '@/store/useActivityLogStore';
 import { useAdminStore } from '@/store/useAdminStore';
@@ -24,6 +25,23 @@ export default function AdminBookingSettingsPage() {
   const currentAdmin = useAdminStore((s) => s.currentAdmin);
   const addLog = useActivityLogStore((s) => s.addLog);
   const [saving, setSaving] = useState(false);
+  const [guide, setGuide] = useState<BookingGuide>();
+  const [savingGuide, setSavingGuide] = useState(false);
+
+  const saveGuide = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!guide || savingGuide) return;
+    setSavingGuide(true);
+    const saved = await saveSettingsToDatabase({ booking: { stepGuide: guide } });
+    setSavingGuide(false);
+    if (saved) {
+      setGuide(undefined);
+      window.dispatchEvent(new Event('cleanzo:settings-updated'));
+      toast.success('تم حفظ رسائل خطوات الحجز');
+    } else {
+      toast.error('تعذّر حفظ رسائل خطوات الحجز. حاول مرة أخرى.');
+    }
+  };
 
   const [workingHoursStart, setWorkingHoursStart] = useState('09:00');
   const [workingHoursEnd, setWorkingHoursEnd] = useState('22:00');
@@ -203,6 +221,37 @@ export default function AdminBookingSettingsPage() {
           التحكم بساعات العمل، فواصل المواعيد، الفترات العازلة، والتواريخ المحجوبة
         </p>
       </div>
+
+      <form onSubmit={saveGuide} className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+        <h2 className="text-sm font-bold">رسائل خطوات الحجز</h2>
+        <p className="text-xs text-slate-500">عدّل الرسالة اللي بتظهر للعميل في كل خطوة. الخانة الفاضية بتعرض النص الافتراضي.</p>
+        {(Object.keys(bookingStepGuide).map(Number) as BookingGuideStep[]).map((step) => (
+          <fieldset key={step} className="grid gap-2 sm:grid-cols-2">
+            <legend className="mb-1 text-xs font-semibold">{step}. {bookingStepGuide[step].label}</legend>
+            {(['ar', 'en'] as const).map((lang) => (
+              <textarea
+                key={lang}
+                aria-label={`${bookingStepGuide[step].label} (${lang === 'ar' ? 'عربي' : 'English'})`}
+                dir={lang === 'ar' ? 'rtl' : 'ltr'}
+                rows={2}
+                maxLength={300}
+                value={(guide ?? booking.stepGuide)?.[step]?.[lang] ?? bookingStepGuide[step][lang]}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setGuide((draft) => {
+                    const current = draft ?? booking.stepGuide ?? {};
+                    return { ...current, [step]: { ...current[step], [lang]: value } };
+                  });
+                }}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs dark:border-slate-700 dark:bg-slate-800"
+              />
+            ))}
+          </fieldset>
+        ))}
+        <Button type="submit" disabled={!guide || savingGuide} isLoading={savingGuide}>
+          حفظ رسائل خطوات الحجز
+        </Button>
+      </form>
 
       <form onSubmit={handleSave} className="space-y-6">
         {/* Working Hours & Slot Times */}

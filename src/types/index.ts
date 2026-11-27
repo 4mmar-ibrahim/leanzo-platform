@@ -1,3 +1,5 @@
+import type { BookingGuide } from '@/data/bookingStepGuide';
+import type { HomeCopy } from '@/data/homeCopy';
 export type ServiceCategory = 'car' | 'home' | (string & {});
 
 export interface ServiceFeature {
@@ -643,6 +645,7 @@ export interface CMSActionButton {
 }
 
 export interface CMSHeroSection {
+  homeCopy?: HomeCopy;
   headline: string;
   headlineEn: string;
   description: string;
@@ -753,6 +756,7 @@ export interface CMSContentData {
 
 
 export interface BookingSettings {
+  stepGuide?: BookingGuide;
   workingDays: number[]; // 0=Sunday, 1=Monday, ... 5=Friday, 6=Saturday
   workingHoursStart: string; // e.g. "09:00"
   workingHoursEnd: string; // e.g. "22:00"

@@ -16,7 +16,7 @@ interface SettingsState {
 
   fetchPublicSettings: () => Promise<void>;
   fetchAdminSettings: () => Promise<void>;
-  saveSettingsToDatabase: (updates?: Partial<SystemSettings>) => Promise<boolean>;
+  saveSettingsToDatabase: (updates?: Omit<Partial<SystemSettings>, 'booking'> & { booking?: Partial<BookingSettings> }) => Promise<boolean>;
   setHasUnsavedChanges: (val: boolean) => void;
 
   updateGeneral: (updates: Partial<SystemSettings['general']>) => void;

@@ -1,8 +1,10 @@
 'use client';
 
+import { readHomeCopy } from '@/data/homeCopy';
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { MapPin, Search, CheckCircle2, ArrowRight, ArrowLeft, Building2, Sparkles, Navigation } from 'lucide-react';
+import { useCMSStore } from '@/store/useCMSStore';
 import { useLocationStore } from '@/store/useLocationStore';
 import { useLocaleStore } from '@/store/useLocaleStore';
 import { Button } from '@/components/ui/Button';
@@ -10,6 +12,7 @@ import { Button } from '@/components/ui/Button';
 export function CoverageSection() {
   const { governorates, fetchLocations, isLoading } = useLocationStore();
   const { locale, direction } = useLocaleStore();
+  const homeCopy = useCMSStore((s) => s.hero.homeCopy);
   const isAr = locale === 'ar';
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
 
@@ -43,23 +46,21 @@ export function CoverageSection() {
   }
 
   return (
-    <section id="coverage-areas" className="py-20 bg-gradient-to-b from-white to-slate-50 dark:from-slate-900 dark:to-[#0B1120] border-t border-slate-200/80 dark:border-slate-800 transition-colors">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
+    <section id="coverage-areas" className="py-10 sm:py-14 lg:py-20 bg-gradient-to-b from-white to-slate-50 dark:from-slate-900 dark:to-[#0B1120] border-t border-slate-200/80 dark:border-slate-800 transition-colors">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-7 lg:space-y-12">
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto space-y-4">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-black border border-emerald-500/20">
             <Navigation className="w-3.5 h-3.5" />
-            <span>{isAr ? 'نطاق التغطية والخدمة الحية' : 'Live Service Coverage'}</span>
+            <span>{readHomeCopy(homeCopy, 'coverageBadge', isAr)}</span>
           </div>
 
           <h2 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">
-            {isAr ? 'أينما كنت في مصر.. أسطول كلينزو يصلك لباب بيتك' : 'Wherever You Are in Egypt, Cleanzo Comes to You'}
+            {readHomeCopy(homeCopy, 'coverageTitle', isAr)}
           </h2>
 
           <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-100 leading-relaxed font-normal">
-            {isAr
-              ? 'سياراتنا المتنقلة مجهزة بأحدث محطات البخار الإيطالي والألماني لتصلك أينما كان موقعك فور تأكيد حجزك.'
-              : 'Our fully equipped mobile detailing units arrive right at your doorstep across all active governorates.'}
+            {readHomeCopy(homeCopy, 'coverageDescription', isAr)}
           </p>
 
           {/* Interactive Search Bar */}
@@ -69,7 +70,7 @@ export function CoverageSection() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={isAr ? 'ابحث عن محافظتك أو مدينتك (مثل: القاهرة، الجيزة، أكتوبر...)' : 'Search city or district...'}
+                placeholder={readHomeCopy(homeCopy, 'coverageSearch', isAr)}
                 className="w-full ps-10 pe-4 py-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-medium text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 shadow-sm"
               />
               <Search className="w-4 h-4 text-slate-400 absolute start-3.5 top-3.5 pointer-events-none" />

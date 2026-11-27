@@ -280,6 +280,18 @@ export async function getAllSettingsAdmin(req: Request, res: Response): Promise<
 export async function updateSettingsAdmin(req: Request, res: Response): Promise<void> {
   try {
     const updates = req.body;
+    const guide = updates.booking?.stepGuide;
+    if (guide !== undefined && (
+      !guide || typeof guide !== 'object' || Array.isArray(guide) ||
+      Object.entries(guide).some(([step, translations]) =>
+        !/^[1-4]$/.test(step) || !translations || typeof translations !== 'object' ||
+        Array.isArray(translations) || Object.entries(translations).some(([locale, message]) =>
+          !['ar', 'en'].includes(locale) || typeof message !== 'string' || message.length > 300))
+    )) {
+      sendError(res, 'رسائل خطوات الحجز غير صالحة', 400, 'INVALID_BOOKING_STEP_GUIDE');
+      return;
+    }
+
     let settings = await SystemSettings.findOne({ key: 'global_settings' });
 
     if (!settings) {
@@ -291,33 +303,35 @@ export async function updateSettingsAdmin(req: Request, res: Response): Promise<
       }
       if (updates.booking) {
         settings.booking = { ...settings.booking, ...updates.booking };
-        if (updates.booking.breakStart === undefined || updates.booking.breakStart === null) {
-          delete (settings.booking as any).breakStart;
-        }
-        if (updates.booking.breakEnd === undefined || updates.booking.breakEnd === null) {
-          delete (settings.booking as any).breakEnd;
-        }
-        // Dynamically keep contact workingHours synchronized with booking settings
-        const derived = formatWorkingHoursText(
-          settings.booking.workingHoursStart || '09:00',
-          settings.booking.workingHoursEnd || '22:00',
-          settings.booking.workingDays
-        );
-        (settings as any).contact = {
-          ...((settings as any).contact || {}),
-          workingHours: derived.workingHours,
-          workingHoursEn: derived.workingHoursEn,
-        };
-        settings.markModified('contact');
-        try {
-          await CMSContent.updateMany({}, {
-            $set: {
-              'contact.workingHours': derived.workingHours,
-              'contact.workingHoursEn': derived.workingHoursEn,
-            }
-          });
-        } catch (cmsErr) {
-          console.warn('Non-critical: CMS working hours sync error:', cmsErr);
+        if (Object.keys(updates.booking).some(key => key !== 'stepGuide')) {
+          if (updates.booking.breakStart === undefined || updates.booking.breakStart === null) {
+            delete (settings.booking as any).breakStart;
+          }
+          if (updates.booking.breakEnd === undefined || updates.booking.breakEnd === null) {
+            delete (settings.booking as any).breakEnd;
+          }
+          // Dynamically keep contact workingHours synchronized with booking settings
+          const derived = formatWorkingHoursText(
+            settings.booking.workingHoursStart || '09:00',
+            settings.booking.workingHoursEnd || '22:00',
+            settings.booking.workingDays
+          );
+          (settings as any).contact = {
+            ...((settings as any).contact || {}),
+            workingHours: derived.workingHours,
+            workingHoursEn: derived.workingHoursEn,
+          };
+          settings.markModified('contact');
+          try {
+            await CMSContent.updateMany({}, {
+              $set: {
+                'contact.workingHours': derived.workingHours,
+                'contact.workingHoursEn': derived.workingHoursEn,
+              }
+            });
+          } catch (cmsErr) {
+            console.warn('Non-critical: CMS working hours sync error:', cmsErr);
+          }
         }
         settings.markModified('booking');
       }

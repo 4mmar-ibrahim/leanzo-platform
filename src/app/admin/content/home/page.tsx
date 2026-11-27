@@ -15,6 +15,7 @@ import {
   AlertCircle,
   Clock,
 } from 'lucide-react';
+import { homeCopyFields, type HomeCopy, type HomeCopyKey } from '@/data/homeCopy';
 import { useCMSStore } from '@/store/useCMSStore';
 import { useActivityLogStore } from '@/store/useActivityLogStore';
 import { useAdminStore } from '@/store/useAdminStore';
@@ -43,6 +44,7 @@ export default function AdminContentHomePage() {
   const [headlineEn, setHeadlineEn] = useState(hero.headlineEn);
   const [description, setDescription] = useState(hero.description);
   const [descriptionEn, setDescriptionEn] = useState(hero.descriptionEn);
+  const [homeCopy, setHomeCopy] = useState<HomeCopy>(hero.homeCopy || {});
   const [announcement, setAnnouncement] = useState(hero.announcement);
   const [image, setImage] = useState(hero.image);
   const [carImage, setCarImage] = useState(hero.carImage || '');
@@ -93,6 +95,7 @@ export default function AdminContentHomePage() {
       setDescription(hero.description || '');
       setDescriptionEn(hero.descriptionEn || '');
       setAnnouncement(hero.announcement || '');
+      setHomeCopy(hero.homeCopy || {});
       setImage(hero.image || '');
       setCarImage(hero.carImage || '');
       setHomeImage(hero.homeImage || '');
@@ -124,6 +127,7 @@ export default function AdminContentHomePage() {
       description,
       descriptionEn,
       announcement,
+      homeCopy,
       image,
       carImage,
       homeImage,
@@ -240,6 +244,30 @@ export default function AdminContentHomePage() {
       </div>
 
       <form onSubmit={handleSaveDraft} className="space-y-6">
+        <details className="rounded-3xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+          <summary className="cursor-pointer text-sm font-bold">عبارات الضمان والمميزات والتغطية</summary>
+          <div className="mt-4 space-y-4">
+            {(Object.keys(homeCopyFields) as HomeCopyKey[]).map((field) => (
+              <fieldset key={field} className="grid gap-2 sm:grid-cols-2">
+                <legend className="mb-1 text-xs font-semibold">{homeCopyFields[field].label}</legend>
+                {(['ar', 'en'] as const).map((lang) => (
+                  <input
+                    key={lang}
+                    aria-label={`${homeCopyFields[field].label} (${lang === 'ar' ? 'عربي' : 'English'})`}
+                    dir={lang === 'ar' ? 'rtl' : 'ltr'}
+                    value={homeCopy[field]?.[lang] ?? homeCopyFields[field][lang]}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setHomeCopy((current) => ({ ...current, [field]: { ...current[field], [lang]: value } }));
+                      setHasUnsavedChanges(true);
+                    }}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs dark:border-slate-700 dark:bg-slate-800"
+                  />
+                ))}
+              </fieldset>
+            ))}
+          </div>
+        </details>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* 2 Cols: Text fields */}
           <div className="lg:col-span-2 space-y-6">

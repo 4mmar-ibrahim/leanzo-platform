@@ -15,6 +15,7 @@ export interface ICMSContent extends RepositoryRecord {
   status: 'draft' | 'published';
   version: number;
   hero: {
+    homeCopy?: Record<string, { ar?: string; en?: string }>;
     headline: string;
     headlineEn: string;
     description: string;

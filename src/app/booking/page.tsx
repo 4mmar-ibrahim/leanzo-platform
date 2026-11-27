@@ -1,5 +1,7 @@
 'use client';
 
+import { bookingStepGuide, type BookingGuideStep } from '@/data/bookingStepGuide';
+import { useSettingsStore } from '@/store/useSettingsStore';
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -42,6 +44,7 @@ function BookingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t, locale, direction } = useLocaleStore();
+  const stepGuide = useSettingsStore((state) => state.settings.booking.stepGuide);
   const bookingConfig = useZoStudioStore((s) => s.publishedConfigs['booking']);
   const { isAuthenticated, user } = useAuthStore();
   const { addOrder } = useOrderStore();
@@ -560,32 +563,11 @@ function BookingContent() {
             
             {/* Interactive Step Guide with Living Zo Character */}
             {bookingConfig?.enabled !== false && (() => {
-              const zoStepConfig = {
-                1: {
-                  pose: 'pointing' as const,
-                  expression: 'curious' as const,
-                  message: isAr ? 'اختر الباقة الأنسب لعربيتك أو بيتك 💧' : 'Select the best package for your car or home 💧',
-                },
-                2: {
-                  pose: 'holding_calendar' as const,
-                  expression: 'booking' as const,
-                  message: isAr ? 'حدد اليوم والوقت الأنسب ليك.. أسطولنا بيوصل في الميعاد تماماً ⏱️' : 'Choose date & time. Our fleet is 100% punctual ⏱️',
-                },
-                3: {
-                  pose: 'holding_pin' as const,
-                  expression: 'location' as const,
-                  message: isAr ? 'اكتب عنوانك وهنجيلك بعربيتنا المجهزة بأحدث أجهزة البخار 📍' : 'Set your address and our mobile van will arrive ready 📍',
-                },
-                4: {
-                  pose: 'celebrating' as const,
-                  expression: 'happy' as const,
-                  message: isAr ? 'راجع بيانات حجزك ودوس تأكيد.. واستمتع بنتيجة تفرحك 🎉' : 'Review details and confirm. Enjoy pristine cleanliness 🎉',
-                },
-              }[currentStep as 1 | 2 | 3 | 4] || {
-                pose: 'waving' as const,
-                expression: 'happy' as const,
-                message: isAr ? 'خطوات بسيطة وحجزك يكتمل!' : 'Simple steps to complete your booking!',
-              };
+              const guideStep = currentStep as BookingGuideStep;
+              const language = isAr ? 'ar' : 'en';
+              const message = stepGuide?.[guideStep]?.[language]?.trim()
+                || bookingStepGuide[guideStep]?.[language]
+                || (isAr ? 'خطوات بسيطة وحجزك يكتمل!' : 'Simple steps to complete your booking!');
 
               const StepIcon = steps[currentStep - 1]?.icon || Sparkles;
 
@@ -600,7 +582,7 @@ function BookingContent() {
                       <span>{isAr ? `خطوة ${currentStep} من 4` : `Step ${currentStep} of 4`}</span>
                     </div>
                     <p className="text-[11px] sm:text-xs font-bold text-[#07345C] dark:text-white leading-snug">
-                      {zoStepConfig.message}
+                      {message}
                     </p>
                   </div>
                 </div>
