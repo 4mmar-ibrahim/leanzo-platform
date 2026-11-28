@@ -34,3 +34,25 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Deploy the backend on Coolify
+
+Set the base directory to `/backend`, the build command to `npm run build`, and the start command to `npm run start:deploy`. Set the port to `5000` and the health check path to `/api/health`. The start command applies committed Prisma migrations before starting the API. On a release that predates `start:deploy`, the equivalent start command is `npx prisma migrate deploy && npm start`.
+
+### Switch an existing database from `db push` to Prisma Migrate
+
+1. Take a database backup and test the following steps on a restored copy first. Run Prisma commands from `backend` with `DATABASE_URL` set to the database being checked.
+2. Run `npx prisma migrate status`. If the database has tables but no migration history, verify that the schema already includes the objects from `prisma/migrations/0_init/migration.sql`, then run `npx prisma migrate resolve --applied 0_init` once. For any later migration, mark it applied only if you have verified that **all** of its schema and data changes are present. Leave the offer usage and notification migration pending when upgrading from a release before `56b1e88`.
+3. Before applying the offer usage migration, run the following read-only query. A nonzero result means existing coupon usage pairs need reconciliation before applying the unique constraint. The notification migration handles duplicate notification event IDs while preserving notification rows.
+
+   ```sql
+   SELECT COUNT(*) AS duplicate_coupon_pairs
+   FROM (
+     SELECT "couponId", "orderId"
+     FROM "coupon_usages"
+     GROUP BY "couponId", "orderId"
+     HAVING COUNT(*) > 1
+   ) AS duplicates;
+   ```
+
+4. Redeploy with the updated start command and verify that the migration succeeds and `/api/health` returns HTTP 200.
