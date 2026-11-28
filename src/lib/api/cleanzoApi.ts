@@ -530,7 +530,7 @@ export const cleanzoApi = {
 
   // Zo Mascot & Character System
   zo: {
-    getPublishedConfigs: () => apiRequest<Record<string, any>>('/zo/published'),
+    getPublishedConfigs: () => apiRequest<Record<string, any>>('/zo/published', { cache: 'no-store' }),
     getPublishedConfigByPage: (pageId: string) => apiRequest<any>(`/zo/published/${pageId}`),
     getAllAdmin: () => apiRequest<Record<string, any>>('/zo/admin', { isAdmin: true }),
     updateDraft: (pageId: string, data: any) =>

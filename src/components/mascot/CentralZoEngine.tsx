@@ -3,10 +3,10 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { useZoStudioStore } from '@/store/useZoStudioStore';
+import { useBookingStore } from '@/store/useBookingStore';
 import { ZoCharacter } from './ZoCharacter';
 import { cn } from '@/lib/utils';
 import { ZoDeviceBreakpoint } from '@/types/zoStudioTypes';
-import { getCachedZoImage } from '@/lib/zo/zoImageStorage';
 import { DEFAULT_ZO_PAGE_CONFIGS } from '@/data/defaultZoConfigs';
 
 // Subtle, gentle chime played ONLY when customer explicitly taps Zo (if enabled in Admin)
@@ -42,6 +42,7 @@ type ResponsiveDeviceTier = 'mobile' | 'tablet' | 'laptop' | 'desktop' | 'large'
 
 export function CentralZoEngine() {
   const pathname = usePathname();
+  const bookingStep = useBookingStore(state => state.currentStep);
   const isAdmin = pathname?.startsWith('/admin');
 
   const {
@@ -53,7 +54,6 @@ export function CentralZoEngine() {
   const [deviceTier, setDeviceTier] = useState<ResponsiveDeviceTier>('desktop');
   const [deviceBreakpoint, setDeviceBreakpoint] = useState<ZoDeviceBreakpoint>('desktop');
   const [mounted, setMounted] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [currentSearch, setCurrentSearch] = useState('');
 
   // Page-specific speech bubble visibility state.
@@ -107,16 +107,12 @@ export function CentralZoEngine() {
     useZoStudioStore.getState().syncFromBackend?.().catch(() => {});
 
     // Instant cross-tab & admin sync event
-    const handleSync = async () => {
-      try {
-        await useZoStudioStore.persist?.rehydrate?.();
-        await useZoStudioStore.getState().syncFromBackend?.();
-      } catch {}
-      setRefreshKey((k) => k + 1);
+    const handleSync = () => {
+      void useZoStudioStore.getState().syncFromBackend();
     };
 
     window.addEventListener('cleanzo-zo-updated', handleSync);
-    window.addEventListener('storage', handleSync);
+    window.addEventListener('focus', handleSync);
 
     let bc: BroadcastChannel | null = null;
     try {
@@ -127,7 +123,7 @@ export function CentralZoEngine() {
     return () => {
       window.removeEventListener('resize', updateDevice);
       window.removeEventListener('cleanzo-zo-updated', handleSync);
-      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('focus', handleSync);
       if (bc) {
         try {
           bc.close();
@@ -138,8 +134,10 @@ export function CentralZoEngine() {
 
   // Current page config - dynamically resolved per pathname & query
   const pageConfig = useMemo(() => {
-    return getActivePageConfig(pathname || '/', currentSearch);
-  }, [pathname, currentSearch, getActivePageConfig, publishedConfigs, refreshKey]);
+    const stepConfig = publishedConfigs[`booking-step-${bookingStep}`];
+    const search = pathname === '/booking' && stepConfig?.publishedAt ? `?step=${bookingStep}` : currentSearch;
+    return getActivePageConfig(pathname || '/', search);
+  }, [pathname, currentSearch, bookingStep, getActivePageConfig, publishedConfigs]);
 
   // Determine if this page has an enabled message and valid text
   const fallbackMessageText = 'أهلاً بك في Cleanzo! كيف يمكنني مساعدتك؟';
@@ -338,7 +336,7 @@ export function CentralZoEngine() {
         className="relative pointer-events-auto"
       >
         <ZoCharacter
-          key={`zo-engine-${pageConfig.pageId}-${refreshKey}-${pageConfig.character.customImage || 'default'}`}
+          key={`zo-engine-${pageConfig.pageId}-${pageConfig.character.versionTimestamp ?? ''}-${pageConfig.character.customImage || 'default'}`}
           expression={expression}
           pose={pose}
           animation={animation}
@@ -364,7 +362,6 @@ export function CentralZoEngine() {
               const raw =
                 pageConfig.character.originalImageUrl ||
                 pageConfig.character.customImage ||
-                getCachedZoImage(`zo_img_${pageConfig.pageId}`) ||
                 '/brand/zo/zo-approved.png';
               if (raw && raw.startsWith('/uploads') && pageConfig.character.versionTimestamp) {
                 return `${raw}?v=${pageConfig.character.versionTimestamp}`;

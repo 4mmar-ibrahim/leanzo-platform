@@ -116,10 +116,18 @@ const TRIGGER_EVENT_TYPES: { id: ZoTriggerEventType; nameAr: string; nameEn: str
   { id: 'button_click', nameAr: 'عند الضغط على زر تفاعلي', nameEn: 'On Button Click' },
 ];
 
+function notifyZoPublished() {
+  window.dispatchEvent(new Event('cleanzo-zo-updated'));
+  try {
+    const channel = new BroadcastChannel('cleanzo_zo_channel');
+    channel.postMessage({ type: 'PUBLISHED_ZO' });
+    channel.close();
+  } catch {}
+}
+
 export default function ZoStudioPage() {
   const {
     draftConfigs,
-    publishedConfigs,
     activeStudioPageId,
     dirtyPages,
     selectStudioPage,
@@ -131,10 +139,6 @@ export default function ZoStudioPage() {
     addDraftTrigger,
     updateDraftTrigger,
     removeDraftTrigger,
-    saveDraft,
-    publishPage,
-    publishAll,
-    applyCharacterToAllPages,
     resetPage,
     duplicateConfig,
   } = useZoStudioStore();
@@ -174,6 +178,15 @@ export default function ZoStudioPage() {
   const [bgMode, setBgMode] = useState<'transparent' | 'original' | 'dark' | 'light'>('transparent');
   const [isMediaLibraryOpen, setIsMediaLibraryOpen] = useState(false);
 
+  const publishConfig = async (pageId: string) => {
+    const config = useZoStudioStore.getState().draftConfigs[pageId];
+    if (!config) throw new Error('إعدادات الصفحة غير موجودة');
+    await cleanzoApi.zo.updateDraft(pageId, config);
+    const published = await cleanzoApi.zo.publishPage(pageId);
+    useZoStudioStore.getState().acceptPublishedConfigs({ [pageId]: published });
+    notifyZoPublished();
+  };
+
   const handleSelectFromLibrary = async (item: MediaItem) => {
     updateDraftCharacter(activeStudioPageId, {
       customImage: item.url,
@@ -186,35 +199,17 @@ export default function ZoStudioPage() {
       versionTimestamp: Date.now(),
       renderMode: 'live_2d_character',
     });
-
-    // Auto-save and auto-publish so the website immediately updates without waiting!
-    saveDraft(activeStudioPageId);
-    publishPage(activeStudioPageId);
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('cleanzo-zo-updated'));
-      try {
-        const bc = new BroadcastChannel('cleanzo_zo_channel');
-        bc.postMessage({ type: 'SYNC_ZO', pageId: activeStudioPageId });
-        bc.close();
-      } catch {}
-    }
-
-    // Sync to backend API
     try {
-      const freshConfig = useZoStudioStore.getState().draftConfigs[activeStudioPageId];
-      if (freshConfig) {
-        await cleanzoApi.admin.updateZoDraft(activeStudioPageId, freshConfig);
-        await cleanzoApi.admin.publishZoPage(activeStudioPageId);
-      }
-    } catch (apiErr) {
-      console.warn('[ZoStudio] Backend sync notice:', apiErr);
+      await publishConfig(activeStudioPageId);
+      toast.success('تم نشر صورة زو للصفحة');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'تعذر نشر صورة زو');
     }
-
-    toast.success(`تم تعيين "${item.originalName}" وتطبيقها فوراً على الموقع الحي! 🚀`);
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
 
     if (file.size > 25 * 1024 * 1024) {
@@ -222,37 +217,16 @@ export default function ZoStudioPage() {
       return;
     }
 
-    const toastId = toast.loading('جاري حفظ الصورة وتطبيقها مباشرة على الموقع...');
-
+    const toastId = toast.loading('جاري رفع صورة زو ونشرها...');
     try {
-      // 1. Extract genuine original dimensions without altering a single pixel
       const details = await getOriginalImageDetails(file);
+      URL.revokeObjectURL(details.url);
+      const uploaded = await cleanzoApi.media.upload(file);
+      if (!uploaded?.url) throw new Error('السيرفر لم يرجع رابط الصورة');
 
-      // 2. Upload to backend media storage (preserves exact bytes on disk)
-      let finalUrl = '';
-      try {
-        const uploaded = await cleanzoApi.media.upload(file);
-        if (uploaded?.url) {
-          finalUrl = uploaded.url;
-        }
-      } catch (uploadErr) {
-        console.warn('[ZoStudio] Direct media upload fallback to data URL:', uploadErr);
-      }
-
-      // If backend upload was offline, read raw data URL directly
-      if (!finalUrl) {
-        finalUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-      }
-
-      // 3. Update character draft with 100% original metadata
       updateDraftCharacter(activeStudioPageId, {
-        customImage: finalUrl,
-        originalImageUrl: finalUrl,
+        customImage: uploaded.url,
+        originalImageUrl: uploaded.url,
         originalFilename: file.name,
         mimeType: file.type,
         width: details.width,
@@ -262,37 +236,10 @@ export default function ZoStudioPage() {
         renderMode: 'live_2d_character',
       });
 
-      // 4. Auto-save and auto-publish so the website immediately updates without waiting!
-      saveDraft(activeStudioPageId);
-      publishPage(activeStudioPageId);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('cleanzo-zo-updated'));
-        try {
-          const bc = new BroadcastChannel('cleanzo_zo_channel');
-          bc.postMessage({ type: 'SYNC_ZO', pageId: activeStudioPageId });
-          bc.close();
-        } catch {}
-      }
-
-      // 5. Sync to backend API
-      try {
-        const freshConfig = useZoStudioStore.getState().draftConfigs[activeStudioPageId];
-        if (freshConfig) {
-          await cleanzoApi.admin.updateZoDraft(activeStudioPageId, freshConfig);
-          await cleanzoApi.admin.publishZoPage(activeStudioPageId);
-        }
-      } catch (apiErr) {
-        console.warn('[ZoStudio] Backend sync notice:', apiErr);
-      }
-
-      toast.dismiss(toastId);
-      toast.success(
-        `تم حفظ صورة زو وتطبيقها فوراً على الموقع (${details.width} × ${details.height})! 🚀`
-      );
-    } catch (err: any) {
-      toast.dismiss(toastId);
-      console.error('[ZoStudio] Upload failed:', err);
-      toast.error('حدث خطأ أثناء حفظ الصورة، يرجى المحاولة مرة أخرى');
+      await publishConfig(activeStudioPageId);
+      toast.success('تم نشر صورة زو للصفحة', { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'تعذر رفع صورة زو أو نشرها', { id: toastId });
     }
   };
 
@@ -301,33 +248,22 @@ export default function ZoStudioPage() {
       customImage: undefined,
       customImageName: undefined,
       originalImageUrl: undefined,
+      originalFilename: undefined,
+      mimeType: undefined,
+      width: undefined,
+      height: undefined,
+      fileSize: undefined,
       renderMode: '3d_procedural',
       versionTimestamp: Date.now(),
     });
-    saveDraft(activeStudioPageId);
-    publishPage(activeStudioPageId);
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('cleanzo-zo-updated'));
-      try {
-        const bc = new BroadcastChannel('cleanzo_zo_channel');
-        bc.postMessage({ type: 'SYNC_ZO', pageId: activeStudioPageId });
-        bc.close();
-      } catch {}
-    }
     try {
-      const freshConfig = useZoStudioStore.getState().draftConfigs[activeStudioPageId];
-      if (freshConfig) {
-        await cleanzoApi.admin.updateZoDraft(activeStudioPageId, freshConfig);
-        await cleanzoApi.admin.publishZoPage(activeStudioPageId);
-      }
-    } catch (apiErr) {
-      console.warn('[ZoStudio] Backend sync notice:', apiErr);
+      await publishConfig(activeStudioPageId);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      lastUploadedFileRef.current = null;
+      toast.success('تمت استعادة صورة زو الافتراضية للصفحة');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'تعذر استعادة صورة زو الافتراضية');
     }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-    lastUploadedFileRef.current = null;
-    toast.success('تمت استعادة مجسم زو الأصلي وتطبيقه على الموقع الحي');
   };
 
   // Filtered page list
@@ -342,66 +278,36 @@ export default function ZoStudioPage() {
     });
   }, [searchQuery, selectedCategory]);
 
-  // Save & Apply Live directly to website
   const handleSaveAndPublish = async () => {
     try {
-      saveDraft(activeStudioPageId);
-      publishPage(activeStudioPageId);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('cleanzo-zo-updated'));
-        try {
-          const bc = new BroadcastChannel('cleanzo_zo_channel');
-          bc.postMessage({ type: 'SYNC_ZO', pageId: activeStudioPageId });
-          bc.close();
-        } catch {}
-      }
-      const freshConfig = useZoStudioStore.getState().draftConfigs[activeStudioPageId] || activeConfig;
-      // Sync to backend API in sequential order to guarantee draft is saved before publishing
-      try {
-        await cleanzoApi.admin.updateZoDraft(activeStudioPageId, freshConfig);
-        await cleanzoApi.admin.publishZoPage(activeStudioPageId);
-      } catch (apiErr) {
-        console.warn('[ZoStudio] Backend sync notice:', apiErr);
-      }
-      toast.success(`تم حفظ وتطبيق إعدادات زو لصفحة (${freshConfig.pageNameAr || activeConfig.pageNameAr}) مباشرة على الموقع! 🚀`);
+      await publishConfig(activeStudioPageId);
+      toast.success('تم نشر إعدادات زو للصفحة');
     } catch (err) {
-      console.error(err);
-      toast.error('حدث خطأ أثناء حفظ الإعدادات');
+      toast.error(err instanceof Error ? err.message : 'تعذر نشر إعدادات زو');
     }
   };
 
   const handlePublishAll = async () => {
     try {
-      applyCharacterToAllPages(activeStudioPageId);
-      publishAll(activeStudioPageId);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('cleanzo-zo-updated'));
-        try {
-          const bc = new BroadcastChannel('cleanzo_zo_channel');
-          bc.postMessage({ type: 'SYNC_ZO_ALL', pageId: activeStudioPageId });
-          bc.close();
-        } catch {}
-      }
-      const allPub = useZoStudioStore.getState().publishedConfigs;
-      const activeChar = allPub[activeStudioPageId]?.character;
-      // Sync to backend API with full payload
-      try {
-        await cleanzoApi.admin.publishAllZoPages({ character: activeChar, configs: allPub });
-      } catch (err) {
-        console.warn('[ZoStudio] publishAll API notice:', err);
-      }
-      toast.success('تم تطبيق ونشر صورة وإعدادات زو فورياً لجميع صفحات الموقع! 🚀');
+      const { draftConfigs } = useZoStudioStore.getState();
+      const character = (draftConfigs[activeStudioPageId] || activeConfig).character;
+      const configs = Object.fromEntries(Object.entries(DEFAULT_ZO_PAGE_CONFIGS).map(([pageId, defaults]) => [
+        pageId,
+        { ...(draftConfigs[pageId] || defaults), character },
+      ]));
+      const published = await cleanzoApi.zo.publishAll({ character, configs });
+      useZoStudioStore.getState().acceptPublishedConfigs(published);
+      notifyZoPublished();
+      toast.success('تم نشر شخصية زو لجميع الصفحات');
     } catch (err) {
-      console.error(err);
-      toast.error('حدث خطأ أثناء نشر الإعدادات لجميع الصفحات');
+      toast.error(err instanceof Error ? err.message : 'تعذر نشر إعدادات زو لجميع الصفحات');
     }
   };
 
-  const handleReset = () => {
-    if (confirm(`هل أنت متأكد من استعادة الإعدادات الافتراضية لصفحة (${activeConfig.pageNameAr}) فقط؟`)) {
-      resetPage(activeStudioPageId);
-      toast.info('تمت استعادة الإعدادات الافتراضية لهذه الصفحة');
-    }
+  const handleReset = async () => {
+    if (!confirm(`هل أنت متأكد من استعادة الإعدادات الافتراضية لصفحة (${activeConfig.pageNameAr}) فقط؟`)) return;
+    resetPage(activeStudioPageId);
+    await handleSaveAndPublish();
   };
 
   const handleDuplicate = () => {

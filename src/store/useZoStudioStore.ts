@@ -58,10 +58,7 @@ interface ZoStudioState {
   removeDraftTrigger: (pageId: string, triggerId: string) => void;
 
   // Lifecycle
-  saveDraft: (pageId: string) => void;
-  publishPage: (pageId: string) => void;
-  publishAll: (sourcePageId?: string) => void;
-  applyCharacterToAllPages: (sourcePageId?: string) => void;
+  acceptPublishedConfigs: (configs: Record<string, ZoPageConfig>) => void;
   syncFromBackend: () => Promise<void>;
   resetPage: (pageId: string) => void;
   duplicateConfig: (sourcePageId: string, targetPageId: string) => void;
@@ -138,8 +135,8 @@ export function resolvePageIdFromPath(pathname: string, search?: string): string
   if (clean === '/reviews' || clean.startsWith('/reviews/')) return 'gallery';
 
   // 5. Auth Pages
-  if (clean === '/login' || clean === '/auth/login' || clean.startsWith('/forgot-password') || clean.startsWith('/auth/')) return 'login';
   if (clean === '/register' || clean === '/auth/register') return 'register';
+  if (clean === '/login' || clean.startsWith('/forgot-password') || clean.startsWith('/auth/')) return 'login';
 
   // 6. Tracking
   if (clean === '/track' || clean.startsWith('/track/') || clean.startsWith('/tracking')) return 'tracking';
@@ -322,26 +319,13 @@ export const useZoStudioStore = create<ZoStudioState>()(
               ...state.draftConfigs,
               [pageId]: updated,
             },
-            publishedConfigs: {
-              ...state.publishedConfigs,
-              [pageId]: updated,
-            },
             dirtyPages: {
               ...state.dirtyPages,
-              [pageId]: false,
+              [pageId]: true,
             },
           };
         });
 
-        // Instant cross-tab & website event broadcast
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new Event('cleanzo-zo-updated'));
-          try {
-            const bc = new BroadcastChannel('cleanzo_zo_channel');
-            bc.postMessage({ type: 'SYNC_ZO', pageId });
-            bc.close();
-          } catch {}
-        }
       },
 
       updateDraftCharacter: (pageId, updates) => {
@@ -417,148 +401,24 @@ export const useZoStudioStore = create<ZoStudioState>()(
       },
 
       // Save Draft & Automatically Update Published for Immediate Live Website Reflection
-      saveDraft: (pageId) => {
-        set((state) => {
-          const draft = state.draftConfigs[pageId] || DEFAULT_ZO_PAGE_CONFIGS[pageId];
-          const published: ZoPageConfig = {
-            ...draft,
-            publishedAt: new Date().toISOString(),
-          };
-
-          return {
-            publishedConfigs: {
-              ...state.publishedConfigs,
-              [pageId]: published,
-            },
-            dirtyPages: {
-              ...state.dirtyPages,
-              [pageId]: false,
-            },
-          };
-        });
-      },
-
-      publishPage: (pageId) => {
-        set((state) => {
-          const draft = state.draftConfigs[pageId] || DEFAULT_ZO_PAGE_CONFIGS[pageId];
-          const published: ZoPageConfig = {
-            ...draft,
-            publishedAt: new Date().toISOString(),
-          };
-
-          return {
-            publishedConfigs: {
-              ...state.publishedConfigs,
-              [pageId]: published,
-            },
-            dirtyPages: {
-              ...state.dirtyPages,
-              [pageId]: false,
-            },
-          };
-        });
-      },
-
-      publishAll: () => {
-        const now = new Date().toISOString();
-
-        set((state) => {
-          const newDrafts = { ...state.draftConfigs };
-          const newPublished: Record<string, ZoPageConfig> = {};
-
-          Object.keys(DEFAULT_ZO_PAGE_CONFIGS).forEach((k) => {
-            const baseDraft = newDrafts[k] || state.publishedConfigs[k] || DEFAULT_ZO_PAGE_CONFIGS[k];
-            const updatedDraft = {
-              ...baseDraft,
-              updatedAt: now,
-            };
-            newDrafts[k] = updatedDraft;
-
-            newPublished[k] = {
-              ...updatedDraft,
-              publishedAt: now,
-            };
-          });
-
-          return {
-            draftConfigs: newDrafts,
-            publishedConfigs: newPublished,
-            dirtyPages: {},
-          };
-        });
-      },
-
-      applyCharacterToAllPages: (sourcePageId?: string) => {
-        const activeId = sourcePageId || get().activeStudioPageId || 'home';
-        const sourceCfg = get().draftConfigs[activeId] || get().publishedConfigs[activeId] || DEFAULT_ZO_PAGE_CONFIGS[activeId];
-        if (!sourceCfg || !sourceCfg.character) return;
-
-        const char = { ...sourceCfg.character };
-        const now = new Date().toISOString();
-
-        if (char.customImage && char.customImage.startsWith('data:')) {
-          saveZoImage('zo_master_custom_image', char.customImage);
-        }
-
-        set((state) => {
-          const newDrafts = { ...state.draftConfigs };
-          const newPublished = { ...state.publishedConfigs };
-
-          Object.keys(DEFAULT_ZO_PAGE_CONFIGS).forEach((pageKey) => {
-            const currentDraft = newDrafts[pageKey] || DEFAULT_ZO_PAGE_CONFIGS[pageKey];
-            newDrafts[pageKey] = {
-              ...currentDraft,
-              character: { ...char },
-              updatedAt: now,
-            };
-
-            const currentPub = newPublished[pageKey] || currentDraft;
-            newPublished[pageKey] = {
-              ...currentPub,
-              character: { ...char },
-              publishedAt: now,
-            };
-          });
-
-          return {
-            draftConfigs: newDrafts,
-            publishedConfigs: newPublished,
-            dirtyPages: {},
-          };
-        });
+      acceptPublishedConfigs: (configs) => {
+        set((state) => ({
+          publishedConfigs: { ...state.publishedConfigs, ...configs },
+          draftConfigs: { ...state.draftConfigs, ...configs },
+          dirtyPages: { ...state.dirtyPages, ...Object.fromEntries(Object.keys(configs).map(pageId => [pageId, false])) },
+        }));
       },
 
       syncFromBackend: async () => {
         try {
-          const res = await cleanzoApi.zo.getPublishedConfigs();
-          if (res && typeof res === 'object' && Object.keys(res).length > 0) {
-            set((state) => {
-              const updatedPublished = { ...state.publishedConfigs };
-              const updatedDrafts = { ...state.draftConfigs };
-
-              for (const [key, val] of Object.entries(res)) {
-                if (val && typeof val === 'object') {
-                  updatedPublished[key] = {
-                    ...(DEFAULT_ZO_PAGE_CONFIGS[key] || {}),
-                    ...(updatedPublished[key] || {}),
-                    ...(val as any),
-                  };
-                  if (!updatedDrafts[key]?.character?.customImage) {
-                    updatedDrafts[key] = {
-                      ...(DEFAULT_ZO_PAGE_CONFIGS[key] || {}),
-                      ...(updatedDrafts[key] || {}),
-                      ...(val as any),
-                    };
-                  }
-                }
-              }
-
-              return {
-                publishedConfigs: updatedPublished,
-                draftConfigs: updatedDrafts,
-              };
-            });
-          }
+          const configs = await cleanzoApi.zo.getPublishedConfigs();
+          set((state) => ({
+            publishedConfigs: { ...DEFAULT_ZO_PAGE_CONFIGS, ...configs },
+            draftConfigs: {
+              ...state.draftConfigs,
+              ...Object.fromEntries(Object.entries(configs).filter(([pageId]) => !state.dirtyPages[pageId])),
+            },
+          }));
         } catch {}
       },
 
@@ -570,13 +430,9 @@ export const useZoStudioStore = create<ZoStudioState>()(
             ...state.draftConfigs,
             [pageId]: defaultCfg,
           },
-          publishedConfigs: {
-            ...state.publishedConfigs,
-            [pageId]: defaultCfg,
-          },
           dirtyPages: {
             ...state.dirtyPages,
-            [pageId]: false,
+            [pageId]: true,
           },
         }));
       },
@@ -611,21 +467,14 @@ export const useZoStudioStore = create<ZoStudioState>()(
       getActivePageConfig: (pathname, search) => {
         const pageId = resolvePageIdFromPath(pathname, search);
         const configs = get().publishedConfigs || {};
-        const drafts = get().draftConfigs || {};
-
-        const draftConfig = drafts[pageId];
         const publishedConfig = configs[pageId];
         const defaultConfig = DEFAULT_ZO_PAGE_CONFIGS[pageId] || DEFAULT_ZO_PAGE_CONFIGS.home;
 
-        const base = publishedConfig || draftConfig || defaultConfig;
+        const base = publishedConfig || defaultConfig;
 
-        // Resolve freshest custom image across draft, published, and cached image storage
         const bestImage =
-          draftConfig?.character?.originalImageUrl ||
-          draftConfig?.character?.customImage ||
           publishedConfig?.character?.originalImageUrl ||
           publishedConfig?.character?.customImage ||
-          getCachedZoImage(`zo_img_${pageId}`) ||
           defaultConfig?.character?.originalImageUrl ||
           defaultConfig?.character?.customImage ||
           '/brand/zo/zo-approved.png';
@@ -633,6 +482,11 @@ export const useZoStudioStore = create<ZoStudioState>()(
         const config: ZoPageConfig = {
           ...defaultConfig,
           ...base,
+          desktop: { ...defaultConfig.desktop, ...base.desktop },
+          tablet: { ...defaultConfig.tablet, ...base.tablet },
+          mobile: { ...defaultConfig.mobile, ...base.mobile },
+          message: { ...defaultConfig.message, ...base.message },
+          behavior: { ...defaultConfig.behavior, ...base.behavior },
           character: {
             ...defaultConfig.character,
             ...(base.character || {}),
@@ -738,9 +592,14 @@ export const useZoStudioStore = create<ZoStudioState>()(
     {
       name: 'cleanzo-zo-studio-storage-v2',
       storage: safeLocalStorage as any,
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted as Partial<ZoStudioState>),
+        publishedConfigs: current.publishedConfigs,
+      }),
       partialize: (state) => ({
-        publishedConfigs: state.publishedConfigs,
         draftConfigs: state.draftConfigs,
+        dirtyPages: state.dirtyPages,
         userMuted: state.userMuted,
         userHidden: state.userHidden,
       }),
