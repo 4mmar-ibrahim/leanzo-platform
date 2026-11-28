@@ -11,6 +11,8 @@ import { Service } from '../src/models/Service.js';
 import { AuditLog } from '../src/models/AuditLog.js';
 import { generateAdminToken } from '../src/utils/jwt.js';
 import { backupsDirectory, uploadsDirectory } from '../src/config/storage.js';
+import prisma from '../src/config/prisma.js';
+import { assertSlotAvailability, getAvailableSlots } from '../src/services/availabilityService.js';
 
 let server: http.Server;
 let baseUrl: string;
@@ -151,6 +153,31 @@ async function runBackupSystemTests() {
       });
     }
 
+    const serviceId = testService.id;
+    const date = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10);
+    const orderId = 'backup-test-booking';
+    const visitId = 'backup-test-subscription-visit';
+    const customer = { customerName: 'عميل تجريبي', customerPhone: '01012345678', serviceId, address: {} };
+    const serviceSnapshot = { id: serviceId, category: 'car', title: testService.title };
+    const appointment = {
+      date, serviceSnapshot, status: 'confirmed',
+      serviceDurationMinutes: 60, travelTimeMinutes: 0, totalOccupiedMinutes: 60, duration: 60,
+    };
+    await prisma.booking.create({ data: {
+      ...customer, ...appointment, id: orderId, category: 'car', time: '10:00',
+      timeSlotStart: '10:00', scheduledStart: '10:00', scheduledEnd: '11:00', basePrice: 350, finalPrice: 350,
+    } });
+    const plan = await prisma.subscriptionPlan.create({ data: { name: 'Backup test plan', serviceId, price: 350, visitCount: 1 } });
+    const subscription = await prisma.subscription.create({ data: {
+      ...customer, id: 'backup-test-subscription', planId: plan.id, planSnapshot: { id: plan.id },
+      serviceSnapshot, totalVisits: 1, remainingVisits: 1, price: 350,
+      startDate: new Date(date), endDate: new Date(new Date(date).getTime() + 86_400_000),
+    } });
+    await prisma.subscriptionVisit.create({ data: {
+      ...customer, ...appointment, id: visitId, subscriptionId: subscription.id, visitIndex: 1, time: '12:00',
+      timeSlotStart: '12:00', scheduledStart: '12:00', scheduledEnd: '13:00',
+    } });
+
     const sampleName = `backup-test..${crypto.randomUUID()}.png`;
     const samplePath = path.join(uploadsDirectory, 'images', sampleName);
     const sampleBytes = Buffer.from('Test image contents');
@@ -196,6 +223,8 @@ async function runBackupSystemTests() {
     assert(manifest.tables.length >= 20, `manifest.json contains system tables (found ${manifest.tables.length})`);
     assert(!!zip.getEntry('database/services.json'), 'ZIP contains database/services.json');
     assert(!!zip.getEntry('database/admin_users.json'), 'ZIP contains database/admin_users.json');
+    assert(!!zip.getEntry('database/bookings.json') && !!zip.getEntry('database/subscription_visits.json'),
+      'ZIP contains customer bookings and subscription visits');
 
     console.log('\n----------------------------------------------------------------');
     console.log('TEST 3: Audit Log Integration for Backup Creation');
@@ -246,10 +275,28 @@ async function runBackupSystemTests() {
     assert(mutated?.price === 9999, 'Service modified to test restore recovery');
 
     // Perform restore using backupId
+    await prisma.booking.delete({ where: { id: orderId } });
+    await prisma.subscriptionVisit.delete({ where: { id: visitId } });
+    for (const timeStr of ['10:00', '12:00']) {
+      await assertSlotAvailability({ dateStr: date, timeStr, serviceId, customDuration: 30 });
+    }
     fs.writeFileSync(samplePath, 'Changed after backup');
     const restoreRes = await makeRequest('POST', `/admin/backups/${backupId}/restore`, {}, ownerToken);
     assert(restoreRes.status === 200, `POST /admin/backups/:id/restore returns HTTP 200 (got ${restoreRes.status})`);
     assert(restoreRes.body.success === true, 'Restore response indicates success: true');
+    const restoredOrder = await prisma.booking.findUniqueOrThrow({ where: { id: orderId } });
+    const restoredVisit = await prisma.subscriptionVisit.findUniqueOrThrow({ where: { id: visitId } });
+    assert(restoredOrder.customerPhone === customer.customerPhone && restoredOrder.scheduledStart === '10:00'
+      && restoredOrder.status === 'confirmed' && restoredVisit.scheduledStart === '12:00'
+      && restoredVisit.status === 'confirmed', 'Restore preserves customer details, appointment time and status');
+    const availability = await getAvailableSlots(date, serviceId, 30);
+    assert(availability.isDayAvailable && !availability.slots.some(slot => slot.start === '10:00' || slot.start === '12:00'),
+      'Availability hides the restored booking and subscription visit');
+    for (const timeStr of ['10:00', '12:00']) {
+      const [attempt] = await Promise.allSettled([assertSlotAvailability({ dateStr: date, timeStr, serviceId, customDuration: 30 })]);
+      assert(attempt.status === 'rejected' && attempt.reason.code === 'SLOT_UNAVAILABLE',
+        `Server rejects a new booking at restored time ${timeStr}`);
+    }
     assert(fs.readFileSync(samplePath).equals(sampleBytes), 'Saved restore replaces the media with the archived bytes');
     fs.unlinkSync(samplePath);
     assert(!!restoreRes.body.data?.preRestoreBackupId, `Pre-restore snapshot ID generated (${restoreRes.body.data?.preRestoreBackupId})`);
