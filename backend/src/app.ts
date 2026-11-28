@@ -34,7 +34,7 @@ import backupRoutes from './routes/backupRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
 import technicianRoutes from './routes/technicianRoutes.js';
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
-import path from 'path';
+import { uploadsDirectory } from './config/storage.js';
 
 export const app = express();
 
@@ -44,7 +44,7 @@ app.set('trust proxy', 1);
 import { sanitizeNoSql } from './middleware/sanitizationMiddleware.js';
 
 // Serve uploaded media files directly
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+app.use('/uploads', express.static(uploadsDirectory));
 
 // Security Middlewares
 app.use(

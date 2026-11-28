@@ -10,6 +10,7 @@ import { BackupRecord } from '../src/models/BackupRecord.js';
 import { Service } from '../src/models/Service.js';
 import { AuditLog } from '../src/models/AuditLog.js';
 import { generateAdminToken } from '../src/utils/jwt.js';
+import { backupsDirectory, uploadsDirectory } from '../src/config/storage.js';
 
 let server: http.Server;
 let baseUrl: string;
@@ -150,6 +151,10 @@ async function runBackupSystemTests() {
       });
     }
 
+    const sampleName = `backup-test..${crypto.randomUUID()}.png`;
+    const samplePath = path.join(uploadsDirectory, 'images', sampleName);
+    const sampleBytes = Buffer.from('Test image contents');
+    fs.writeFileSync(samplePath, sampleBytes, { flag: 'wx' });
     const createRes = await makeRequest(
       'POST',
       '/admin/backups',
@@ -172,8 +177,7 @@ async function runBackupSystemTests() {
     console.log('TEST 2: Physical Archive Verification on Disk & Manifest Inspection');
     console.log('----------------------------------------------------------------');
 
-    const backupStorageDir = path.join(process.cwd(), 'storage', 'backups');
-    const zipPath = path.join(backupStorageDir, filename);
+    const zipPath = path.join(backupsDirectory, filename);
 
     assert(fs.existsSync(zipPath), `ZIP archive file exists on disk at ${zipPath}`);
 
@@ -182,12 +186,14 @@ async function runBackupSystemTests() {
     assert(createRes.body.data.checksum === expectedChecksum, `SHA-256 checksum matches calculated file hash (${expectedChecksum.slice(0, 16)}...)`);
 
     const zip = new AdmZip(zipPath);
+    assert(zip.getEntry(`media/uploads/images/${sampleName}`)?.getData().equals(sampleBytes) === true,
+      'ZIP contains the uploaded file with its original contents');
     const manifestEntry = zip.getEntry('manifest.json');
     assert(!!manifestEntry, 'ZIP contains manifest.json in root');
 
     const manifest = JSON.parse(manifestEntry!.getData().toString('utf-8'));
     assert(manifest.backupId === backupId, 'manifest.json references correct backupId');
-    assert(manifest.totalCollections >= 20, `manifest.json contains all system collections (found ${manifest.totalCollections})`);
+    assert(manifest.tables.length >= 20, `manifest.json contains system tables (found ${manifest.tables.length})`);
     assert(!!zip.getEntry('database/services.json'), 'ZIP contains database/services.json');
     assert(!!zip.getEntry('database/admin_users.json'), 'ZIP contains database/admin_users.json');
 
@@ -240,9 +246,12 @@ async function runBackupSystemTests() {
     assert(mutated?.price === 9999, 'Service modified to test restore recovery');
 
     // Perform restore using backupId
+    fs.writeFileSync(samplePath, 'Changed after backup');
     const restoreRes = await makeRequest('POST', `/admin/backups/${backupId}/restore`, {}, ownerToken);
     assert(restoreRes.status === 200, `POST /admin/backups/:id/restore returns HTTP 200 (got ${restoreRes.status})`);
     assert(restoreRes.body.success === true, 'Restore response indicates success: true');
+    assert(fs.readFileSync(samplePath).equals(sampleBytes), 'Saved restore replaces the media with the archived bytes');
+    fs.unlinkSync(samplePath);
     assert(!!restoreRes.body.data?.preRestoreBackupId, `Pre-restore snapshot ID generated (${restoreRes.body.data?.preRestoreBackupId})`);
 
     // Verify service was restored back to 350 and original title

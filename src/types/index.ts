@@ -608,6 +608,7 @@ export type BackupType = 'full' | 'database_only' | 'pre_restore';
 
 export interface BackupRecord {
   id: string;
+  fileAvailable?: boolean;
   _id?: string;
   filename: string;
   sizeBytes: number;

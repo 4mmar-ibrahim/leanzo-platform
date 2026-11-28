@@ -6,9 +6,9 @@ import prisma from '../config/prisma.js';
 import { BackupRecord, IBackupRecord, BackupType } from '../models/BackupRecord.js';
 import { auditService } from './auditService.js';
 
-const BACKUP_STORAGE_DIR = path.join(process.cwd(), 'storage', 'backups');
+import { backupsDirectory as BACKUP_STORAGE_DIR, uploadsDirectory as UPLOAD_ROOT_DIR } from '../config/storage.js';
+
 const TEMP_STORAGE_DIR = path.join(process.cwd(), 'storage', 'temp');
-const UPLOAD_ROOT_DIR = path.join(process.cwd(), 'uploads');
 
 // Resolve public brand directory (Frontend mascot and brand assets)
 const BRAND_DIR = path.resolve(process.cwd(), '..', 'public', 'brand');
@@ -226,6 +226,7 @@ class BackupService {
       if (!fs.existsSync(dirPath)) return;
       const items = fs.readdirSync(dirPath);
       for (const item of items) {
+        if (item.startsWith('.')) continue;
         const fullPath = path.join(dirPath, item);
         try {
           const stat = fs.statSync(fullPath);
@@ -383,10 +384,8 @@ class BackupService {
 
           zip.addFile(zipPath, fileBuf);
           checksums[zipPath] = crypto.createHash('sha256').update(fileBuf).digest('hex');
-        } catch (tblErr: any) {
-          console.warn(`[BackupService] Warning: Failed to dump table ${table}:`, tblErr.message);
-          tableCounts[table] = 0;
-          databaseDump[table] = [];
+        } catch (tblErr) {
+          throw new Error(`تعذر إضافة جدول ${table} إلى النسخة الاحتياطية`, { cause: tblErr });
         }
       }
 
@@ -405,22 +404,16 @@ class BackupService {
       checksums['database_metadata.json'] = crypto.createHash('sha256').update(dbMetaBuf).digest('hex');
 
       // 4. Collect & Include Media Files
-      let mediaInventory: MediaFileInventoryItem[] = [];
+      const mediaInventory: MediaFileInventoryItem[] = [];
       let mediaTotalSizeBytes = 0;
 
       if (includeMedia) {
-        mediaInventory = await this.discoverMediaFiles(databaseDump);
-        for (const item of mediaInventory) {
-          try {
-            if (fs.existsSync(item.systemPath)) {
-              const fileData = fs.readFileSync(item.systemPath);
-              zip.addFile(item.logicalPath, fileData);
-              checksums[item.logicalPath] = crypto.createHash('sha256').update(fileData).digest('hex');
-              mediaTotalSizeBytes += item.sizeBytes;
-            }
-          } catch (fileErr: any) {
-            console.warn(`[BackupService] Warning: Could not add media file ${item.logicalPath}:`, fileErr.message);
-          }
+        for (const item of await this.discoverMediaFiles(databaseDump)) {
+          const fileData = fs.readFileSync(item.systemPath);
+          zip.addFile(item.logicalPath, fileData);
+          checksums[item.logicalPath] = crypto.createHash('sha256').update(fileData).digest('hex');
+          mediaTotalSizeBytes += fileData.length;
+          mediaInventory.push({ ...item, sizeBytes: fileData.length });
         }
       }
 
@@ -553,7 +546,7 @@ class BackupService {
     for (const entry of entries) {
       const name = entry.entryName;
       const normalized = path.normalize(name).replace(/\\/g, '/');
-      if (normalized.startsWith('..') || path.isAbsolute(normalized) || name.includes('..') || name.startsWith('/')) {
+      if (path.posix.isAbsolute(normalized) || path.win32.isAbsolute(name) || name.includes('\\') || name.split('/').includes('..')) {
         throw new Error(`Security Violation: مسار مشبوه داخل الأرشيف (${name})`);
       }
     }
@@ -581,6 +574,17 @@ class BackupService {
     if (checksumsEntry) {
       try {
         const checksums = JSON.parse(checksumsEntry.getData().toString('utf-8'));
+        const requiredFiles = [
+          'manifest.json',
+          ...(Array.isArray(manifest.tables) ? manifest.tables.map((table: string) => `database/${table}.json`) : []),
+          ...entries.filter((entry) => !entry.isDirectory && entry.entryName.startsWith('media/')).map((entry) => entry.entryName),
+        ];
+        for (const filename of requiredFiles) {
+          if (!Object.hasOwn(checksums, filename)) {
+            issues.push(`بصمة التحقق مفقودة للملف: ${filename}`);
+            checksumsValid = false;
+          }
+        }
         for (const [filePath, expectedHash] of Object.entries(checksums)) {
           if (filePath === 'checksums.json') continue;
           const entry = zip.getEntry(filePath);
@@ -619,7 +623,10 @@ class BackupService {
     }
 
     // 5. Build table comparison
-    const backupTables = manifest.tables || [];
+    const backupTables: string[] = Array.isArray(manifest.tables) ? manifest.tables : [];
+    if (!backupTables.length || backupTables.some((table) => typeof table !== 'string')) {
+      issues.push('قائمة جداول قاعدة البيانات في النسخة الاحتياطية غير صالحة');
+    }
     const backupTableCounts = manifest.tableCounts || {};
     const tableComparison: Array<{ table: string; backupCount: number; currentCount: number }> = [];
 
@@ -661,7 +668,7 @@ class BackupService {
   ): Promise<BackupRestoreResult> {
     // Step 1: Pre-Validation
     const validation = await this.validateArchive(zipBufferOrPath);
-    if (!validation.checksumsValid && validation.issues.some((i) => i.includes('بصمة أمان غير متطابقة'))) {
+    if (!validation.isValid || !validation.checksumsValid) {
       throw new Error(`فشل التحقق الأمني: النسخة الاحتياطية تالفة أو تم التعديل عليها (${validation.issues.join(' | ')})`);
     }
 
@@ -678,7 +685,23 @@ class BackupService {
     const manifest = validation.manifest;
     const backupTableCounts = manifest.tableCounts || {};
 
+    const mediaChanges: Array<{ destination: string; staging: string; published: boolean; hadOriginal: boolean }> = [];
+    let restoreCommitted = false;
     try {
+      for (const entry of zip.getEntries()) {
+        if (entry.isDirectory) continue;
+        const root = entry.entryName.startsWith('media/uploads/') ? UPLOAD_ROOT_DIR
+          : entry.entryName.startsWith('media/brand/') ? BRAND_DIR : null;
+        if (!root) continue;
+        const destination = path.resolve(root, entry.entryName.split('/').slice(2).join('/'));
+        if (!destination.startsWith(root + path.sep)) throw new Error('مسار وسائط غير صالح داخل النسخة الاحتياطية');
+        const directory = path.dirname(destination);
+        await fs.promises.mkdir(directory, { recursive: true });
+        const staging = await fs.promises.mkdtemp(path.join(directory, '.restore-'));
+        mediaChanges.push({ destination, staging, published: false, hadOriginal: false });
+        await fs.promises.writeFile(path.join(staging, 'incoming'), entry.getData());
+      }
+
       // Step 3: Discover current DB foreign keys and dependency order
       const currentTables = await this.discoverDatabaseTables();
       const foreignKeys = await this.discoverForeignKeys();
@@ -691,11 +714,7 @@ class BackupService {
           // Preserving 'backup_records' so historical tracking is not erased
           const tablesToTruncate = deleteOrder.filter((t) => t !== 'backup_records');
           for (const tbl of tablesToTruncate) {
-            try {
-              await tx.$executeRawUnsafe(`TRUNCATE TABLE "${tbl}" CASCADE;`);
-            } catch (truncErr: any) {
-              console.warn(`[BackupService] Warning: Could not truncate ${tbl}:`, truncErr.message);
-            }
+            await tx.$executeRawUnsafe(`TRUNCATE TABLE "${tbl}" CASCADE;`);
           }
 
           // 4.2. Insert records in topological insert order (parents first)
@@ -722,35 +741,26 @@ class BackupService {
               }
             }
           }
+          for (const media of mediaChanges) {
+            try {
+              await fs.promises.rename(media.destination, path.join(media.staging, 'original'));
+              media.hadOriginal = true;
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+            }
+            await fs.promises.rename(path.join(media.staging, 'incoming'), media.destination);
+            media.published = true;
+          }
         },
         { timeout: 90000 }
       );
 
+      restoreCommitted = true;
       // Step 5: Resync PostgreSQL sequences
       await this.resyncAllSequences();
 
       // Step 6: Restore Media Files
-      let restoredMediaCount = 0;
-      const entries = zip.getEntries();
-      for (const entry of entries) {
-        if (entry.isDirectory) continue;
-
-        if (entry.entryName.startsWith('media/uploads/')) {
-          const relPath = entry.entryName.replace(/^media\/uploads\//, '');
-          const destPath = path.join(UPLOAD_ROOT_DIR, relPath);
-          const destDir = path.dirname(destPath);
-          if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-          fs.writeFileSync(destPath, entry.getData());
-          restoredMediaCount++;
-        } else if (entry.entryName.startsWith('media/brand/')) {
-          const relPath = entry.entryName.replace(/^media\/brand\//, '');
-          const destPath = path.join(BRAND_DIR, relPath);
-          const destDir = path.dirname(destPath);
-          if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-          fs.writeFileSync(destPath, entry.getData());
-          restoredMediaCount++;
-        }
-      }
+      const restoredMediaCount = mediaChanges.length;
 
       // Step 7: Complete Data Verification
       const tableVerification: Record<string, { backup: number; restored: number; match: boolean }> = {};
@@ -816,6 +826,19 @@ class BackupService {
       });
 
       throw restoreErr;
+    } finally {
+      for (const media of mediaChanges.reverse()) {
+        try {
+          if (!restoreCommitted && media.hadOriginal) {
+            await fs.promises.rename(path.join(media.staging, 'original'), media.destination);
+          } else if (!restoreCommitted && media.published) {
+            await fs.promises.unlink(media.destination);
+          }
+          await fs.promises.rm(media.staging, { recursive: true, force: true });
+        } catch (error) {
+          console.error('[BackupService] Failed to clean up restored media:', media.staging, error);
+        }
+      }
     }
   }
 
@@ -913,8 +936,12 @@ class BackupService {
   /**
    * Lists all registered backups sorted by creation date descending
    */
-  public async getBackupsList(): Promise<IBackupRecord[]> {
-    return BackupRecord.find().sort({ createdAt: -1 });
+  public async getBackupsList() {
+    const records = await BackupRecord.find().sort({ createdAt: -1 });
+    return records.map((record) => ({
+      ...record.toObject(),
+      fileAvailable: record.status === 'completed' && fs.existsSync(path.join(BACKUP_STORAGE_DIR, record.filename)),
+    }));
   }
 
   /**

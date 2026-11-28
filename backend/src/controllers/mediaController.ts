@@ -10,7 +10,7 @@ import { sendSuccess, sendError } from '../utils/responseHandler.js';
 import { AuthenticatedAdminRequest } from '../middleware/adminAuthMiddleware.js';
 
 // Setup directories for uploads
-const UPLOAD_ROOT = path.join(process.cwd(), 'uploads');
+import { uploadsDirectory as UPLOAD_ROOT } from '../config/storage.js';
 const IMAGES_DIR = path.join(UPLOAD_ROOT, 'images');
 const VIDEOS_DIR = path.join(UPLOAD_ROOT, 'videos');
 
@@ -84,7 +84,7 @@ export async function uploadDeviceMedia(req: AuthenticatedAdminRequest, res: Res
       width: validation.width,
       height: validation.height,
       source: 'device',
-      storagePath: path.relative(process.cwd(), filePath).replace(/\\/g, '/'),
+      storagePath: relativeUrl.slice(1),
       url: relativeUrl,
       isArchived: false,
       createdBy: req.admin?.username || 'admin',
@@ -182,7 +182,7 @@ export async function importUrlMedia(req: AuthenticatedAdminRequest, res: Respon
       width: validation.width,
       height: validation.height,
       source: 'url',
-      storagePath: path.relative(process.cwd(), filePath).replace(/\\/g, '/'),
+      storagePath: relativeUrl.slice(1),
       url: relativeUrl,
       isArchived: false,
       createdBy: req.admin?.username || 'admin',
@@ -301,8 +301,9 @@ export async function deleteMedia(req: AuthenticatedAdminRequest, res: Response)
     await media.save();
 
     // Optionally try to delete physical file if strictly archived
-    const fullPath = path.join(process.cwd(), media.storagePath);
-    if (fs.existsSync(fullPath)) {
+    const fullPath = path.resolve(UPLOAD_ROOT, media.storagePath.replace(/^uploads[\\/]/, ''));
+    const isStoredUpload = fullPath.startsWith(UPLOAD_ROOT + path.sep);
+    if (isStoredUpload && fs.existsSync(fullPath)) {
       try {
         await fs.promises.unlink(fullPath);
       } catch (unlinkErr) {

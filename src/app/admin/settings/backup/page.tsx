@@ -162,7 +162,8 @@ export default function AdminBackupSettingsPage() {
       });
 
       if (!response.ok) {
-        throw new Error('فشل تحميل الملف من السيرفر');
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.message || 'فشل تحميل الملف من السيرفر');
       }
 
       const blob = await response.blob();
@@ -994,8 +995,9 @@ export default function AdminBackupSettingsPage() {
                           {/* Direct Download to Device */}
                           <button
                             onClick={() => handleDirectDownload(b)}
+                            disabled={b.fileAvailable === false}
                             title="تنزيل الأرشيف المضغوط (ZIP) إلى جهازك"
-                            className="p-2 rounded-xl bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-500/20 transition-colors"
+                            className="p-2 rounded-xl bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-500/20 transition-colors disabled:opacity-40"
                           >
                             <Download className="w-3.5 h-3.5" />
                           </button>
@@ -1006,7 +1008,7 @@ export default function AdminBackupSettingsPage() {
                               setSavedRestoreTarget(b);
                               setSavedConfirmText('');
                             }}
-                            disabled={!isOwner}
+                            disabled={!isOwner || b.fileAvailable === false}
                             title={isOwner ? 'استعادة النظام من هذه النسخة' : 'تتطلب صلاحية المالك'}
                             className="px-2.5 py-1.5 rounded-xl border border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 font-bold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-40"
                           >
@@ -1024,6 +1026,9 @@ export default function AdminBackupSettingsPage() {
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
+                        {b.fileAvailable === false && b.status === 'completed' && (
+                          <span className="text-xs text-amber-600">ملف النسخة غير موجود على السيرفر</span>
+                        )}
                       </td>
                     </tr>
                   ))}

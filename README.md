@@ -56,3 +56,9 @@ Set the base directory to `/backend`, the build command to `npm run build`, and 
    ```
 
 4. Redeploy with the updated start command and verify that the migration succeeds and `/api/health` returns HTTP 200.
+
+### Persist uploads and backup archives on Coolify
+
+Use two persistent volumes for the backend, one for uploaded media and one for backup ZIPs. For example, mount them at `/data/uploads` and `/data/backups` and set the runtime environment variables `CLEANZO_UPLOADS_DIR=/data/uploads` and `CLEANZO_BACKUPS_DIR=/data/backups`. The defaults are `uploads` and `storage/backups` relative to the backend process directory. Create the volumes and copy existing files into them before replacing the running container. In the default Nixpacks image, those source directories are `/app/uploads` and `/app/storage/backups`.
+
+Verify that an uploaded file and a saved ZIP remain readable after a redeploy. Database records keep the original media URLs and backup filenames. For files already lost with a previous container, recover the original files from a previous volume or an exported backup ZIP.
