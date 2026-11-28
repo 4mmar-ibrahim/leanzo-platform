@@ -1174,6 +1174,7 @@ export const cleanzoApi = {
         method: 'POST',
         body: JSON.stringify(data),
         isAdmin: true,
+        timeoutMs: 10 * 60 * 1000,
       }),
     restore: (id: string) =>
       apiRequest<{
@@ -1187,6 +1188,7 @@ export const cleanzoApi = {
       }>(`/admin/backups/${id}/restore`, {
         method: 'POST',
         isAdmin: true,
+        timeoutMs: 10 * 60 * 1000,
       }),
     validateArchive: (file: File) => {
       const formData = new FormData();
@@ -1209,6 +1211,7 @@ export const cleanzoApi = {
         method: 'POST',
         body: formData,
         isAdmin: true,
+        timeoutMs: 10 * 60 * 1000,
       });
     },
     restoreFromDevice: (file: File) => {
@@ -1226,6 +1229,7 @@ export const cleanzoApi = {
         method: 'POST',
         body: formData,
         isAdmin: true,
+        timeoutMs: 10 * 60 * 1000,
       });
     },
     delete: (id: string) =>

@@ -32,10 +32,17 @@ import {
 } from 'lucide-react';
 import { useAdminStore } from '@/store/useAdminStore';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
-import { getAdminAuthToken } from '@/lib/api/apiClient';
+import { ApiError, getAdminAuthToken } from '@/lib/api/apiClient';
 import { BackupRecord, BackupType } from '@/types';
 import { toast } from 'sonner';
 
+function restoreErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof ApiError &&
+      (error.code === 'REQUEST_TIMEOUT' || error.code === 'NETWORK_ERROR' || [502, 504].includes(error.statusCode))) {
+    return 'تعذر تأكيد نتيجة الاسترجاع. ممكن يكون السيرفر لسه بيكمل العملية. راجع سجل العمليات قبل إعادة المحاولة.';
+  }
+  return error instanceof Error ? error.message : fallback;
+}
 export default function AdminBackupSettingsPage() {
   const currentAdmin = useAdminStore((s) => s.currentAdmin);
   const isOwner = currentAdmin?.role === 'owner' || !currentAdmin;
@@ -239,7 +246,7 @@ export default function AdminBackupSettingsPage() {
       await fetchData();
     } catch (err: any) {
       console.error('Device restore error:', err);
-      toast.error(err.message || 'فشلت عملية استعادة النظام من النسخة المحددة');
+      toast.error(restoreErrorMessage(err, 'فشلت عملية استعادة النظام من النسخة المحددة'));
     } finally {
       setDeviceRestoring(false);
     }
@@ -266,7 +273,7 @@ export default function AdminBackupSettingsPage() {
       await fetchData();
     } catch (err: any) {
       console.error('Saved restore error:', err);
-      toast.error(err.message || 'فشلت عملية استعادة النسخة');
+      toast.error(restoreErrorMessage(err, 'فشلت عملية استعادة النسخة'));
     } finally {
       setSavedRestoring(false);
     }
