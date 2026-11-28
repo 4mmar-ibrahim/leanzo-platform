@@ -126,7 +126,7 @@ export async function createCustomerSubscription(req: AuthenticatedRequest, res:
     const { planId, serviceId, vehicleDetails, address, visits, notes, guestName, guestPhone } = req.body;
 
     // Resolve Customer Identity:
-    let customerId = req.user?._id?.toString() || req.user?.id;
+    const customerId = req.user?._id?.toString() || req.user?.id;
     let customerName = req.user?.name || guestName;
     let customerPhone = req.user?.phone || guestPhone;
 

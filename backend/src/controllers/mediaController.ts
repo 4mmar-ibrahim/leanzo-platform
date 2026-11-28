@@ -198,6 +198,11 @@ export async function importUrlMedia(req: AuthenticatedAdminRequest, res: Respon
 /**
  * Get All Media (Paginated + Filter + Search)
  */
+function mediaResponse(media: IMedia) {
+  const { id, originalName, fileName, type, mimeType, size, width, height, duration, url, source, sourceUrl, createdAt, updatedAt } = media;
+  return { id, originalName, fileName, type, mimeType, size, width, height, duration, url, source, sourceUrl, createdAt, updatedAt };
+}
+
 export async function getAllMedia(req: Request, res: Response): Promise<void> {
   try {
     const { type, search, page = '1', limit = '30' } = req.query;
@@ -231,7 +236,7 @@ export async function getAllMedia(req: Request, res: Response): Promise<void> {
     const totalBytes = (allMediaForStats as any[]).reduce((sum: number, m: any) => sum + (Number(m.size) || 0), 0);
 
     sendSuccess(res, {
-      items,
+      items: items.map(mediaResponse),
       pagination: {
         total,
         page: pageNum,
@@ -268,7 +273,7 @@ export async function getMediaById(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    sendSuccess(res, media);
+    sendSuccess(res, mediaResponse(media));
   } catch (err: any) {
     sendError(res, 'خطأ أثناء جلب تفاصيل الوسائط', 500, 'FETCH_ERROR');
   }

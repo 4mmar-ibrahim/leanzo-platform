@@ -610,6 +610,12 @@ export const useBookingStore = create<BookingState>()(
         selectedAddons: state.selectedAddons,
         notes: state.notes,
         promoCode: state.promoCode,
+        selectedDate: state.selectedDate,
+        selectedTime: state.selectedTime,
+        selectedAddress: state.selectedAddress,
+        currentStep: state.currentStep,
+        guestName: state.guestName,
+        guestPhone: state.guestPhone,
       }),
     }
   )

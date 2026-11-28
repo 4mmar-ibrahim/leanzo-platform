@@ -212,7 +212,8 @@ export const useAddressStore = create<AddressState>()(
           try {
             await cleanzoApi.addresses.update(id, updates);
           } catch (err: any) {
-            console.warn('Backend address update failed, applying local update:', err.message);
+            set({ isLoading: false, error: err.message });
+            throw err;
           }
         }
         const updatedList = get().addresses.map((a) => {
@@ -234,7 +235,8 @@ export const useAddressStore = create<AddressState>()(
           try {
             await cleanzoApi.addresses.delete(id);
           } catch (err: any) {
-            console.warn('Backend address delete failed, applying local removal:', err.message);
+            set({ isLoading: false, error: err.message });
+            throw err;
           }
         }
         const filtered = get().addresses.filter((a) => a.id !== id && a._id !== id);
@@ -250,7 +252,8 @@ export const useAddressStore = create<AddressState>()(
           try {
             await cleanzoApi.addresses.setDefault(id);
           } catch (err: any) {
-            console.warn('Backend set default address failed, applying locally:', err.message);
+            set({ isLoading: false, error: err.message });
+            throw err;
           }
         }
         const updated = get().addresses.map((a) => ({

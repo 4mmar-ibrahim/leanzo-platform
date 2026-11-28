@@ -289,17 +289,18 @@ export function getRequiredPermissionForRoute(pathname: string): string {
   if (pathname.startsWith('/admin/orders')) return 'orders.view';
   if (pathname.startsWith('/admin/subscriptions')) return 'subscriptions.view';
   if (pathname.startsWith('/admin/customers')) return 'customers.view';
-  if (pathname.startsWith('/admin/technicians')) return 'users.view';
-  if (pathname.startsWith('/admin/locations')) return 'settings.view';
+  if (pathname.startsWith('/admin/technicians')) return 'technicians.view';
+  if (pathname.startsWith('/admin/locations')) return 'locations.view';
   if (pathname.startsWith('/admin/services')) return 'services.view';
   if (pathname.startsWith('/admin/offers')) return 'offers.view';
   if (pathname.startsWith('/admin/coupons')) return 'coupons.view';
   if (pathname.startsWith('/admin/gallery')) return 'portfolio.view';
-  if (pathname.startsWith('/admin/media')) return 'portfolio.view';
+  if (pathname.startsWith('/admin/media')) return 'media.view';
   if (pathname.startsWith('/admin/content/faq')) return 'faq.view';
   if (pathname.startsWith('/admin/content')) return 'content.view';
-  if (pathname.startsWith('/admin/zo-studio')) return 'content.view';
-  if (pathname.startsWith('/admin/reports') || pathname.startsWith('/admin/analytics')) return 'reports.view';
+  if (pathname.startsWith('/admin/zo-studio')) return 'zo.view';
+  if (pathname.startsWith('/admin/reports')) return 'reports.view';
+  if (pathname.startsWith('/admin/analytics')) return 'analytics.view';
   if (pathname.startsWith('/admin/notifications')) return 'dashboard.view';
   if (pathname.startsWith('/admin/users') || pathname.startsWith('/admin/roles')) return 'users.view';
   if (pathname.startsWith('/admin/activity-log')) return 'activity_logs.view';
@@ -350,6 +351,11 @@ export function getFirstAllowedRoute(admin: AdminUser | null | undefined): strin
     { path: '/admin/customers', token: 'customers.view' },
     { path: '/admin/services', token: 'services.view' },
     { path: '/admin/reports', token: 'reports.view' },
+    { path: '/admin/analytics', token: 'analytics.view' },
+    { path: '/admin/technicians', token: 'technicians.view' },
+    { path: '/admin/locations', token: 'locations.view' },
+    { path: '/admin/media', token: 'media.view' },
+    { path: '/admin/zo-studio', token: 'zo.view' },
     { path: '/admin/offers', token: 'offers.view' },
     { path: '/admin/coupons', token: 'coupons.view' },
     { path: '/admin/content', token: 'content.view' },

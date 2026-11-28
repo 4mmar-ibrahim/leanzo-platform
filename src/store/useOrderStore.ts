@@ -18,7 +18,7 @@ interface OrderState {
   fetchMyOrders: () => Promise<Order[]>;
   fetchAdminOrders: (params?: any) => Promise<Order[]>;
   updateOrderStatus: (orderId: string, status: OrderStatus, note?: string, actor?: string) => void;
-  updateOrderStatusApi: (orderId: string, status: OrderStatus, note?: string) => Promise<Order>;
+  updateOrderStatusApi: (orderId: string, status: OrderStatus, note?: string, approveCancellationRequest?: boolean) => Promise<Order>;
   assignTechnician: (orderId: string, technician: Technician) => void;
   bulkUpdateStatus: (orderIds: string[], status: OrderStatus) => void;
   cancelOrder: (orderId: string, reason?: string) => void;
@@ -209,8 +209,8 @@ export const useOrderStore = create<OrderState>()(
         }
       },
 
-      updateOrderStatusApi: async (orderId: string, status: OrderStatus, note?: string) => {
-        const updated = await cleanzoApi.admin.updateOrderStatus(orderId, status, note);
+      updateOrderStatusApi: async (orderId: string, status: OrderStatus, note?: string, approveCancellationRequest?: boolean) => {
+        const updated = await cleanzoApi.admin.updateOrderStatus(orderId, status, note, approveCancellationRequest);
         if (updated?.id !== orderId) throw new Error('تعذر تأكيد تحديث الطلب من الخادم');
         set((state) => ({
           orders: state.orders.map((order) => order.id === orderId ? { ...order, ...updated } : order),

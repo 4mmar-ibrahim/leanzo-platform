@@ -630,7 +630,7 @@ export const useZoStudioStore = create<ZoStudioState>()(
           defaultConfig?.character?.customImage ||
           '/brand/zo/zo-approved.png';
 
-        let config: ZoPageConfig = {
+        const config: ZoPageConfig = {
           ...defaultConfig,
           ...base,
           character: {

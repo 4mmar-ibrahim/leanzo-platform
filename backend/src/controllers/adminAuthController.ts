@@ -261,15 +261,6 @@ export async function loginAdmin(req: Request, res: Response): Promise<void> {
       userAgent,
     });
 
-    const isHttps = ENV.IS_PRODUCTION || req.secure;
-    res.cookie('cleanzo_admin_token', token, {
-      path: '/',
-      sameSite: 'lax',
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      secure: isHttps,
-      httpOnly: true,
-    });
-
     sendSuccess(
       res,
       {
@@ -1170,15 +1161,6 @@ export async function refreshTokenAdmin(req: Request, res: Response): Promise<vo
     });
 
     setRefreshCookie(req, res, COOKIE_NAMES.ADMIN_REFRESH, newRefreshToken);
-
-    const isHttps = ENV.IS_PRODUCTION || req.secure;
-    res.cookie('cleanzo_admin_token', newToken, {
-      path: '/',
-      sameSite: 'lax',
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      secure: isHttps,
-      httpOnly: true,
-    });
 
     sendSuccess(res, {
       token: newToken,

@@ -90,7 +90,7 @@ export function AdminStepCustomerSelect({
     // 2. Add API customers (override if exists)
     (apiCustomers || []).forEach((c: any) => {
       const normalized: CustomerProfile = {
-        id: String(c.id || c._id || `usr-${Date.now()}`),
+        id: String(c.id || c._id || `usr-${c.phone}`),
         name: c.name || 'عميل كلينزو',
         phone: c.phone || '',
         email: c.email || undefined,

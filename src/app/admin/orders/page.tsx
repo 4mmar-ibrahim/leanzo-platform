@@ -380,7 +380,7 @@ export default function AdminOrdersPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `cleanzo-orders-${Date.now()}.csv`;
+    link.download = `cleanzo-orders-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     toast.success('تم تصدير ملف الطلبات (CSV) بنجاح');
   };

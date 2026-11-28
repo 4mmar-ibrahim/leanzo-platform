@@ -172,7 +172,7 @@ export async function runStrictResourceSchedulingTestSuite() {
   }
 
   // Ensure test customers exist for race condition test
-  let testUser1 = await User.findOne({ phone: '01055555551' });
+  const testUser1 = await User.findOne({ phone: '01055555551' });
   if (!testUser1) {
     await User.create({
       id: 'test-user-race-1',
@@ -183,7 +183,7 @@ export async function runStrictResourceSchedulingTestSuite() {
     });
   }
 
-  let testUser2 = await User.findOne({ phone: '01055555552' });
+  const testUser2 = await User.findOne({ phone: '01055555552' });
   if (!testUser2) {
     await User.create({
       id: 'test-user-race-2',
@@ -357,7 +357,7 @@ export async function runStrictResourceSchedulingTestSuite() {
     }));
 
     // Home request at 11:00 - 12:00 MUST BE ALLOWED
-    let home11Result = await assertSlotAvailability({
+    const home11Result = await assertSlotAvailability({
       dateStr: testDate,
       timeStr: '11:00',
       serviceId: 'srv-test-home',

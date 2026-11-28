@@ -1,43 +1,10 @@
 import prisma from '../config/prisma.js';
 import { Notification } from '../models/Notification.js';
 import { renewSubscription } from './subscriptionService.js';
-import {
-  getCurrentCairoDateString,
-  getCurrentCairoTimeString,
-} from './availabilityService.js';
+import { isNoticeSufficient } from './subscriptionService.js';
 
-/**
- * Calculates remaining hours from now to an appointment date and time in Africa/Cairo timezone.
- */
-export function getCairoHoursUntilAppointment(dateStr: string, timeStr: string): number {
-  try {
-    const rawTime = String(timeStr || '').trim();
-    const startPart = rawTime.split(/[-–—]/)[0].trim();
-    const clean = startPart.replace(/(AM|PM|مساءً|صباحاً|مساء|صباح)/gi, '').trim();
-    const [hStr, mStr] = clean.split(':');
-    let hours = parseInt(hStr || '0', 10);
-    const mins = parseInt(mStr || '0', 10);
-
-    const isPM = rawTime.toUpperCase().includes('PM') || rawTime.includes('مساء');
-    const isAM = rawTime.toUpperCase().includes('AM') || rawTime.includes('صباح');
-    if (isPM && hours < 12) hours += 12;
-    if (isAM && hours === 12) hours = 0;
-
-    const [year, month, day] = dateStr.split('-').map(Number);
-    const aptDate = new Date(year, month - 1, day, hours, mins, 0);
-
-    const nowCairoDate = getCurrentCairoDateString();
-    const nowCairoTime = getCurrentCairoTimeString();
-    const [nowY, nowM, nowD] = nowCairoDate.split('-').map(Number);
-    const [nowH, nowMin] = nowCairoTime.split(':').map(Number);
-    const nowDate = new Date(nowY, nowM - 1, nowD, nowH, nowMin, 0);
-
-    const diffMs = aptDate.getTime() - nowDate.getTime();
-    return diffMs / (1000 * 60 * 60);
-  } catch (err) {
-    console.error('Error calculating hours until appointment:', err);
-    return -999;
-  }
+export function getCairoHoursUntilAppointment(date: string, time: string): number {
+  return isNoticeSufficient(date, time, 0).hoursRemaining;
 }
 
 /**
@@ -111,7 +78,8 @@ export async function runSubscriptionSchedulerCycle(): Promise<{
         });
 
         if (!existing24hCust) {
-          await Notification.create({
+          const written = await prisma.notification.createMany({ data: {
+            eventId: `subscription-reminder:${customerLink24h}`,
             target: 'customer',
             userId: customerUserId,
             title: 'تذكير بموعد اشتراكك غداً ⏰',
@@ -121,8 +89,8 @@ export async function runSubscriptionSchedulerCycle(): Promise<{
             type: 'system',
             read: false,
             link: customerLink24h,
-          });
-          customerNotifs24h++;
+          }, skipDuplicates: true });
+          customerNotifs24h += written.count;
         }
       }
 
@@ -154,7 +122,8 @@ export async function runSubscriptionSchedulerCycle(): Promise<{
           });
 
           if (!existing12hCust) {
-            await Notification.create({
+            const written = await prisma.notification.createMany({ data: {
+              eventId: `subscription-reminder:${customerLink12h}`,
               target: 'customer',
               userId: customerUserId,
               title: 'تذكير مهم: موعد زيارة اشتراكك اليوم ⚠️',
@@ -164,8 +133,8 @@ export async function runSubscriptionSchedulerCycle(): Promise<{
               type: 'system',
               read: false,
               link: customerLink12h,
-            });
-            customerNotifs12h++;
+            }, skipDuplicates: true });
+            customerNotifs12h += written.count;
           }
         }
       }
@@ -183,7 +152,8 @@ export async function runSubscriptionSchedulerCycle(): Promise<{
 
         if (!existing24hAdmin) {
           const techName = (visit.technician as any)?.name || 'لم يتم التعيين بعد';
-          await Notification.create({
+          const written = await prisma.notification.createMany({ data: {
+            eventId: `subscription-reminder:${adminLink24h}`,
             target: 'admin',
             title: `موعد اشتراك قادم خلال 24 ساعة: ${visit.customerName}`,
             titleEn: `Upcoming Subscription Visit within 24h: ${visit.customerName}`,
@@ -192,8 +162,8 @@ export async function runSubscriptionSchedulerCycle(): Promise<{
             type: 'system',
             read: false,
             link: adminLink24h,
-          });
-          adminNotifs24h++;
+          }, skipDuplicates: true });
+          adminNotifs24h += written.count;
         }
       }
     }

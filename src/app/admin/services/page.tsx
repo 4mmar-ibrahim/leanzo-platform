@@ -15,6 +15,8 @@ import {
   Clock,
   Tag,
   ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   Car,
   Home,
   Layers,
@@ -41,6 +43,8 @@ export default function AdminServicesPage() {
   const duplicateService = useServiceStore((s) => s.duplicateService);
   const toggleVisibility = useServiceStore((s) => s.toggleServiceVisibility);
 
+  const reorderServices = useServiceStore((s) => s.reorderServices);
+  const [savingOrder, setSavingOrder] = useState(false);
   const addLog = useActivityLogStore((s) => s.addLog);
 
   const [search, setSearch] = useState('');
@@ -72,6 +76,21 @@ export default function AdminServicesPage() {
       s.shortDescription.toLowerCase().includes(q);
     return matchCat && matchSearch;
   });
+
+  const handleMove = async (sourceId: string, targetId: string) => {
+    setSavingOrder(true);
+    try {
+      await reorderServices(
+        services.findIndex(service => service.id === sourceId),
+        services.findIndex(service => service.id === targetId),
+      );
+      toast.success('تم حفظ ترتيب الخدمات');
+    } catch {
+      toast.error('تعذّر حفظ الترتيب. حدّث القائمة وحاول تاني.');
+    } finally {
+      setSavingOrder(false);
+    }
+  };
 
   const handleDelete = async (id: string, title: string) => {
     try {
@@ -274,7 +293,7 @@ export default function AdminServicesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filtered.map((service) => (
+              {filtered.map((service, index) => (
                 <tr key={service.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                   <td className="py-3.5 px-4">
                     <div className="flex items-center gap-3">
@@ -376,6 +395,24 @@ export default function AdminServicesPage() {
                   </td>
                   <td className="py-3.5 px-4 text-center">
                     <div className="flex items-center justify-center gap-1.5">
+                      {canEdit && ([-1, 1] as const).map((direction) => {
+                        const neighbor = filtered[index + direction];
+                        const Icon = direction < 0 ? ArrowUp : ArrowDown;
+                        const label = direction < 0 ? 'رفع ترتيب' : 'خفض ترتيب';
+                        return (
+                          <button
+                            key={direction}
+                            type="button"
+                            disabled={savingOrder || Boolean(search.trim()) || !neighbor}
+                            onClick={() => neighbor && handleMove(service.id, neighbor.id)}
+                            aria-label={`${label} ${service.title}`}
+                            title={search.trim() ? 'امسح البحث لتغيير الترتيب' : label}
+                            className="rounded-lg border border-slate-200 p-1.5 hover:bg-slate-100 disabled:opacity-30 dark:border-slate-700 dark:hover:bg-slate-800"
+                          >
+                            <Icon className="size-3.5" aria-hidden="true" />
+                          </button>
+                        );
+                      })}
                       {canEdit && (
                         <Link
                           href={`/admin/services/${service.id}`}

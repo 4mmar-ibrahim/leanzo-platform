@@ -131,7 +131,7 @@ export const restoreFromDevice = async (req: Request, res: Response): Promise<vo
   const filePath = req.file?.path;
   try {
     const admin = (req as any).admin;
-    if (admin && admin.role !== 'owner') {
+    if (admin && !['owner', 'super_admin'].includes(admin.role)) {
       res.status(403).json({
         success: false,
         message: 'عذراً، استعادة النسخ الاحتياطية تتطلب صلاحيات المالك الأعلى (Owner)',
@@ -185,7 +185,7 @@ export const restoreBackup = async (req: Request, res: Response): Promise<void> 
     const admin = (req as any).admin;
     const id = Array.isArray(req.params.id) ? req.params.id[0] : String(req.params.id);
 
-    if (admin && admin.role !== 'owner') {
+    if (admin && !['owner', 'super_admin'].includes(admin.role)) {
       res.status(403).json({
         success: false,
         message: 'عذراً، استعادة النسخ الاحتياطية تتطلب صلاحيات المالك الأعلى (Owner)',
@@ -222,7 +222,7 @@ export const deleteBackup = async (req: Request, res: Response): Promise<void> =
     const admin = (req as any).admin;
     const id = Array.isArray(req.params.id) ? req.params.id[0] : String(req.params.id);
 
-    if (admin && admin.role !== 'owner') {
+    if (admin && !['owner', 'super_admin'].includes(admin.role)) {
       res.status(403).json({
         success: false,
         message: 'عذراً، حذف النسخ الاحتياطية محصور بصلاحيات المالك الأعلى (Owner)',

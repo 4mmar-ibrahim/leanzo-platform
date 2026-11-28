@@ -105,12 +105,14 @@ async function runTestSuite() {
 
     console.log('\n--- SECTION 1: CANONICAL REGEX & UNIT VALIDATION ---');
 
-    // Valid Test Cases (010 and 011 ONLY)
+    // Valid Egyptian Mobile Prefixes
     const validTestCases = [
       '01012345678',
       '01000000000',
       '01112345678',
       '01100000000',
+      '01212345678',
+      '01512345678',
     ];
     for (const phone of validTestCases) {
       assert(
@@ -119,12 +121,8 @@ async function runTestSuite() {
       );
     }
 
-    // Invalid Prefix Test Cases (012, 015, 013, 014, 016, 017, 018, 019, 020, etc.)
+    // Invalid Egyptian Mobile Prefixes
     const invalidPrefixes = [
-      '01212345678', // 012 rejected!
-      '01200000000',
-      '01512345678', // 015 rejected!
-      '01500000000',
       '01312345678',
       '01412345678',
       '01612345678',
@@ -212,34 +210,34 @@ async function runTestSuite() {
       regInvalidPrefix.body
     );
 
-    // Rejection of 012 prefix in registration
-    const regInvalid012 = await apiRequest('/api/auth/register', {
+    // Rejection of 013 prefix in registration
+    const regInvalid013 = await apiRequest('/api/auth/register', {
       method: 'POST',
       body: {
         name: 'QA Invalid 012',
-        phone: '01212345678',
+        phone: '01312345678',
         password: 'Password123!',
       },
     });
     assert(
-      regInvalid012.status === 400 && regInvalid012.body?.code === CANONICAL_PHONE_ERROR_CODE,
-      'POST /api/auth/register rejects 01212345678 (prefix 012) with HTTP 400',
-      regInvalid012.body
+      regInvalid013.status === 400 && regInvalid013.body?.code === CANONICAL_PHONE_ERROR_CODE,
+      'POST /api/auth/register rejects 01312345678 (prefix 013) with HTTP 400',
+      regInvalid013.body
     );
 
-    // Rejection of 015 prefix in registration
-    const regInvalid015 = await apiRequest('/api/auth/register', {
+    // Rejection of 014 prefix in registration
+    const regInvalid014 = await apiRequest('/api/auth/register', {
       method: 'POST',
       body: {
         name: 'QA Invalid 015',
-        phone: '01512345678',
+        phone: '01412345678',
         password: 'Password123!',
       },
     });
     assert(
-      regInvalid015.status === 400 && regInvalid015.body?.code === CANONICAL_PHONE_ERROR_CODE,
-      'POST /api/auth/register rejects 01512345678 (prefix 015) with HTTP 400',
-      regInvalid015.body
+      regInvalid014.status === 400 && regInvalid014.body?.code === CANONICAL_PHONE_ERROR_CODE,
+      'POST /api/auth/register rejects 01412345678 (prefix 014) with HTTP 400',
+      regInvalid014.body
     );
 
     // Rejection of 10 digits
@@ -488,17 +486,17 @@ async function runTestSuite() {
       const createdCustId = adminCreateValid.body?.data?._id || adminCreateValid.body?.data?.id;
 
       if (createdCustId) {
-        // Admin edit customer with invalid phone (012 is rejected)
+        // Admin edit customer with invalid phone (013 is rejected)
         const adminEditInvalid = await apiRequest(`/api/customers/${createdCustId}`, {
           method: 'PUT',
           headers: { Authorization: `Bearer ${adminToken}` },
           body: {
-            phone: '01212345678',
+            phone: '01312345678',
           },
         });
         assert(
           adminEditInvalid.status === 400 && adminEditInvalid.body?.code === CANONICAL_PHONE_ERROR_CODE,
-          'Admin PUT /api/customers/:id rejects invalid prefix 01212345678 with HTTP 400',
+          'Admin PUT /api/customers/:id rejects invalid prefix 01312345678 with HTTP 400',
           adminEditInvalid.body
         );
 
@@ -527,8 +525,8 @@ async function runTestSuite() {
     const svcId = testService?.id || 'car-wash';
     const svcCat = testService?.category || 'car';
 
-    // 1. Guest Booking with 012 prefix (rejected)
-    const guestBooking012 = await apiRequest('/api/bookings', {
+    // 1. Guest Booking with 013 prefix (rejected)
+    const guestBooking013 = await apiRequest('/api/bookings', {
       method: 'POST',
       body: {
         category: svcCat,
@@ -537,14 +535,14 @@ async function runTestSuite() {
         date: '2026-10-25',
         time: '14:00',
         address: 'شارع الجمهورية - عمارة 5',
-        customerPhone: '01212345678',
+        customerPhone: '01312345678',
         customerName: 'عميل تجريبي ضيف',
       },
     });
     assert(
-      guestBooking012.status === 400 && guestBooking012.body?.code === CANONICAL_PHONE_ERROR_CODE,
-      'POST /api/bookings (Guest) rejects 012 prefix with HTTP 400 & INVALID_PHONE_NUMBER',
-      guestBooking012.body
+      guestBooking013.status === 400 && guestBooking013.body?.code === CANONICAL_PHONE_ERROR_CODE,
+      'POST /api/bookings (Guest) rejects 013 prefix with HTTP 400 & INVALID_PHONE_NUMBER',
+      guestBooking013.body
     );
 
     // 2. Guest Booking with spaces (rejected - no silent alteration)
@@ -607,20 +605,20 @@ async function runTestSuite() {
       guestBooking12Digits.body
     );
 
-    // 5. Subscription creation with 012 prefix (rejected)
-    const subInvalid012 = await apiRequest('/api/subscriptions', {
+    // 5. Subscription creation with 013 prefix (rejected)
+    const subInvalid013 = await apiRequest('/api/subscriptions', {
       method: 'POST',
       body: {
-        guestPhone: '01212345678',
+        guestPhone: '01312345678',
         guestName: 'Guest Sub 012',
         planId: 'plan-1',
         serviceId: 'car-wash',
       },
     });
     assert(
-      subInvalid012.status === 400 && subInvalid012.body?.code === CANONICAL_PHONE_ERROR_CODE,
-      'POST /api/subscriptions rejects 012 prefix with HTTP 400 & INVALID_PHONE_NUMBER',
-      subInvalid012.body
+      subInvalid013.status === 400 && subInvalid013.body?.code === CANONICAL_PHONE_ERROR_CODE,
+      'POST /api/subscriptions rejects 013 prefix with HTTP 400 & INVALID_PHONE_NUMBER',
+      subInvalid013.body
     );
 
     // 6. Subscription creation with valid 010 phone (passes phone validation)

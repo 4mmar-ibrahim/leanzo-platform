@@ -74,9 +74,6 @@ export function MobileBottomNav() {
   }, [showBookingChoiceModal]);
 
   // Do not render on admin pages or if disabled in settings
-  if (pathname?.startsWith('/admin') || mobileSettings?.enableBottomNavigation === false) {
-    return null;
-  }
 
   // Active orders count for logged in user badge
   const userOrdersCount = isAuthenticated && user
@@ -145,6 +142,10 @@ export function MobileBottomNav() {
     }
     router.push(route);
   };
+
+  if (pathname?.startsWith('/admin') || mobileSettings?.enableBottomNavigation === false) {
+    return null;
+  }
 
   return (
     <>

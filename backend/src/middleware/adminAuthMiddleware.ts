@@ -12,15 +12,6 @@ export interface AuthenticatedAdminRequest extends Request {
   adminToken?: AdminTokenPayload;
 }
 
-function parseCookies(cookieHeader?: string): Record<string, string> {
-  if (!cookieHeader) return {};
-  return cookieHeader.split(';').reduce((acc, str) => {
-    const [key, ...v] = str.trim().split('=');
-    if (key) acc[key] = decodeURIComponent(v.join('='));
-    return acc;
-  }, {} as Record<string, string>);
-}
-
 export async function authenticateAdmin(
   req: AuthenticatedAdminRequest,
   res: Response,
@@ -31,12 +22,6 @@ export async function authenticateAdmin(
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.split(' ')[1];
-  }
-
-  // Fallback to cookie if Bearer header is missing
-  if (!token) {
-    const cookies = parseCookies(req.headers.cookie);
-    token = cookies['cleanzo_admin_token'] || (req as any).cookies?.cleanzo_admin_token || null;
   }
 
   if (!token) {
@@ -68,15 +53,7 @@ export async function authenticateAdmin(
       return;
     }
 
-    let admin = decoded.id ? await AdminUser.findById(decoded.id) : null;
-    if (!admin && decoded.username) {
-      // In case database was re-seeded with fresh ObjectIds
-      admin = await AdminUser.findOne({ username: decoded.username });
-    }
-    if (!admin && (decoded.role === 'owner' || decoded.role === 'super_admin')) {
-      admin = await AdminUser.findOne({ role: 'owner' });
-    }
-
+    const admin = decoded.id ? await AdminUser.findById(decoded.id) : null;
     if (!admin) {
       sendError(res, 'حساب المشرف غير موجود', 401, 'ADMIN_NOT_FOUND');
       return;
@@ -283,9 +260,9 @@ export function authorize(module: string, action: string = 'view') {
 
 export function authorizePermission(permission: string) {
   const parts = permission.split('.');
-  const module = parts[0];
+  const permissionModule = parts[0];
   const action = parts[1] || 'view';
-  return authorize(module, action);
+  return authorize(permissionModule, action);
 }
 
 /**

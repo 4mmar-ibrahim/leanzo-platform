@@ -64,7 +64,7 @@ export function InteractiveSpriteZo({
   
   useEffect(() => {
     let animationFrame: number;
-    let startTime = Date.now();
+    const startTime = Date.now();
     
     const animate = () => {
       const elapsed = Date.now() - startTime;

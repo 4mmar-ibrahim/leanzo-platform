@@ -18,7 +18,7 @@ let ownerToken: string;
 let restrictedAdminToken: string;
 let customerToken: string;
 
-let testServiceId = 'serv-car-test';
+const testServiceId = 'serv-car-test';
 const customerPhoneA = '01011112222';
 const customerPhoneB = '01033334444';
 

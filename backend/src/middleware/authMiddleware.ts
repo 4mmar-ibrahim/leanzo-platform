@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyCustomerToken, verifyAdminToken, CustomerTokenPayload } from '../utils/jwt.js';
+import { verifyCustomerToken, CustomerTokenPayload } from '../utils/jwt.js';
 import { sendError } from '../utils/responseHandler.js';
 import { User, IUser } from '../models/User.js';
 
@@ -24,19 +24,7 @@ export async function authenticateCustomer(
 
 
   try {
-    let decoded: any;
-    try {
-      decoded = verifyCustomerToken(token);
-    } catch (custErr: any) {
-      // Check if this is an authorized admin/staff token accessing customer data
-      try {
-        const adminDecoded = verifyAdminToken(token);
-        if (adminDecoded && adminDecoded.type === 'admin') {
-          return next();
-        }
-      } catch {}
-      throw custErr;
-    }
+    const decoded = verifyCustomerToken(token);
 
     if (!decoded || decoded.type !== 'customer') {
       sendError(res, 'رمز الجلسة غير صالح أو منتهي الصلاحية', 401, 'INVALID_TOKEN');
@@ -94,14 +82,6 @@ export async function optionalCustomerAuth(
         req.customer = decoded;
       }
     }
-  } catch {
-    try {
-      const adminDecoded = verifyAdminToken(token);
-      if (adminDecoded && adminDecoded.type === 'admin') {
-        (req as any).isAdmin = true;
-        (req as any).admin = adminDecoded;
-      }
-    } catch {}
-  }
+  } catch {}
   next();
 }

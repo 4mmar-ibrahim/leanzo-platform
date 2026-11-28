@@ -55,8 +55,23 @@ export function AdminTopbar({ onOpenSearch, onOpenMobileMenu, onOpenQuickAction 
 
   useEffect(() => {
     setMounted(true);
-    fetchNotifications();
-  }, [fetchNotifications]);
+  }, []);
+
+  useEffect(() => {
+    if (!currentAdmin) return;
+
+    const refresh = () => {
+      if (document.visibilityState === 'visible') void fetchNotifications(true);
+    };
+
+    refresh();
+    const interval = window.setInterval(refresh, 1000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [currentAdmin?.id, fetchNotifications]);
 
   const [notifMenuOpen, setNotifMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);

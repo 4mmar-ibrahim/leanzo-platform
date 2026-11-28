@@ -1,8 +1,11 @@
-const path = require('path');
-const fs = require('fs');
+import path from 'node:path';
+import fs from 'node:fs';
+import { createRequire } from 'node:module';
+
+const loadDependency = createRequire(import.meta.url);
 
 const projectRoot = 'c:\\Users\\Mediatech\\Desktop\\Website cleanzo';
-const sharp = require(path.join(projectRoot, 'node_modules', 'sharp'));
+const sharp = loadDependency(path.join(projectRoot, 'node_modules', 'sharp'));
 
 async function createCleanCutout() {
   const inputPath = path.join(projectRoot, 'public', 'brand', 'zo', 'zo-hero.png');

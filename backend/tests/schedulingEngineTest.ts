@@ -25,7 +25,7 @@ let baseUrl: string;
 let adminToken: string;
 let customerToken: string;
 
-let testDate = '2026-10-15'; // Future test date
+const testDate = '2026-10-15'; // Future test date
 
 let carService: any;
 let homeService: any;

@@ -115,8 +115,7 @@ function ServicesContent() {
         return true;
       })
       .sort((a, b) => {
-        // Default recommended: popular first, then rating
-        return (b.popular ? 1 : 0) - (a.popular ? 1 : 0) || b.rating - a.rating;
+        return (a.order ?? 0) - (b.order ?? 0);
       });
   }, [activeServices, selectedCategory, categories, isAr]);
 

@@ -21,9 +21,6 @@ export function BeforeAfterSlider({
   title,
   className,
 }: BeforeAfterSliderProps) {
-  if (!beforeImage || !afterImage) {
-    return null;
-  }
   const [sliderPos, setSliderPos] = useState(50); // percentage 0-100
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -51,6 +48,10 @@ export function BeforeAfterSlider({
       handleMove(e.clientX);
     }
   };
+
+  if (!beforeImage || !afterImage) {
+    return null;
+  }
 
   return (
     <div className={cn('relative rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-xl select-none', className)}>

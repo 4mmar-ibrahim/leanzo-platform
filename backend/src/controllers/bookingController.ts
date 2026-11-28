@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { generateBookingAccessToken, verifyBookingAccessToken } from '../utils/jwt.js';
 import { Request, Response } from 'express';
 import { Booking, BookingStatus, ITimelineEvent } from '../models/Booking.js';
@@ -423,8 +423,8 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
     }
 
     // 2. Resolve customer first
-    let customerId: any = req.user?._id;
-    const rawCustomerName = req.user?.name || guestName || req.body.customerName;
+    const customerId: any = req.user?._id;
+    const rawCustomerName = guestName ?? req.body.customerName ?? req.user?.name;
     const nameVal = validateCustomerName(rawCustomerName, true);
     if (!nameVal.isValid) {
       sendError(res, nameVal.message || 'يرجى إدخال اسم العميل', 422, nameVal.code || 'NAME_REQUIRED');
@@ -647,7 +647,7 @@ export async function createBooking(req: AuthenticatedRequest, res: Response): P
         // 4.3 Generate unique human-readable Order Number (collision-free)
         let nextNum = 100 + (await Booking.countDocuments()) + 1;
         let orderNumber = generateOrderNumber(nextNum);
-        while ((await Booking.exists({ id: orderNumber })) || (await CouponUsage.exists({ orderId: orderNumber }))) {
+        while ((await Booking.exists({ id: orderNumber })) || (await CouponUsage.exists({ orderId: orderNumber })) || (await prisma.offerUsage.findUnique({ where: { orderId: orderNumber }, select: { orderId: true } }))) {
           nextNum++;
           orderNumber = generateOrderNumber(nextNum);
         }
@@ -1056,6 +1056,7 @@ export async function trackOrderPublic(req: AuthenticatedRequest, res: Response)
     sendSuccess(res, {
       id: booking.id,
       status: booking.status,
+      metadata: { cancellationRequest: booking.metadata?.cancellationRequest },
       customerPhone: booking.customerPhone,
       customerName: booking.customerName,
       serviceId: booking.serviceId || booking.serviceSnapshot?.id,
@@ -1259,7 +1260,7 @@ export async function getAllBookingsAdmin(req: AuthenticatedAdminRequest, res: R
 export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const { status, note } = req.body;
+    const { status, note, approveCancellationRequest } = req.body;
 
     const validStatuses: BookingStatus[] = ['pending', 'confirmed', 'assigned', 'on_the_way', 'in_progress', 'completed', 'cancelled'];
     if (!validStatuses.includes(status)) {
@@ -1392,6 +1393,12 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
     }
 
     const prevStatus = booking.status;
+    const cancellationRequest = booking.metadata?.cancellationRequest;
+    if (approveCancellationRequest === true && (status !== 'cancelled' || cancellationRequest?.status !== 'pending' ||
+        ['in_progress', 'completed', 'cancelled'].includes(prevStatus))) {
+      sendError(res, 'طلب الإلغاء لم يعد قابلًا للموافقة', 409, 'CANCELLATION_REQUEST_CHANGED');
+      return;
+    }
 
     // Terminal states cannot be altered
     if (prevStatus === 'completed') {
@@ -1576,9 +1583,19 @@ export async function updateBookingStatus(req: AuthenticatedAdminRequest, res: R
       } else if (statusKey === 'cancelled') {
         booking.cancelledAt = new Date();
         booking.cancellationSource = 'admin';
-        booking.cancellationReason = note || 'إلغاء بواسطة الإدارة';
+        booking.cancellationReason = note || cancellationRequest?.reason || 'إلغاء بواسطة الإدارة';
       }
 
+      if (cancellationRequest?.status === 'pending' && ['cancelled', 'in_progress', 'completed'].includes(statusKey)) {
+        booking.metadata = {
+          ...booking.metadata,
+          cancellationRequest: {
+            ...cancellationRequest,
+            status: statusKey === 'cancelled' ? 'approved' : 'closed',
+            resolvedAt: new Date().toISOString(),
+          },
+        };
+      }
       await booking.save(booking.updatedAt);
     });
 
@@ -1967,6 +1984,9 @@ export async function cancelBookingCustomer(req: AuthenticatedRequest, res: Resp
       if (booking.status === 'cancelled') {
         return { booking, alreadyCancelled: true };
       }
+      if (booking.metadata?.cancellationRequest?.status === 'pending') {
+        return { booking, alreadyCancelled: false };
+      }
       // 3. In-progress bookings cannot release or be cancelled blindly while technician is working
       if (booking.status === 'in_progress' || booking.timeline?.some((event: ITimelineEvent) => event.status === 'in_progress')) {
         sendError(res, 'لا يمكن إلغاء الحجز بعد بدء تقديم الخدمة فعلياً', 400, 'CANNOT_CANCEL_IN_PROGRESS');
@@ -1995,68 +2015,31 @@ export async function cancelBookingCustomer(req: AuthenticatedRequest, res: Resp
         return null;
       }
 
-      booking.status = 'cancelled';
-      booking.cancelledAt = cancelledAt;
-      booking.cancellationSource = 'customer';
-      booking.cancellationReason = reason || 'إلغاء من قبل العميل';
-
-      booking.timeline.push({
-        status: 'cancelled',
-        label: 'تم إلغاء الطلب من قبل العميل',
-        labelEn: 'Cancelled by Customer',
-        timestamp: new Date().toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
-        completed: true,
-        description: reason || 'تم إلغاء الطلب بناءً على رغبة العميل',
-        descriptionEn: 'Order cancelled upon customer request',
-        changedBy: req.user?.name || booking.customerName || 'customer',
-      });
-
+      const requestId = randomUUID();
+      const cancellationRequest = {
+        id: requestId,
+        status: 'pending',
+        requestedAt: cancelledAt.toISOString(),
+        reason: typeof reason === 'string' ? reason.trim().slice(0, 300) : '',
+      };
+      booking.metadata = { ...booking.metadata, cancellationRequest };
       await booking.save(booking.updatedAt);
-      return { booking, alreadyCancelled: false };
-    });
-    if (!result) return;
-    const { booking, alreadyCancelled } = result;
-    if (alreadyCancelled) {
-      sendSuccess(res, booking, 'الحجز ملغي بالفعل');
-      return;
-    }
-
-    // Automatic Notification Dispatches
-    try {
-      const canonicalTitleAr = getCanonicalBookingServiceTitle(booking, 'ar');
-      const canonicalTitleEn = getCanonicalBookingServiceTitle(booking, 'en');
-
       await Notification.create({
         target: 'admin',
-        eventId: `order:cancel:admin:${booking.id}`,
-        title: `إلغاء حجز #${booking.id}`,
-        titleEn: `Booking Cancelled #${booking.id}`,
-        message: `قام العميل ${booking.customerName} بإلغاء حجز (${canonicalTitleAr}) للطلب #${booking.id}. السبب: ${booking.cancellationReason || 'إلغاء بواسطة العميل'}`,
-        messageEn: `Customer ${booking.customerName} cancelled booking (${canonicalTitleEn}) #${booking.id}`,
+        eventId: `order:cancel-request:${requestId}`,
+        title: `طلب إلغاء حجز #${booking.id}`,
+        titleEn: `Cancellation requested for #${booking.id}`,
+        message: `طلب ${booking.customerName} إلغاء الحجز. الموعد يظل محجوزًا حتى الموافقة.`,
+        messageEn: `${booking.customerName} requested cancellation. The appointment remains reserved until approval.`,
         type: 'order',
         read: false,
         link: `/admin/orders/${booking.id}`,
       });
+      return { booking, alreadyCancelled: false };
+    });
+    if (!result) return;
+    sendSuccess(res, result.booking, result.alreadyCancelled ? 'الحجز ملغي بالفعل' : 'تم إرسال طلب الإلغاء بانتظار موافقة الإدارة');
 
-      if (booking.customerId) {
-        await Notification.create({
-          target: 'customer',
-          userId: booking.customerId.toString(),
-          eventId: `order:cancel:cust:${booking.id}`,
-          title: `❌ تم تأكيد إلغاء حجز الطلب #${booking.id}`,
-          titleEn: `❌ Booking #${booking.id} Cancelled`,
-          message: `تم إلغاء حجزك لخدمة (${canonicalTitleAr}) للطلب #${booking.id} بنجاح بناءً على طلبك. نأمل أن نراك مجدداً قريباً ويمكنك حجز موعد جديد في أي وقت بخطوات بسيطة.`,
-          messageEn: `Your booking #${booking.id} for (${canonicalTitleEn}) has been cancelled upon your request. We look forward to serving you again anytime!`,
-          type: 'order',
-          read: false,
-          link: `/account/orders/${booking.id}`,
-        });
-      }
-    } catch (notifErr) {
-      console.warn('Non-critical: Cancellation notification error:', notifErr);
-    }
-
-    sendSuccess(res, booking, 'تم إلغاء الحجز بنجاح وإتاحة الموعد');
   } catch (err: any) {
     sendError(res, err.code === 'P2025' ? 'تم تغيير الحجز بالفعل. حدّث الصفحة وحاول مرة أخرى.' : err.message, err.code === 'P2025' ? 409 : 500, err.code === 'P2025' ? 'BOOKING_CHANGED' : undefined);
   }
@@ -2072,81 +2055,81 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
       return;
     }
 
-    const booking = await Booking.findById(id);
+    const updatedBooking = await withBookingLock(SCHEDULE_LOCK, async () => {
+      const booking = await Booking.findById(id);
 
-    if (!booking) {
-      sendError(res, 'الطلب غير موجود', 404, 'BOOKING_NOT_FOUND');
-      return;
-    }
-
-    const isAdmin = Boolean((req as any).admin);
-    if (!isAdmin && !canManageBooking(req, booking)) {
-      sendError(res, 'غير مصرح لك بإعادة جدولة هذا الحجز', 403, 'FORBIDDEN_RESCHEDULE');
-      return;
-    }
-
-    if (booking.status === 'completed') {
-      sendError(res, 'لا يمكن إعادة جدولة حجز مكتمل بالفعل', 400, 'CANNOT_RESCHEDULE_COMPLETED');
-      return;
-    }
-    if (booking.status === 'cancelled') {
-      sendError(res, 'لا يمكن إعادة جدولة حجز ملغي', 400, 'CANNOT_RESCHEDULE_CANCELLED');
-      return;
-    }
-    if (booking.status === 'in_progress') {
-      sendError(res, 'لا يمكن تغيير الموعد بعد بدء تقديم الخدمة فعلياً', 400, 'CANNOT_RESCHEDULE_IN_PROGRESS');
-      return;
-    }
-
-    // 6-hour policy check (Admins can override)
-    if (!isAdmin) {
-      const subSettings = await getSubscriptionSettings();
-      const noticeHours = subSettings.normalBookingRescheduleNoticeHours ?? 6;
-      const { isAllowed } = isNoticeSufficient(
-        booking.date,
-        booking.scheduledStart || booking.timeSlotStart || booking.time,
-        noticeHours
-      );
-
-      if (!isAllowed) {
-        sendError(
-          res,
-          `لا يمكن إلغاء أو تغيير الحجز قبل الموعد بأقل من ${noticeHours} ساعة. يُرجى التواصل مع الدعم للمساعدة.`,
-          400,
-          'RESCHEDULE_RESTRICTED_6H'
-        );
+      if (!booking) {
+        sendError(res, 'الطلب غير موجود', 404, 'BOOKING_NOT_FOUND');
         return;
       }
-    }
 
-    const targetServiceIds: string[] = Array.from(
-      new Set([
-        booking.serviceId,
-        ...((booking.metadata as any)?.serviceIds || []),
-        ...((booking.serviceSnapshot as any)?.services?.map((s: any) => s.id) || []),
-      ])
-    ).filter(Boolean);
-
-    let authoritativeCategory = booking.category || 'general';
-    if (booking.serviceId) {
-      const s = await Service.findOne({ id: booking.serviceId });
-      if (s?.category) {
-        authoritativeCategory = await mapCategoryCanonical(s.category);
+      const isAdmin = Boolean((req as any).admin);
+      if (!isAdmin && !canManageBooking(req, booking)) {
+        sendError(res, 'غير مصرح لك بإعادة جدولة هذا الحجز', 403, 'FORBIDDEN_RESCHEDULE');
+        return;
       }
-    }
-    const compositeList =
-      (Array.isArray((booking.metadata as any)?.services) && (booking.metadata as any).services.length > 0)
-        ? (booking.metadata as any).services
-        : (Array.isArray((booking.serviceSnapshot as any)?.services) && (booking.serviceSnapshot as any).services.length > 0)
-        ? (booking.serviceSnapshot as any).services
-        : undefined;
 
-    const vPlate =
-      (booking.vehicleDetails as any)?.plateNumber ||
-      (booking.metadata as any)?.vehicleDetails?.plateNumber ||
-      (booking.metadata as any)?.plateNumber;
+      if (booking.status === 'completed') {
+        sendError(res, 'لا يمكن إعادة جدولة حجز مكتمل بالفعل', 400, 'CANNOT_RESCHEDULE_COMPLETED');
+        return;
+      }
+      if (booking.status === 'cancelled') {
+        sendError(res, 'لا يمكن إعادة جدولة حجز ملغي', 400, 'CANNOT_RESCHEDULE_CANCELLED');
+        return;
+      }
+      if (booking.status === 'in_progress') {
+        sendError(res, 'لا يمكن تغيير الموعد بعد بدء تقديم الخدمة فعلياً', 400, 'CANNOT_RESCHEDULE_IN_PROGRESS');
+        return;
+      }
 
-    const updatedBooking = await withBookingLock(SCHEDULE_LOCK, async () => {
+      // 6-hour policy check (Admins can override)
+      if (!isAdmin) {
+        const subSettings = await getSubscriptionSettings();
+        const noticeHours = subSettings.normalBookingRescheduleNoticeHours ?? 6;
+        const { isAllowed } = isNoticeSufficient(
+          booking.date,
+          booking.scheduledStart || booking.timeSlotStart || booking.time,
+          noticeHours
+        );
+
+        if (!isAllowed) {
+          sendError(
+            res,
+            `لا يمكن إلغاء أو تغيير الحجز قبل الموعد بأقل من ${noticeHours} ساعة. يُرجى التواصل مع الدعم للمساعدة.`,
+            400,
+            'RESCHEDULE_RESTRICTED_6H'
+          );
+          return;
+        }
+      }
+
+      const targetServiceIds: string[] = Array.from(
+        new Set([
+          booking.serviceId,
+          ...((booking.metadata as any)?.serviceIds || []),
+          ...((booking.serviceSnapshot as any)?.services?.map((s: any) => s.id) || []),
+        ])
+      ).filter(Boolean);
+
+      let authoritativeCategory = booking.category || 'general';
+      if (booking.serviceId) {
+        const s = await Service.findOne({ id: booking.serviceId });
+        if (s?.category) {
+          authoritativeCategory = await mapCategoryCanonical(s.category);
+        }
+      }
+      const compositeList =
+        (Array.isArray((booking.metadata as any)?.services) && (booking.metadata as any).services.length > 0)
+          ? (booking.metadata as any).services
+          : (Array.isArray((booking.serviceSnapshot as any)?.services) && (booking.serviceSnapshot as any).services.length > 0)
+          ? (booking.serviceSnapshot as any).services
+          : undefined;
+
+      const vPlate =
+        (booking.vehicleDetails as any)?.plateNumber ||
+        (booking.metadata as any)?.vehicleDetails?.plateNumber ||
+        (booking.metadata as any)?.plateNumber;
+
       // Authoritative calculation of total required duration
       const previousInterval = getBookingTimeInterval(booking);
       const authoritativeDuration = Math.max(
@@ -2266,6 +2249,7 @@ export async function rescheduleBookingCustomer(req: AuthenticatedRequest, res: 
 
       return booking;
     });
+    if (!updatedBooking) return;
     sendSuccess(res, updatedBooking, 'تم إعادة جدولة الحجز بنجاح وتحديث بيانات الطلب');
   } catch (err: any) {
     if (err.code === 'P2025') {

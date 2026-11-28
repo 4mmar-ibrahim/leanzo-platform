@@ -208,7 +208,8 @@ export default function AdminOrderDetailPage() {
   }
 
   // Handle status update to backend
-  const executeStatusChange = async (newStatus: OrderStatus, customNote?: string) => {
+  const cancellationPending = order.metadata?.cancellationRequest?.status === 'pending';
+  const executeStatusChange = async (newStatus: OrderStatus, customNote?: string, approveCancellationRequest?: boolean) => {
     if (!canEditOrders) {
       toast.error('ليس لديك صلاحية لتعديل حالة الطلبات');
       return;
@@ -216,7 +217,7 @@ export default function AdminOrderDetailPage() {
 
     setIsUpdating(true);
     try {
-      const updated = await updateOrderStatusApi(order.id, newStatus, customNote);
+      const updated = await updateOrderStatusApi(order.id, newStatus, customNote, approveCancellationRequest);
       if (updated) {
         setOrder(updated);
       }
@@ -274,7 +275,7 @@ export default function AdminOrderDetailPage() {
   const handleConfirmCancel = async () => {
     if (isUpdating) return;
     setCancelModalOpen(false);
-    await executeStatusChange('cancelled', cancelReason.trim() ? `سبب الإلغاء: ${cancelReason.trim()}` : 'إلغاء بواسطة الإدارة');
+    await executeStatusChange('cancelled', cancelReason.trim() ? `سبب الإلغاء: ${cancelReason.trim()}` : (cancellationPending ? undefined : 'إلغاء بواسطة الإدارة'), cancellationPending);
     setCancelReason('');
   };
 
@@ -561,11 +562,17 @@ export default function AdminOrderDetailPage() {
               disabled={!canEditOrders || isUpdating}
               className="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-all disabled:opacity-50 cursor-pointer"
             >
-              إلغاء الطلب
+              {cancellationPending ? 'الموافقة على طلب الإلغاء' : 'إلغاء الطلب'}
             </button>
           )}
         </div>
       </div>
+
+      {cancellationPending && (
+        <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          طلب إلغاء من العميل بانتظار الموافقة. الموعد ما زال محجوزًا.
+        </p>
+      )}
 
       {/* Prominent Reservation Date & Exact Start/End Time Banner (Single Source of Truth) */}
       <div className="p-5 sm:p-6 rounded-3xl bg-linear-to-r from-sky-50 via-white to-indigo-50/50 dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/30 border-2 border-sky-500/30 dark:border-sky-500/20 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-5">

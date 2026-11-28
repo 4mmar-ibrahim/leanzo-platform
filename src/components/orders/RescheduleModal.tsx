@@ -65,7 +65,7 @@ export function RescheduleModal({ isOpen, onClose, order, onSuccess, isAdmin = f
       list.push(...orderSnapshot.services.map((s: any) => s.id));
     }
     return Array.from(new Set(list)).filter(Boolean);
-  }, [order.serviceId, orderMetadata?.serviceIds, orderSnapshot?.services]);
+  }, [order.serviceId, orderMetadata, orderSnapshot]);
 
   const serviceIdsKey = serviceIds.join(',');
 

@@ -18,7 +18,7 @@ let baseUrl: string;
 
 let customerToken = '';
 let customerId = '';
-let customerPhone = '01099887766';
+const customerPhone = '01099887766';
 
 let adminToken = '';
 let technicianToken = '';

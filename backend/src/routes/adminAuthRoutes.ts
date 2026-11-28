@@ -39,7 +39,7 @@ router.get('/users', authenticateAdmin, authorize('users', 'view'), getAllAdminU
 router.post('/users', authenticateAdmin, authorize('users', 'create'), createAdminUser);
 router.put('/users/:id', authenticateAdmin, authorize('users', 'edit'), updateAdminUser);
 router.delete('/users/:id', authenticateAdmin, authorize('users', 'delete'), deleteAdminUser);
-router.put('/users/:id/change-password', authenticateAdmin, changeUserPassword);
+router.put('/users/:id/change-password', authenticateAdmin, authorize('users', 'password'), changeUserPassword);
 
 // Roles Management routes
 router.get('/roles', authenticateAdmin, authorize('users', 'view'), getAllRolesAdmin);

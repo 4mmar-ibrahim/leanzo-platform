@@ -9,6 +9,7 @@ export interface ServiceFeature {
 }
 
 export interface Service {
+  order?: number;
   id: string;
   category: ServiceCategory;
   title: string;
@@ -132,6 +133,10 @@ export interface Technician {
 }
 
 export interface Order {
+  metadata?: {
+    cancellationRequest?: { status: 'pending' | 'approved' | 'closed'; requestedAt: string; reason?: string };
+    [key: string]: unknown;
+  };
   id: string; // e.g. CLZ-2026-000124
   userId: string;
   serviceId: string;

@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 
 export default function AccountAddressesPage() {
   const { t, locale } = useLocaleStore();
-  const { addresses, addAddress, updateAddress, deleteAddress, setDefaultAddress, fetchAddresses } = useAddressStore();
+  const { addresses, isLoading, error, addAddress, updateAddress, deleteAddress, setDefaultAddress, fetchAddresses } = useAddressStore();
   const { governorates, fetchLocations } = useLocationStore();
   const isAr = locale === 'ar';
 
@@ -88,11 +88,12 @@ export default function AccountAddressesPage() {
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    try {
     if (editingAddress) {
-      updateAddress(editingAddress.id, {
+      await updateAddress(editingAddress.id, {
         label,
         area,
         building,
@@ -106,7 +107,7 @@ export default function AccountAddressesPage() {
         toast.error(isAr ? 'يرجى اختيار المحافظة والمدينة' : 'Please select governorate and city');
         return;
       }
-      addAddress({
+      await addAddress({
         label,
         governorateId: selectedGov.id,
         governorateNameSnapshot: isAr ? selectedGov.name : selectedGov.nameEn || selectedGov.name,
@@ -124,20 +125,28 @@ export default function AccountAddressesPage() {
     }
 
     setIsModalOpen(false);
+    } catch {
+      toast.error(isAr ? 'تعذّر حفظ العنوان' : 'Could not save the address');
+    }
   };
 
-  const handleDelete = (id: string) => {
-    deleteAddress(id);
+  const handleDelete = async (id: string) => {
+    try { await deleteAddress(id); } catch { toast.error(isAr ? 'تعذّر حذف العنوان' : 'Could not delete the address'); return; }
     toast.success(isAr ? 'تم حذف العنوان' : 'Address deleted');
   };
 
-  const handleSetDefault = (id: string) => {
-    setDefaultAddress(id);
+  const handleSetDefault = async (id: string) => {
+    try { await setDefaultAddress(id); } catch { toast.error(isAr ? 'تعذّر تحديث العنوان الافتراضي' : 'Could not set the default address'); return; }
     toast.success(isAr ? 'تم تعيين العنوان كافتراضي' : 'Default address set');
   };
 
   return (
     <div className="space-y-6 text-start">
+      {isLoading && <p role="status">{isAr ? 'جارٍ تحميل العناوين…' : 'Loading addresses…'}</p>}
+      {error && <div role="alert" className="space-y-2 text-sm text-rose-700">
+        <p>{error}</p>
+        <Button size="sm" variant="outline" onClick={() => void fetchAddresses()}>{isAr ? 'إعادة المحاولة' : 'Try again'}</Button>
+      </div>}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-white">

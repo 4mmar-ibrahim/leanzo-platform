@@ -394,7 +394,7 @@ export async function publishCMSContent(req: AuthenticatedAdminRequest, res: Res
 
     // Keep legacy AboutContent synchronized seamlessly
     try {
-      let legacyAbout = await AboutContent.findOne();
+      const legacyAbout = await AboutContent.findOne();
       if (legacyAbout) {
         legacyAbout.title = draft.about.title;
         legacyAbout.titleEn = draft.about.titleEn;

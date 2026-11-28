@@ -193,7 +193,7 @@ async function runPersistentAuthTests() {
     // Ensure a Manager Admin user exists
     const testAdminUsername = `mgr_test_${Date.now()}`;
     const testAdminPassword = 'AdminPassword123';
-    let testAdmin = await AdminUser.create({
+    const testAdmin = await AdminUser.create({
       name: 'مدير العمليات التجريبي',
       username: testAdminUsername,
       email: `${testAdminUsername}@cleanzo.com`,

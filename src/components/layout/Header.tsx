@@ -74,9 +74,6 @@ export function Header() {
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
 
-  if (pathname?.startsWith('/admin')) {
-    return null;
-  }
 
   // Close mobile menu and dropdowns on route change
   useEffect(() => {
@@ -144,6 +141,10 @@ export function Header() {
   }, [allMoreLinks, mounted, sections, isSectionVisible]);
 
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
+
+  if (pathname?.startsWith('/admin')) {
+    return null;
+  }
 
   return (
     <header

@@ -178,7 +178,7 @@ export default function SubscriptionsPage() {
     if (digits.length >= 3) {
       const prefix = digits.slice(0, 3);
       if (!VALID_EGYPTIAN_PREFIXES.includes(prefix as any)) {
-        setPhoneError(isAr ? 'رقم الهاتف يجب أن يبدأ بـ 010 أو 011.' : 'Phone number must start with 010 or 011.');
+        setPhoneError(isAr ? 'رقم الهاتف يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015.' : 'Phone number must start with 010, 011, 012, or 015.');
       } else if (digits.length === 11) {
         setPhoneError(null);
       } else if (phoneTouched) {
@@ -199,7 +199,7 @@ export default function SubscriptionsPage() {
     }
     const val = validateEgyptianPhone(customerPhone);
     if (!val.isValid) {
-      setPhoneError(val.message || (isAr ? 'يرجى إدخال رقم هاتف مصري يبدأ بـ 010 أو 011 ومكون من 11 رقمًا.' : 'Please enter valid Egyptian phone starting with 010 or 011.'));
+      setPhoneError(val.message || (isAr ? 'يرجى إدخال رقم هاتف مصري يبدأ بـ 010 أو 011 أو 012 أو 015 ومكون من 11 رقمًا.' : 'Please enter valid Egyptian phone starting with 010, 011, 012, or 015.'));
     } else {
       setPhoneError(null);
     }
@@ -440,8 +440,8 @@ export default function SubscriptionsPage() {
       const msg =
         phoneVal.message ||
         (isAr
-          ? 'رقم الهاتف يجب أن يتكون من 11 رقمًا ويبدأ بـ 010 أو 011.'
-          : 'Phone number must be 11 digits starting with 010 or 011.');
+          ? 'رقم الهاتف يجب أن يتكون من 11 رقمًا ويبدأ بـ 010 أو 011 أو 012 أو 015.'
+          : 'Phone number must be 11 digits starting with 010, 011, 012, or 015.');
       setPhoneError(msg);
       setErrorMsg(msg);
       toast.error(msg);
@@ -1067,7 +1067,7 @@ export default function SubscriptionsPage() {
                     </p>
                   ) : (
                     <p className="text-[10px] text-slate-400 font-medium mt-1">
-                      {isAr ? 'الصيغة المقبولة: 11 رقمًا تبدأ بـ 010 أو 011' : 'Accepted format: 11 digits starting with 010 or 011'}
+                      {isAr ? 'الصيغة المقبولة: 11 رقمًا تبدأ بـ 010 أو 011 أو 012 أو 015' : 'Accepted format: 11 digits starting with 010, 011, 012, or 015'}
                     </p>
                   )}
                 </div>
@@ -1204,8 +1204,8 @@ export default function SubscriptionsPage() {
                     const msg =
                       phoneVal.message ||
                       (isAr
-                        ? 'رقم الهاتف يجب أن يتكون من 11 رقمًا ويبدأ بـ 010 أو 011.'
-                        : 'Phone number must be 11 digits starting with 010 or 011.');
+                        ? 'رقم الهاتف يجب أن يتكون من 11 رقمًا ويبدأ بـ 010 أو 011 أو 012 أو 015.'
+                        : 'Phone number must be 11 digits starting with 010, 011, 012, or 015.');
                     setPhoneError(msg);
                     toast.error(msg);
                     return;

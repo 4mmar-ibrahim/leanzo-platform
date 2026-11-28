@@ -27,7 +27,7 @@ const customerBPhone = '01055667788';
 let adminToken = '';
 let technicianToken = '';
 
-let testServiceId = 'car-vip-detailing-test';
+const testServiceId = 'car-vip-detailing-test';
 let testBookingId = '';
 
 let passedCount = 0;

@@ -131,16 +131,16 @@ export default function AdminBrandingSettingsPage() {
             --cleanzo-red: ${accent} !important;
             --accent: ${accent} !important;
           }
-          [class*="bg-[#0866C6]"] { background-color: var(--cleanzo-blue) !important; }
+          [class~="bg-[#0866C6]"] { background-color: var(--cleanzo-blue) !important; }
           [class*="text-[#0866C6]"] { color: var(--cleanzo-blue) !important; }
           [class*="border-[#0866C6]"] { border-color: var(--cleanzo-blue) !important; }
           [class*="fill-[#0866C6]"] { fill: var(--cleanzo-blue) !important; }
           [class*="stroke-[#0866C6]"] { stroke: var(--cleanzo-blue) !important; }
           [class*="shadow-[#0866C6]"] { --tw-shadow-color: var(--cleanzo-blue) !important; }
-          [class*="bg-[#07345C]"] { background-color: var(--cleanzo-navy) !important; }
+          [class~="bg-[#07345C]"] { background-color: var(--cleanzo-navy) !important; }
           [class*="text-[#07345C]"] { color: var(--cleanzo-navy) !important; }
           [class*="border-[#07345C]"] { border-color: var(--cleanzo-navy) !important; }
-          [class*="bg-[#F0444C]"] { background-color: var(--cleanzo-red) !important; }
+          [class~="bg-[#F0444C]"] { background-color: var(--cleanzo-red) !important; }
           [class*="text-[#F0444C]"] { color: var(--cleanzo-red) !important; }
           [class*="border-[#F0444C]"] { border-color: var(--cleanzo-red) !important; }
           .dark [class*="dark:text-[#25B8E6]"], .dark [class*="dark:text-[#3B82F6]"] { color: var(--cleanzo-blue) !important; }

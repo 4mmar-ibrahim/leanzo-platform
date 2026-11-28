@@ -83,12 +83,13 @@ export async function getAllCustomersAdmin(req: Request, res: Response): Promise
     }
 
     // Sorting
-    const sortField = typeof sortBy === 'string' ? sortBy : 'createdAt';
+    const sortable = ['createdAt', 'name', 'phone', 'status', 'totalSpent', 'ordersCount'];
+    const sortField = typeof sortBy === 'string' && sortable.includes(sortBy) ? sortBy : 'createdAt';
     const sortDir = sortOrder === 'asc' ? 1 : -1;
     const sort: any = { [sortField]: sortDir };
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.max(1, parseInt(limit as string, 10) || 50);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
     const skip = (pageNum - 1) * limitNum;
 
     const [customers, total] = await Promise.all([

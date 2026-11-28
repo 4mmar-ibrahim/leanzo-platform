@@ -326,7 +326,19 @@ model CouponUsage {
   @@index([couponId, customerPhone])
   @@index([couponCode, customerPhone])
   @@index([orderId])
+  @@unique([couponId, orderId])
   @@map("coupon_usages")
+}
+
+model OfferUsage {
+  orderId       String @id
+  offerId       String
+  customerPhone String
+  usedAt        DateTime @default(now())
+  offer         Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@index([offerId, customerPhone])
+  @@map("offer_usages")
 }
 
 // 10. Offer Model
@@ -361,6 +373,8 @@ model Offer {
   @@index([code])
   @@index([active])
   @@index([isArchived])
+  redemptions OfferUsage[]
+
   @@map("offers")
 }
 
@@ -669,7 +683,7 @@ model Notification {
   id        String   @id @default(uuid())
   target    String   // 'all' | 'admin' | 'customer'
   userId    String?
-  eventId   String?  // Idempotent event identifier
+  eventId   String?  @unique // Idempotent event identifier
   title     String
   titleEn   String?
   message   String
@@ -683,7 +697,6 @@ model Notification {
   @@index([target])
   @@index([userId])
   @@index([read])
-  @@index([eventId])
   @@map("notifications")
 }
 

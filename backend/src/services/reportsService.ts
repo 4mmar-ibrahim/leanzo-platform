@@ -871,7 +871,7 @@ export async function getCouponsReport(filter: ReportFilter = {}) {
     };
   });
 
-  let periodRedemptionCount = couponUsages.length;
+  const periodRedemptionCount = couponUsages.length;
   let periodDiscountValue = 0;
 
   couponUsages.forEach((u) => {

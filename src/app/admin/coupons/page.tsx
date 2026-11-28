@@ -74,9 +74,9 @@ export default function AdminCouponsPage() {
   const [formMinOrderAmount, setFormMinOrderAmount] = useState<number>(0);
   const [formMaxDiscount, setFormMaxDiscount] = useState<string>('');
   const [formApplicableServices, setFormApplicableServices] = useState<string[]>([]);
-  const [formStartDate, setFormStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [formStartDate, setFormStartDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [formEndDate, setFormEndDate] = useState<string>(
-    new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]
+    () => new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]
   );
   const [formStatus, setFormStatus] = useState<CouponStatus>('active');
 

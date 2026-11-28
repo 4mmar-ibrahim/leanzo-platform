@@ -87,9 +87,12 @@ export default function AccountSubscriptionsPage() {
   const [cancelReason, setCancelReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
 
+  const [loadError, setLoadError] = useState(false);
+
   // Load subscriptions
   const fetchSubscriptions = async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const res = await apiGet<ISubscription[]>('/subscriptions/my');
       if (res?.data) {
@@ -97,7 +100,7 @@ export default function AccountSubscriptionsPage() {
         setSubscriptions(rawSubs);
       }
     } catch (err: any) {
-      console.error('Failed to load customer subscriptions:', err);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -106,32 +109,6 @@ export default function AccountSubscriptionsPage() {
   useEffect(() => {
     fetchSubscriptions();
   }, []);
-
-  // Check if remaining notice >= 12 hours for appointment
-  const check12HourRule = (dateStr: string, timeStr: string) => {
-    try {
-      const rawTime = String(timeStr || '').trim();
-      const startPart = rawTime.split(/[-–—]/)[0].trim();
-      const clean = startPart.replace(/(AM|PM|مساءً|صباحاً|مساء|صباح)/gi, '').trim();
-      const [hStr, mStr] = clean.split(':');
-      let hours = parseInt(hStr || '0', 10);
-      const mins = parseInt(mStr || '0', 10);
-
-      const isPM = rawTime.toUpperCase().includes('PM') || rawTime.includes('مساء');
-      const isAM = rawTime.toUpperCase().includes('AM') || rawTime.includes('صباح');
-      if (isPM && hours < 12) hours += 12;
-      if (isAM && hours === 12) hours = 0;
-
-      const [year, month, day] = dateStr.split('-').map(Number);
-      const aptDate = new Date(year, month - 1, day, hours, mins, 0);
-      const now = new Date();
-
-      const diffHours = (aptDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-      return diffHours >= 12;
-    } catch {
-      return false;
-    }
-  };
 
   // Fetch slots when reschedule date changes
   useEffect(() => {
@@ -238,6 +215,13 @@ export default function AccountSubscriptionsPage() {
         <div className="py-20 flex flex-col items-center justify-center gap-4">
           <div className="w-10 h-10 border-4 border-[#0866C6]/20 border-t-[#0866C6] rounded-full animate-spin" />
           <p className="text-xs text-slate-500 font-bold">{isAr ? 'جاري تحميل الاشتراكات...' : 'Loading subscriptions...'}</p>
+        </div>
+      ) : loadError ? (
+        <div role="alert" className="space-y-3 p-6 text-center text-sm">
+          <p>{isAr ? 'تعذّر تحميل الاشتراكات.' : 'Could not load subscriptions.'}</p>
+          <button type="button" onClick={fetchSubscriptions} className="font-bold text-sky-700 dark:text-sky-300">
+            {isAr ? 'إعادة المحاولة' : 'Try again'}
+          </button>
         </div>
       ) : subscriptions.length === 0 ? (
         <div className="py-16 text-center rounded-3xl bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-800 p-8 space-y-4">
@@ -362,7 +346,6 @@ export default function AccountSubscriptionsPage() {
                     {sub.visits.map((visit) => {
                       const isCompleted = visit.status === 'completed';
                       const isCancelled = visit.status === 'cancelled';
-                      const isAllowed = check12HourRule(visit.date, visit.scheduledStart || visit.time);
 
                       return (
                         <div
@@ -416,8 +399,6 @@ export default function AccountSubscriptionsPage() {
                             {/* Action Buttons for upcoming visits */}
                             {!isCompleted && !isCancelled && visit.status !== 'in_progress' && (
                               <div className="flex flex-col gap-1.5 shrink-0">
-                                {isAllowed ? (
-                                  <>
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -429,27 +410,6 @@ export default function AccountSubscriptionsPage() {
                                     >
                                       {isAr ? 'تغيير الموعد' : 'Reschedule'}
                                     </button>
-                                  </>
-                                ) : (
-                                  <div className="text-end space-y-1">
-                                    <span className="inline-block text-[10px] text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-900">
-                                      {isAr ? 'أقل من 12 ساعة' : '< 12h remaining'}
-                                    </span>
-                                    <div>
-                                      {supportWhatsApp && <a
-                                        href={`${supportWhatsApp}?text=${encodeURIComponent(
-                                          `مرحباً، أود المساعدة في تعديل أو إلغاء موعد الزيارة رقم (${visit.visitIndex}) في اشتراكي #${sub.id}`
-                                        )}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-[11px] text-[#0866C6] hover:underline font-bold"
-                                      >
-                                        <PhoneCall className="w-3 h-3" />
-                                        <span>{isAr ? 'تواصل مع الدعم' : 'Contact Support'}</span>
-                                      </a>}
-                                    </div>
-                                  </div>
-                                )}
                                 <button
                                   type="button"
                                   onClick={() => {

@@ -6,7 +6,7 @@ const router = Router();
 
 router.get('/', authenticateAdmin, authorize('analytics', 'view'), getAnalytics);
 router.get('/overview', authenticateAdmin, authorize('analytics', 'view'), getAnalytics);
-router.get('/kpis', authenticateAdmin, getDashboardKPIsFromAnalytics);
+router.get('/kpis', authenticateAdmin, authorize('analytics', 'view'), getDashboardKPIsFromAnalytics);
 router.get('/ai', authenticateAdmin, authorize('analytics', 'view'), getAIInsights);
 
 export default router;

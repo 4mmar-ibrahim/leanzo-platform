@@ -43,6 +43,13 @@ export function translateFilter(filter: any = {}, modelName?: string): any {
     }
 
     if (key === '$expr') {
+      const operator = val?.$lt ? 'lt' : val?.$gte ? 'gte' : null;
+      const fields = operator === 'lt' ? val?.$lt : val?.$gte;
+      if (modelName !== 'coupon' || !operator || !Array.isArray(fields) ||
+          fields[0] !== '$currentUsageCount' || fields[1] !== '$totalUsageLimit') {
+        throw new Error('Unsupported filter expression');
+      }
+      where.currentUsageCount = { [operator]: prisma.coupon.fields.totalUsageLimit };
       continue;
     }
 
@@ -133,6 +140,7 @@ export class ChainablePrismaQuery<T = any> implements PromiseLike<T> {
   private where: any;
   private isFindOne: boolean;
   private orderBy?: any;
+  private projection?: { select?: Record<string, boolean>; omit?: Record<string, boolean> };
   private take?: number;
   private skipCount?: number;
 
@@ -174,7 +182,15 @@ export class ChainablePrismaQuery<T = any> implements PromiseLike<T> {
     return this;
   }
 
-  select(_fields: any) {
+  select(fields: string) {
+    const tokens = fields.trim().split(/\s+/).filter(Boolean);
+    const requested = tokens.map((token) => token.replace(/^[-+]/, ''));
+    const names = requested.map(name => name === '_id' ? 'id' : name)
+      .filter(name => Boolean(this.prismaDelegate.fields?.[name]));
+    const selection = Object.fromEntries(names.map(name => [name, true]));
+    this.projection = tokens.every(token => token.startsWith('-'))
+      ? { omit: selection }
+      : { select: { id: true, ...selection } };
     return this;
   }
 
@@ -187,11 +203,12 @@ export class ChainablePrismaQuery<T = any> implements PromiseLike<T> {
       const res = await this.prismaDelegate.findFirst({
         where: this.where,
         orderBy: this.orderBy,
+        ...this.projection,
       });
       return attachDocHelpers(res, this.prismaDelegate);
     }
 
-    const args: any = { where: this.where };
+    const args: any = { where: this.where, ...this.projection };
     if (this.orderBy) args.orderBy = this.orderBy;
     if (this.take !== undefined) args.take = this.take;
     if (this.skipCount !== undefined) args.skip = this.skipCount;

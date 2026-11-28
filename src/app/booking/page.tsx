@@ -129,15 +129,16 @@ function BookingContent() {
     (selectedService as any).active !== false
   );
 
+  const effectiveName = (guestName || (isAuthenticated ? user?.name : '') || selectedAddress?.customerName || '').trim();
+
   const canProceed = () => {
     if (currentStep === 1) return hasServices;
     if (currentStep === 2) return !!selectedDate && !!selectedTime;
     if (currentStep === 3) {
       if (!selectedAddress) return false;
-      if (isAuthenticated && user) return true;
-      const effectiveName = (guestName || selectedAddress?.customerName || '').trim();
+
       const isNameValid = validateCustomerName(effectiveName, isAr).isValid;
-      const effectivePhone = (guestPhone || selectedAddress?.customerPhone || '').trim();
+      const effectivePhone = ((isAuthenticated ? user?.phone : '') || guestPhone || selectedAddress?.customerPhone || '').trim();
       const isPhoneValid = validateEgyptianPhone(effectivePhone).isValid;
       return isNameValid && isPhoneValid;
     }
@@ -156,7 +157,7 @@ function BookingContent() {
   // Step Guards: Protect direct URLs, refresh, and state corruption
   useEffect(() => {
     if (!mounted) return;
-    const effectiveName = (!isAuthenticated ? (guestName || selectedAddress?.customerName || '') : (user?.name || guestName || selectedAddress?.customerName || '')).trim();
+
     const isNameValid = validateCustomerName(effectiveName, isAr).isValid;
     const effectivePhone = (!isAuthenticated ? (guestPhone || selectedAddress?.customerPhone || '') : (user?.phone || guestPhone || selectedAddress?.customerPhone || '')).trim();
     const isPhoneValid = validateEgyptianPhone(effectivePhone).isValid;
@@ -168,7 +169,7 @@ function BookingContent() {
     } else if (currentStep > 3 && (!selectedAddress || !isNameValid || !isPhoneValid)) {
       setStep(3);
     }
-  }, [mounted, currentStep, hasServices, selectedDate, selectedTime, selectedAddress, isAuthenticated, user?.name, user?.phone, guestName, guestPhone, isAr, setStep]);
+  }, [mounted, currentStep, hasServices, selectedDate, selectedTime, selectedAddress, isAuthenticated, effectiveName, user?.phone, guestPhone, isAr, setStep]);
 
   const handleNext = () => {
     if (!canProceed()) {
@@ -189,7 +190,7 @@ function BookingContent() {
       }
       if (currentStep === 2) toast.error(isAr ? 'يرجى اختيار التاريخ والوقت' : 'Please select date and time');
       if (currentStep === 3) {
-        const effectiveName = (!isAuthenticated ? (guestName || selectedAddress?.customerName || '') : (user?.name || guestName || selectedAddress?.customerName || '')).trim();
+
         const nameVal = validateCustomerName(effectiveName, isAr);
         const effectivePhone = (!isAuthenticated ? (guestPhone || selectedAddress?.customerPhone || '') : (user?.phone || guestPhone || selectedAddress?.customerPhone || '')).trim();
         const phoneVal = validateEgyptianPhone(effectivePhone);
@@ -280,14 +281,12 @@ function BookingContent() {
     setIsSubmitting(true);
 
     try {
-      const rawName = (!isAuthenticated ? guestName : (user?.name || guestName || '')).trim();
-      const nameVal = validateCustomerName(rawName, isAr);
+      const nameVal = validateCustomerName(effectiveName, isAr);
       if (!nameVal.isValid) {
         toast.error(nameVal.message || (isAr ? 'يرجى إدخال اسم العميل للمتابعة.' : 'Please provide customer name to proceed.'));
         setIsSubmitting(false);
         return;
       }
-      const effectiveName = rawName;
       const rawPhone = (user?.phone || guestPhone || selectedAddress?.customerPhone || '').trim();
 
       if (!rawPhone) {

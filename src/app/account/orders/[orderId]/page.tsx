@@ -41,40 +41,8 @@ export default function OrderDetailsPage() {
   const ArrowIcon = direction === 'rtl' ? ArrowLeft : ArrowRight;
 
   const orderId = params?.orderId as string;
-  const storeOrder = getOrderById(orderId);
-  const [fetchedOrder, setFetchedOrder] = useState<Order | null>(null);
-  const [loading, setLoading] = useState<boolean>(!storeOrder && Boolean(orderId));
-
-  const order = storeOrder || fetchedOrder;
-
-  useEffect(() => {
-    if (!storeOrder && orderId) {
-      let isMounted = true;
-      setLoading(true);
-      (async () => {
-        try {
-          let res: Order | null = null;
-          try {
-            res = await cleanzoApi.bookings.getBookingById(orderId);
-          } catch {
-            try {
-              res = await cleanzoApi.bookings.trackOrder(orderId);
-            } catch {}
-          }
-          if (isMounted && res && res.id) {
-            setFetchedOrder(res);
-            addOrder(res);
-          }
-        } catch {
-        } finally {
-          if (isMounted) setLoading(false);
-        }
-      })();
-      return () => {
-        isMounted = false;
-      };
-    }
-  }, [orderId, storeOrder, addOrder]);
+  const order = getOrderById(orderId);
+  const [retry, setRetry] = useState(0);
 
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
@@ -83,19 +51,19 @@ export default function OrderDetailsPage() {
   const [loadResult, setLoadResult] = useState<{ id: string; error?: string } | null>(null);
 
   useEffect(() => {
-    let active = true;
-    cleanzoApi.bookings.getBookingById(orderId)
+    const controller = new AbortController();
+    cleanzoApi.bookings.getBookingById(orderId, controller.signal)
       .then((booking) => {
-        if (!active) return;
+        if (controller.signal.aborted) return;
         if (booking?.id !== orderId) throw new Error();
         addOrder({ ...booking, service: booking.service || booking.serviceSnapshot });
         setLoadResult({ id: orderId });
       })
       .catch((error) => {
-        if (active) setLoadResult({ id: orderId, error: error instanceof Error ? error.message : '' });
+        if (!controller.signal.aborted) setLoadResult({ id: orderId, error: error instanceof Error ? error.message : '' });
       });
-    return () => { active = false; };
-  }, [orderId, addOrder]);
+    return () => controller.abort();
+  }, [orderId, addOrder, retry]);
 
   if (loadResult?.id !== orderId) {
     return <p role="status" className="p-8 text-sm">{isAr ? 'جارٍ تحميل الحجز…' : 'Loading booking…'}</p>;
@@ -105,6 +73,9 @@ export default function OrderDetailsPage() {
     return (
       <div className="p-10 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center space-y-4">
         <p className="text-sm text-slate-500">{loadResult.error || (isAr ? 'لم يتم العثور على هذا الطلب' : 'Order not found')}</p>
+        <Button variant="outline" size="sm" onClick={() => { setLoadResult(null); setRetry(count => count + 1); }}>
+          {isAr ? 'إعادة المحاولة' : 'Try again'}
+        </Button>
         <Link href="/account/orders">
           <Button variant="outline" size="sm">
             <span>{isAr ? 'العودة لقائمة الطلبات' : 'Back to orders'}</span>
@@ -118,11 +89,10 @@ export default function OrderDetailsPage() {
     setIsCancelling(true);
     try {
       const updated = await cleanzoApi.bookings.cancel(order.id, 'إلغاء من قبل العميل');
-      if (updated?.id !== order.id || updated.status !== 'cancelled') {
+      if (updated?.id !== order.id || updated.metadata?.cancellationRequest?.status !== 'pending' && updated.status !== 'cancelled') {
         throw new Error(isAr ? 'تعذر تأكيد إلغاء الحجز من الخادم' : 'The server did not confirm cancellation');
       }
       addOrder({ ...order, ...updated });
-      window.dispatchEvent(new CustomEvent('cleanzo:booking-changed', { detail: { date: updated.date } }));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : (isAr ? 'تعذر إلغاء الحجز' : 'Unable to cancel booking'));
       if (error instanceof Error && 'code' in error && error.code === 'CANCELLATION_RESTRICTED_6H') {
@@ -134,13 +104,15 @@ export default function OrderDetailsPage() {
       setIsCancelling(false);
     }
     setIsCancelModalOpen(false);
-    toast.success(isAr ? 'تم إلغاء الحجز بنجاح' : 'Booking cancelled');
+    toast.success(isAr ? 'تم إرسال طلب الإلغاء للإدارة' : 'Cancellation request submitted');
   };
 
-  const isCancellable = ['pending', 'confirmed', 'assigned', 'on_the_way'].includes(order.status);
+  const cancellationPending = order.metadata?.cancellationRequest?.status === 'pending';
+  const isCancellable = !cancellationPending && ['pending', 'confirmed', 'assigned', 'on_the_way'].includes(order.status);
 
   return (
     <div className="space-y-8 text-start">
+      {cancellationPending && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-200">{isAr ? 'طلب الإلغاء بانتظار موافقة الإدارة' : 'Cancellation request awaiting approval'}</p>}
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
         <div>
@@ -183,7 +155,7 @@ export default function OrderDetailsPage() {
                 onClick={() => setIsCancelModalOpen(true)}
                 className="text-xs"
               >
-                {isAr ? 'إلغاء الحجز' : 'Cancel'}
+                {isAr ? 'طلب إلغاء الحجز' : 'Request cancellation'}
               </Button>
             </>
           )}
@@ -488,8 +460,8 @@ export default function OrderDetailsPage() {
       <Dialog
         isOpen={isCancelModalOpen}
         onClose={() => setIsCancelModalOpen(false)}
-        title={isAr ? 'تأكيد إلغاء الحجز' : 'Confirm Booking Cancellation'}
-        description={isAr ? 'هل أنت متأكد من رغبتك في إلغاء هذا الحجز؟ يمكنك إعادة الحجز في أي وقت لاحقاً.' : 'Are you sure you want to cancel this booking? You can reschedule anytime.'}
+        title={isAr ? 'إرسال طلب إلغاء الحجز' : 'Request booking cancellation'}
+        description={isAr ? 'الموعد هيفضل محجوز لحد ما الإدارة توافق على طلب الإلغاء.' : 'Your appointment remains reserved until the cancellation request is approved.'}
         maxWidth="sm"
       >
         <div className="flex justify-end gap-2 pt-4">
@@ -497,7 +469,7 @@ export default function OrderDetailsPage() {
             {t.common.cancel}
           </Button>
           <Button variant="danger" size="sm" onClick={handleConfirmCancel} isLoading={isCancelling}>
-            {isAr ? 'نعم، إلغاء الحجز' : 'Yes, Cancel Booking'}
+            {isAr ? 'إرسال الطلب' : 'Send request'}
           </Button>
         </div>
       </Dialog>

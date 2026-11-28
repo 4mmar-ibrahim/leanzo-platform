@@ -13,8 +13,8 @@ import {
   assertSlotAvailability,
   timeStringToMinutes,
   minutesToDisplayTime,
-  getCurrentCairoDateString,
-  getCurrentCairoTimeString,
+  getCairoDateFromDate,
+  getCairoTimeFromDate,
   isDuringCairoAppointment,
   withBookingLock,
   doIntervalsOverlap,
@@ -86,41 +86,21 @@ export function isNoticeSufficient(
   timeStr: string,
   requiredNoticeHours: number
 ): { isAllowed: boolean; hoursRemaining: number } {
-  try {
-    const rawTime = String(timeStr || '').trim();
-    const startPart = rawTime.split(/[-–—]/)[0].trim();
-    const clean = startPart.replace(/(AM|PM|مساءً|صباحاً|مساء|صباح)/gi, '').trim();
-    const [hStr, mStr] = clean.split(':');
-    let hours = parseInt(hStr || '0', 10);
-    const mins = parseInt(mStr || '0', 10);
-
-    const isPM = rawTime.toUpperCase().includes('PM') || rawTime.includes('مساء');
-    const isAM = rawTime.toUpperCase().includes('AM') || rawTime.includes('صباح');
-    if (isPM && hours < 12) hours += 12;
-    if (isAM && hours === 12) hours = 0;
-
-    // Build appointment ISO string in Africa/Cairo (UTC+2 standard)
-    const [year, month, day] = dateStr.split('-').map(Number);
-    // Construct local Date and determine current offset
-    const aptDate = new Date(year, month - 1, day, hours, mins, 0);
-
-    // Current Cairo date and time
-    const nowCairoDate = getCurrentCairoDateString();
-    const nowCairoTime = getCurrentCairoTimeString();
-    const [nowY, nowM, nowD] = nowCairoDate.split('-').map(Number);
-    const [nowH, nowMin] = nowCairoTime.split(':').map(Number);
-    const nowDate = new Date(nowY, nowM - 1, nowD, nowH, nowMin, 0);
-
-    const diffMs = aptDate.getTime() - nowDate.getTime();
-    const hoursRemaining = diffMs / (1000 * 60 * 60);
-
-    // Notice rule: exactly requiredNoticeHours (e.g. 12.0) is ALLOWED. Less than 12.0 (e.g. 11h 59m) is BLOCKED.
-    const isAllowed = hoursRemaining >= requiredNoticeHours;
-    return { isAllowed, hoursRemaining };
-  } catch (err) {
-    console.error('Error evaluating notice hours:', err);
-    return { isAllowed: false, hoursRemaining: 0 };
+  const [year, month, day] = String(dateStr || '').split('-').map(Number);
+  const start = String(timeStr || '').split(/[-–—]/)[0].trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || !/^\d{1,2}:\d{2}(?:\s*(?:AM|PM|صباحاً?|مساءً?|ص|م))?$/i.test(start)) {
+    return { isAllowed: false, hoursRemaining: -999 };
   }
+  if (Number(start.match(/:(\d{2})/)?.[1]) >= 60) return { isAllowed: false, hoursRemaining: -999 };
+  const minutes = timeStringToMinutes(start);
+  const wallClock = Date.UTC(year, month - 1, day, 0, minutes);
+  const clock = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+  const instant = [3, 2].map(offset => new Date(wallClock - offset * 3_600_000))
+    .find(candidate => getCairoDateFromDate(candidate) === dateStr && getCairoTimeFromDate(candidate) === clock);
+  if (!instant) return { isAllowed: false, hoursRemaining: -999 };
+  const now = Math.floor(Date.now() / 60_000) * 60_000;
+  const hoursRemaining = (instant.getTime() - now) / 3_600_000;
+  return { isAllowed: hoursRemaining >= requiredNoticeHours, hoursRemaining };
 }
 
 export interface RequestedVisitInput {

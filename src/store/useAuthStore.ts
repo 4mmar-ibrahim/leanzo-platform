@@ -187,10 +187,9 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'cleanzo-auth-storage',
-      version: 1,
-      migrate: () => ({}),
+      version: 2,
+      migrate: (saved) => ({ rememberMe: (saved as { rememberMe?: boolean } | undefined)?.rememberMe ?? false }),
       partialize: (state) => ({
-        token: state.rememberMe ? state.token : null,
         rememberMe: state.rememberMe,
       }),
     }

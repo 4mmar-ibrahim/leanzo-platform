@@ -10,7 +10,7 @@ import {
   deleteBackup,
   backupUpload,
 } from '../controllers/backupController.js';
-import { authenticateAdmin, authorize } from '../middleware/adminAuthMiddleware.js';
+import { authenticateAdmin, authorize, requireOwner } from '../middleware/adminAuthMiddleware.js';
 
 const router = Router();
 
@@ -29,8 +29,8 @@ router.post('/', authorize('settings', 'edit'), createBackup);
 router.post('/validate-archive', authorize('settings', 'view'), backupUpload.single('file'), validateUploadedArchive);
 
 // High privilege operations: Device restore and saved backup restore (restricted to Owner)
-router.post('/restore-from-device', authorize('settings', 'edit'), backupUpload.single('file'), restoreFromDevice);
-router.post('/:id/restore', authorize('settings', 'edit'), restoreBackup);
-router.delete('/:id', authorize('settings', 'edit'), deleteBackup);
+router.post('/restore-from-device', requireOwner, backupUpload.single('file'), restoreFromDevice);
+router.post('/:id/restore', requireOwner, restoreBackup);
+router.delete('/:id', requireOwner, deleteBackup);
 
 export default router;

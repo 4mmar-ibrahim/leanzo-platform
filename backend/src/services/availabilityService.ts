@@ -930,8 +930,8 @@ export async function getAvailableSlots(
       const bServices = getBookingServiceIds(b);
       const matches = requestedServiceIds.some((sId) => bServices.includes(sId));
       if (matches) {
-        let bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
-        let bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + (b.duration || 45);
+        const bStart = timeStringToMinutes(b.scheduledStart || b.timeSlotStart || b.time);
+        const bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + (b.duration || 45);
         const end = occupiedUntil(b, dateStr, bStart, bEnd);
         if (end > bStart) occupiedIntervals.push({ start: bStart, end, type: 'booking', reason: 'محجوز بالكامل' });
       }
@@ -956,8 +956,8 @@ export async function getAvailableSlots(
       const vServices = getBookingServiceIds(v);
       const matches = requestedServiceIds.some((sId) => vServices.includes(sId));
       if (matches) {
-        let vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart || v.time);
-        let vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + (v.duration || 45);
+        const vStart = timeStringToMinutes(v.scheduledStart || v.timeSlotStart || v.time);
+        const vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + (v.duration || 45);
         const end = occupiedUntil(v, dateStr, vStart, vEnd);
         if (end > vStart) occupiedIntervals.push({ start: vStart, end, type: 'booking', reason: 'محجوز بالكامل' });
       }
@@ -1409,8 +1409,8 @@ export async function assertSlotAvailability(params: {
 
       const isSameTechnician = Boolean(technicianId && b.assignedTechnicianId && b.assignedTechnicianId === technicianId);
       if (isSameTechnician) {
-        let bStart = timeStringToMinutes(b.scheduledStart || b.time);
-        let bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + (b.duration || 45);
+        const bStart = timeStringToMinutes(b.scheduledStart || b.time);
+        const bEnd = b.scheduledEnd ? timeStringToMinutes(b.scheduledEnd) : bStart + (b.duration || 45);
         if (doIntervalsOverlap(slotStartMin, slotEndMin, bStart, occupiedUntil(b, dateStr, bStart, bEnd))) {
           const nearest = await findNearestAvailableSlots(dateStr, serviceId, targetCategory, timing.totalOccupiedMinutes, slotStartMin);
           const suggestionText = nearest.length > 0 ? ` أقرب المواعيد المتاحة لهذا اليوم: ${nearest.join(' ، ')}.` : '';
@@ -1447,8 +1447,8 @@ export async function assertSlotAvailability(params: {
 
       const isSameTechnician = Boolean(technicianId && v.assignedTechnicianId && v.assignedTechnicianId === technicianId);
       if (isSameTechnician) {
-        let vStart = timeStringToMinutes(v.scheduledStart || v.time);
-        let vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + (v.duration || 45);
+        const vStart = timeStringToMinutes(v.scheduledStart || v.time);
+        const vEnd = v.scheduledEnd ? timeStringToMinutes(v.scheduledEnd) : vStart + (v.duration || 45);
         if (doIntervalsOverlap(slotStartMin, slotEndMin, vStart, occupiedUntil(v, dateStr, vStart, vEnd))) {
           const nearest = await findNearestAvailableSlots(dateStr, serviceId, targetCategory, timing.totalOccupiedMinutes, slotStartMin);
           const suggestionText = nearest.length > 0 ? ` أقرب المواعيد المتاحة لهذا اليوم: ${nearest.join(' ، ')}.` : '';

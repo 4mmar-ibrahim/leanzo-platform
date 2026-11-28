@@ -64,7 +64,7 @@ export async function runComprehensiveAppointmentConflictTestSuite() {
     await Booking.deleteMany({ date: testDate });
     await SubscriptionVisit.deleteMany({ date: testDate });
     await Service.deleteMany({ id: { $in: ['srv-conf-car', 'srv-conf-home'] } });
-    let carCat = await ServiceCategory.findOne({ slug: 'car' });
+    const carCat = await ServiceCategory.findOne({ slug: 'car' });
     if (!carCat) {
       await ServiceCategory.create({
         id: 'cat-conf-car',
@@ -75,7 +75,7 @@ export async function runComprehensiveAppointmentConflictTestSuite() {
       });
     }
 
-    let homeCat = await ServiceCategory.findOne({ slug: 'home' });
+    const homeCat = await ServiceCategory.findOne({ slug: 'home' });
     if (!homeCat) {
       await ServiceCategory.create({
         id: 'cat-conf-home',

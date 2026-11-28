@@ -1,5 +1,6 @@
 'use client';
 
+import { useAdminStore } from '@/store/useAdminStore';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
@@ -28,6 +29,7 @@ export default function AdminNotificationsPage() {
   const fetchNotifications = useNotificationStore((s) => s.fetchNotifications);
   const markAsRead = useNotificationStore((s) => s.markAsRead);
   const markAllAsRead = useNotificationStore((s) => s.markAllAsRead);
+  const canManageLog = useAdminStore((state) => ['owner', 'super_admin'].includes(state.currentAdmin?.role || ''));
   const clearAll = useNotificationStore((s) => s.clearAll);
   const deleteNotification = useNotificationStore((s) => s.deleteNotification);
   const resetToDefaults = useNotificationStore((s) => s.resetToDefaults);
@@ -150,7 +152,7 @@ export default function AdminNotificationsPage() {
             <span>تحديث</span>
           </button>
 
-          <button
+          {canManageLog && <button
             onClick={handleCleanupDuplicates}
             disabled={isCleaning}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-[#072540] border border-slate-200 dark:border-[#0E3A64] text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#0A2E50] transition shadow-2xs"
@@ -158,7 +160,7 @@ export default function AdminNotificationsPage() {
           >
             <Sparkles className={cn('w-3.5 h-3.5 text-amber-500', isCleaning && 'animate-spin')} />
             <span>تنظيف المكررات</span>
-          </button>
+          </button>}
 
           {unreadCount > 0 && (
             <button
@@ -173,7 +175,7 @@ export default function AdminNotificationsPage() {
             </button>
           )}
 
-          {notifications.length > 0 && (
+          {canManageLog && notifications.length > 0 && (
             <button
               onClick={() => {
                 clearAll();
@@ -396,7 +398,7 @@ export default function AdminNotificationsPage() {
                     <ArrowUpRight className="w-3.5 h-3.5" />
                   </Link>
                 )}
-                <button
+                {canManageLog && <button
                   onClick={(e) => {
                     e.stopPropagation();
                     deleteNotification(n.id);
@@ -406,7 +408,7 @@ export default function AdminNotificationsPage() {
                   title="حذف الإشعار"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                </button>}
               </div>
             </div>
           ))

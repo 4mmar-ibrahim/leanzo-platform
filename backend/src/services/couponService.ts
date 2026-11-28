@@ -1,4 +1,4 @@
-import prisma from '../config/prisma.js';
+import prisma, { inDatabaseTransaction } from '../config/prisma.js';
 import { Coupon, ICoupon } from '../models/Coupon.js';
 import { CouponUsage, ICouponUsage } from '../models/CouponUsage.js';
 import { Offer } from '../models/Offer.js';
@@ -90,6 +90,12 @@ export async function validateCoupon(
       );
     }
 
+    const phone = normalizePhone(customerPhone);
+    const customerUsageCount = phone ? await prisma.offerUsage.count({ where: { offerId: offer.id, customerPhone: phone } }) : 0;
+    if (customerUsageCount > 0) {
+      throw new CouponValidationError('تم استخدام هذا العرض من قبل لهذا الرقم', 'CUSTOMER_LIMIT_REACHED', 400);
+    }
+
     const discPercent = offer.discountPercentage;
     const rawDiscount = Math.round((orderTotal * discPercent) / 100);
     const actualDiscount = Math.min(orderTotal, rawDiscount);
@@ -113,8 +119,8 @@ export async function validateCoupon(
       originalPrice: orderTotal,
       finalPrice,
       remainingTotalUsages,
-      customerUsageCount: 0,
-      customerRemainingUsages: remainingTotalUsages,
+      customerUsageCount,
+      customerRemainingUsages: Math.min(1, remainingTotalUsages),
     };
   }
 
@@ -246,136 +252,143 @@ export async function redeemCouponAtomically(params: {
   discountAmount: number;
   finalPrice: number;
 }> {
-  const { code, orderTotal, customerPhone, orderId, customerName, customerId } = params;
+  return inDatabaseTransaction(async () => {
+    const { code, orderTotal, customerPhone, orderId, customerName, customerId } = params;
 
-  const cleanPhone = normalizePhone(customerPhone);
-  if (!cleanPhone) {
-    throw new CouponValidationError('رقم هاتف العميل مطلوب لتطبيق الكوبون', 'PHONE_REQUIRED', 422);
-  }
-
-  // 1. Initial validation
-  const validation = await validateCoupon(code, orderTotal, cleanPhone);
-  const coupon = validation.coupon;
-  const todayStr = new Date().toISOString().split('T')[0];
-
-  // If this code belongs to an Offer rather than standard Coupon model
-  if ((coupon as any).isOffer) {
-    const cleanOfferCode = code.trim().toUpperCase();
-    const offer = await Offer.findOne({ code: cleanOfferCode, isArchived: false });
-    if (!offer) {
-      throw new CouponValidationError('كود العرض غير متاح', 'OFFER_NOT_FOUND', 404);
+    const cleanPhone = normalizePhone(customerPhone);
+    if (!cleanPhone) {
+      throw new CouponValidationError('رقم هاتف العميل مطلوب لتطبيق الكوبون', 'PHONE_REQUIRED', 422);
     }
-    const redemption = await prisma.offer.updateMany({
+
+    // 1. Initial validation
+    const validation = await validateCoupon(code, orderTotal, cleanPhone);
+    const coupon = validation.coupon;
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // If this code belongs to an Offer rather than standard Coupon model
+    if ((coupon as any).isOffer) {
+      const cleanOfferCode = code.trim().toUpperCase();
+      const offer = await Offer.findOne({ code: cleanOfferCode, isArchived: false });
+      if (!offer) {
+        throw new CouponValidationError('كود العرض غير متاح', 'OFFER_NOT_FOUND', 404);
+      }
+      const redemption = await prisma.offer.updateMany({
+        where: {
+          id: offer.id,
+          active: true,
+          isArchived: false,
+          OR: [
+            { usageLimit: null },
+            { usageLimit: 0 },
+            { usageCount: { lt: prisma.offer.fields.usageLimit } },
+          ],
+        },
+        data: { usageCount: { increment: 1 } },
+      });
+      if (!redemption.count) {
+        throw new CouponValidationError('كود العرض لم يعد متاحاً', 'OFFER_USAGE_LIMIT_REACHED', 409);
+      }
+      // The counter update serializes redemptions for this offer in the reservation transaction.
+      if (await prisma.offerUsage.count({ where: { offerId: offer.id, customerPhone: cleanPhone } })) {
+        throw new CouponValidationError('تم استخدام هذا العرض من قبل لهذا الرقم', 'CUSTOMER_LIMIT_REACHED', 409);
+      }
+      const usage = await prisma.offerUsage.create({ data: { orderId, offerId: offer.id, customerPhone: cleanPhone } });
+      const updatedOffer = await prisma.offer.findUniqueOrThrow({ where: { id: offer.id } });
+
+      return {
+        coupon: updatedOffer as any,
+        usage: {
+          id: usage.orderId,
+          couponId: offer.id,
+          couponCode: offer.code,
+          customerPhone: cleanPhone,
+          customerName: customerName || 'عميل كلينزو',
+          customerId,
+          orderId,
+          discountType: 'percentage',
+          discountValue: offer.discountPercentage,
+          actualDiscountAmount: validation.actualDiscountAmount,
+          originalPrice: validation.originalPrice,
+          finalPrice: validation.finalPrice,
+          usedAt: new Date(),
+        } as any,
+        discountAmount: validation.actualDiscountAmount,
+        finalPrice: validation.finalPrice,
+      };
+    }
+
+    // 2. Atomic Reservation: Prevent concurrent requests from exceeding totalUsageLimit
+    const couponId = String(coupon._id);
+    const redemption = await prisma.coupon.updateMany({
       where: {
-        id: offer.id,
-        active: true,
+        id: couponId,
         isArchived: false,
-        OR: [
-          { usageLimit: null },
-          { usageLimit: 0 },
-          { usageCount: { lt: prisma.offer.fields.usageLimit } },
-        ],
+        status: 'active',
+        startDate: { lte: todayStr },
+        endDate: { gte: todayStr },
+        currentUsageCount: { lt: prisma.coupon.fields.totalUsageLimit },
       },
-      data: { usageCount: { increment: 1 } },
+      data: {
+        currentUsageCount: { increment: 1 },
+        lastUsedAt: new Date(),
+      },
     });
-    if (!redemption.count) {
-      throw new CouponValidationError('كود العرض لم يعد متاحاً', 'OFFER_USAGE_LIMIT_REACHED', 409);
-    }
-    const updatedOffer = await prisma.offer.findUniqueOrThrow({ where: { id: offer.id } });
 
-    return {
-      coupon: updatedOffer as any,
-      usage: {
-        id: `usage-${Date.now()}`,
-        couponId: offer.id,
-        couponCode: offer.code,
+    if (!redemption.count) {
+      throw new CouponValidationError(
+        'عذراً، تم استنفاد هذا الكوبون للتو من قِبل عميل آخر أو انتهت صلاحيته',
+        'COUPON_RACE_EXHAUSTED',
+        409
+      );
+    }
+
+    const updatedCoupon = await Coupon.findById(couponId);
+
+    // 3. Double-check customer limit atomically after lock
+    const currentCustomerUsage = await CouponUsage.countDocuments({
+      couponId: coupon._id,
+      customerPhone: cleanPhone,
+    });
+
+    if (currentCustomerUsage >= coupon.perCustomerLimit) {
+      // Rollback atomic counter increment
+      await Coupon.findByIdAndUpdate(coupon._id, { $inc: { currentUsageCount: -1 } });
+      throw new CouponValidationError(
+        `لقد استنفدت الحد المسموح لك لاستخدام هذا الكوبون (${coupon.perCustomerLimit} مرات)`,
+        'CUSTOMER_LIMIT_REACHED',
+        400
+      );
+    }
+
+    // 4. Create Usage Record
+    try {
+      const usage = await CouponUsage.create({
+        couponId: coupon._id,
+        couponCode: coupon.code,
         customerPhone: cleanPhone,
+        customerId: customerId || undefined,
         customerName: customerName || 'عميل كلينزو',
-        customerId,
         orderId,
-        discountType: 'percentage',
-        discountValue: offer.discountPercentage,
+        discountType: coupon.discountType,
+        discountValue: coupon.discountValue,
         actualDiscountAmount: validation.actualDiscountAmount,
         originalPrice: validation.originalPrice,
         finalPrice: validation.finalPrice,
         usedAt: new Date(),
-      } as any,
-      discountAmount: validation.actualDiscountAmount,
-      finalPrice: validation.finalPrice,
-    };
-  }
+      });
 
-  // 2. Atomic Reservation: Prevent concurrent requests from exceeding totalUsageLimit
-  const couponId = String(coupon._id);
-  const redemption = await prisma.coupon.updateMany({
-    where: {
-      id: couponId,
-      isArchived: false,
-      status: 'active',
-      startDate: { lte: todayStr },
-      endDate: { gte: todayStr },
-      currentUsageCount: { lt: prisma.coupon.fields.totalUsageLimit },
-    },
-    data: {
-      currentUsageCount: { increment: 1 },
-      lastUsedAt: new Date(),
-    },
+      return {
+        coupon: updatedCoupon,
+        usage,
+        discountAmount: validation.actualDiscountAmount,
+        finalPrice: validation.finalPrice,
+      };
+    } catch (err: any) {
+      // Rollback usage counter on failure
+      await Coupon.findByIdAndUpdate(coupon._id, { $inc: { currentUsageCount: -1 } });
+      throw err;
+    }
   });
-
-  if (!redemption.count) {
-    throw new CouponValidationError(
-      'عذراً، تم استنفاد هذا الكوبون للتو من قِبل عميل آخر أو انتهت صلاحيته',
-      'COUPON_RACE_EXHAUSTED',
-      409
-    );
-  }
-
-  const updatedCoupon = await Coupon.findById(couponId);
-
-  // 3. Double-check customer limit atomically after lock
-  const currentCustomerUsage = await CouponUsage.countDocuments({
-    couponId: coupon._id,
-    customerPhone: cleanPhone,
-  });
-
-  if (currentCustomerUsage >= coupon.perCustomerLimit) {
-    // Rollback atomic counter increment
-    await Coupon.findByIdAndUpdate(coupon._id, { $inc: { currentUsageCount: -1 } });
-    throw new CouponValidationError(
-      `لقد استنفدت الحد المسموح لك لاستخدام هذا الكوبون (${coupon.perCustomerLimit} مرات)`,
-      'CUSTOMER_LIMIT_REACHED',
-      400
-    );
-  }
-
-  // 4. Create Usage Record
-  try {
-    const usage = await CouponUsage.create({
-      couponId: coupon._id,
-      couponCode: coupon.code,
-      customerPhone: cleanPhone,
-      customerId: customerId || undefined,
-      customerName: customerName || 'عميل كلينزو',
-      orderId,
-      discountType: coupon.discountType,
-      discountValue: coupon.discountValue,
-      actualDiscountAmount: validation.actualDiscountAmount,
-      originalPrice: validation.originalPrice,
-      finalPrice: validation.finalPrice,
-      usedAt: new Date(),
-    });
-
-    return {
-      coupon: updatedCoupon,
-      usage,
-      discountAmount: validation.actualDiscountAmount,
-      finalPrice: validation.finalPrice,
-    };
-  } catch (err: any) {
-    // Rollback usage counter on failure
-    await Coupon.findByIdAndUpdate(coupon._id, { $inc: { currentUsageCount: -1 } });
-    throw err;
-  }
 }
 
 /**

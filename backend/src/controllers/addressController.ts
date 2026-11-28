@@ -204,7 +204,7 @@ export async function updateCustomerAddress(req: AuthenticatedRequest, res: Resp
     }
 
     // Security / IDOR Check: Ensure address belongs to current user
-    const isOwner = Boolean(userId && address.customerId === userId);
+    const isOwner = Boolean(userId && address.customerId && String(address.customerId) === String(userId));
 
     if (!isOwner) {
       sendError(res, 'غير مصرح لك بتعديل هذا العنوان', 403, 'FORBIDDEN_IDOR');
@@ -277,7 +277,7 @@ export async function setDefaultAddress(req: AuthenticatedRequest, res: Response
       return;
     }
 
-    const isOwner = Boolean(userId && address.customerId === userId);
+    const isOwner = Boolean(userId && address.customerId && String(address.customerId) === String(userId));
 
     if (!isOwner) {
       sendError(res, 'غير مصرح لك بتعديل هذا العنوان', 403, 'FORBIDDEN_IDOR');
@@ -310,7 +310,7 @@ export async function deleteCustomerAddress(req: AuthenticatedRequest, res: Resp
       return;
     }
 
-    const isOwner = Boolean(userId && address.customerId === userId);
+    const isOwner = Boolean(userId && address.customerId && String(address.customerId) === String(userId));
 
     if (!isOwner) {
       sendError(res, 'غير مصرح لك بحذف هذا العنوان', 403, 'FORBIDDEN_IDOR');

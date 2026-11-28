@@ -280,6 +280,13 @@ export async function getAllSettingsAdmin(req: Request, res: Response): Promise<
 export async function updateSettingsAdmin(req: Request, res: Response): Promise<void> {
   try {
     const updates = req.body;
+    const sections = ['general', 'booking', 'appearance', 'branding', 'mobileExperience', 'contact', 'social', 'notifications', 'security', 'mascot'];
+    if (!updates || typeof updates !== 'object' || Array.isArray(updates) ||
+        Object.entries(updates).some(([key, value]) => !sections.includes(key) ||
+          !value || typeof value !== 'object' || Array.isArray(value))) {
+      sendError(res, 'إعدادات النظام المرسلة غير صالحة', 400, 'INVALID_SYSTEM_SETTINGS');
+      return;
+    }
     const guide = updates.booking?.stepGuide;
     if (guide !== undefined && (
       !guide || typeof guide !== 'object' || Array.isArray(guide) ||

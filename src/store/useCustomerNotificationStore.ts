@@ -9,8 +9,8 @@ interface CustomerNotificationState {
   notifications: CustomerNotification[];
   addNotification: (notif: Omit<CustomerNotification, 'id' | 'timestamp' | 'read'>) => void;
   syncRemoteNotifications: () => Promise<void>;
-  markAsRead: (id: string) => void;
-  markAllAsRead: (userId?: string, phone?: string) => void;
+  markAsRead: (id: string) => Promise<void>;
+  markAllAsRead: (userId?: string, phone?: string) => Promise<void>;
   getUnreadCount: (userId?: string, phone?: string) => number;
   getUserNotifications: (userId?: string, phone?: string) => CustomerNotification[];
   clearAll: () => void;
@@ -112,7 +112,12 @@ export const useCustomerNotificationStore = create<CustomerNotificationState>()(
         });
       },
 
-      markAsRead: (id) => {
+      markAsRead: async (id) => {
+        const existing = get().notifications.find(item => item.id === id);
+        if (!existing || existing.read) return;
+        if (existing.userId) {
+          try { await cleanzoApi.notifications.markCustomerRead(id); } catch { return; }
+        }
         set((state) => ({
           notifications: state.notifications.map((n) =>
             n.id === id ? { ...n, read: true } : n
@@ -120,7 +125,10 @@ export const useCustomerNotificationStore = create<CustomerNotificationState>()(
         }));
       },
 
-      markAllAsRead: (userId?: string, phone?: string) => {
+      markAllAsRead: async (userId?: string, phone?: string) => {
+        if (userId) {
+          try { await cleanzoApi.notifications.markAllCustomerRead(); } catch { return; }
+        }
         if (!userId && !phone) {
           set((state) => ({
             notifications: state.notifications.map((n) => ({ ...n, read: true })),

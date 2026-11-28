@@ -26,8 +26,8 @@ router.get('/coupons', authenticateAdmin, authorize('reports', 'view'), getCoupo
 router.get('/bookings', authenticateAdmin, authorize('reports', 'view'), getBookingsReportController);
 router.get('/subscriptions', authenticateAdmin, authorize('reports', 'view'), getSubscriptionsReportController);
 
-// Dashboard / KPI summary (accessible by any authenticated admin)
-router.get('/dashboard-kpis', authenticateAdmin, getDashboardKPIsController);
-router.get('/kpis', authenticateAdmin, getDashboardKPIsController);
+// Dashboard / KPI summary (requires reports.view)
+router.get('/dashboard-kpis', authenticateAdmin, authorize('reports', 'view'), getDashboardKPIsController);
+router.get('/kpis', authenticateAdmin, authorize('reports', 'view'), getDashboardKPIsController);
 
 export default router;

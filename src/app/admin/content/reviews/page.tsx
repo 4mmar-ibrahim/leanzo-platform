@@ -280,7 +280,7 @@ export default function AdminReviewsManagementPage() {
   };
 
   // Deduplicate reviews strictly so every review appears only ONCE
-  const uniqueReviews = useMemo(() => {
+  const uniqueReviews = (() => {
     const seenIds = new Set<string>();
     const seenSignatures = new Set<string>();
     return reviews.filter((r) => {
@@ -292,10 +292,10 @@ export default function AdminReviewsManagementPage() {
       if (sig.length > 2) seenSignatures.add(sig);
       return true;
     });
-  }, [reviews]);
+  })();
 
   // Filtered reviews from unique deduplicated set
-  const filteredReviews = useMemo(() => {
+  const filteredReviews = (() => {
     return uniqueReviews.filter((r) => {
       const matchesCategory =
         selectedCategory === 'all' || r.category === selectedCategory;
@@ -307,7 +307,7 @@ export default function AdminReviewsManagementPage() {
         r.comment?.toLowerCase().includes(q);
       return matchesCategory && matchesSearch;
     });
-  }, [uniqueReviews, selectedCategory, search]);
+  })();
 
   const serviceSuggestions = [
     'الباقة الملكية - ديتيلينج شامل وفائق VIP',

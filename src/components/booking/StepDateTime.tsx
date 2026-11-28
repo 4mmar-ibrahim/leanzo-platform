@@ -208,7 +208,7 @@ export function StepDateTime() {
     } finally {
       if (!request.signal.aborted) setIsLoadingSlots(false);
     }
-  }, [selectedDate, selectedService?.id, totalDuration, currentServiceIds, effectiveCategory, selectedTime, setTime]);
+  }, [selectedDate, selectedService, totalDuration, currentServiceIds, effectiveCategory, selectedTime, setTime]);
 
   // Refetch when date changes
   useEffect(() => {

@@ -139,7 +139,7 @@ async function runTests() {
     assert(loginRes.status === 200, 'Admin login succeeds with 200');
     assert(!!loginRes.body?.data?.token, 'Admin login returns valid JWT token');
     assert(loginRes.body?.data?.admin?.username === 'test.owner', 'Admin login returns correct admin object');
-    assert(!!loginRes.cookie && loginRes.cookie.includes('cleanzo_admin_token='), 'Admin login sets cleanzo_admin_token cookie in headers');
+    assert(!!loginRes.cookie && loginRes.cookie.includes('cleanzo_admin_refresh_token=') && !loginRes.cookie.includes('cleanzo_admin_token='), 'Admin login sets only the refresh cookie');
 
     const validOwnerToken = loginRes.body.data.token;
 
@@ -164,16 +164,16 @@ async function runTests() {
     assert(expiredReq.body?.code === 'TOKEN_EXPIRED', 'Expired token response contains code TOKEN_EXPIRED');
     assert(expiredReq.body?.message === 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً', 'Expired token response contains accurate session expiration message');
 
-    // Refresh token using expired token
+    // Refresh the session using the HttpOnly refresh cookie
     const refreshRes = await request('/api/auth/admin/refresh', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${expiredToken}` },
+      headers: { Cookie: loginRes.cookie?.match(/cleanzo_admin_refresh_token=[^;]+/)?.[0] || '' },
     });
 
-    assert(refreshRes.status === 200, 'Token refresh succeeds with 200 using expired token');
+    assert(refreshRes.status === 200, 'Token refresh succeeds with 200 using the refresh cookie');
     assert(!!refreshRes.body?.data?.token, 'Token refresh returns new fresh token');
     assert(refreshRes.body?.data?.token !== expiredToken, 'Fresh token is distinct from expired token');
-    assert(!!refreshRes.cookie && refreshRes.cookie.includes('cleanzo_admin_token='), 'Token refresh sets updated cookie');
+    assert(!!refreshRes.cookie && refreshRes.cookie.includes('cleanzo_admin_refresh_token='), 'Token refresh sets updated cookie');
 
     const renewedToken = refreshRes.body.data.token;
 

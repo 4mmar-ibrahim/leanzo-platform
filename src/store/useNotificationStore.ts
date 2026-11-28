@@ -8,7 +8,7 @@ interface NotificationState {
   notifications: AdminNotificationItem[];
   unreadCount: number;
   isLoading: boolean;
-  fetchNotifications: () => Promise<void>;
+  fetchNotifications: (background?: boolean) => Promise<void>;
   addNotification: (item: Omit<AdminNotificationItem, 'id' | 'timestamp' | 'read'>) => void;
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
@@ -41,13 +41,19 @@ function formatTimeAgo(dateStr?: string | Date): string {
   }
 }
 
+let fetchingNotifications = false;
+let pendingNotificationWrites = 0;
+
 export const useNotificationStore = create<NotificationState>((set, get) => ({
   notifications: [],
   unreadCount: 0,
   isLoading: false,
 
-  fetchNotifications: async () => {
-    set({ isLoading: true });
+  fetchNotifications: async (background = false) => {
+    if (fetchingNotifications || pendingNotificationWrites > 0) return;
+    fetchingNotifications = true;
+    const previousList = get().notifications;
+    if (!background) set({ isLoading: true });
     try {
       const remote = await cleanzoApi.notifications.getAdmin();
       const rawList = Array.isArray(remote)
@@ -87,6 +93,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
           ? remote.unreadCount
           : deduplicated.filter((n) => !n.read).length;
 
+      if (pendingNotificationWrites > 0 || get().notifications !== previousList) return;
       set({
         notifications: deduplicated,
         unreadCount: backendUnread,
@@ -95,7 +102,8 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     } catch {
       // Keep state clean on error
     } finally {
-      set({ isLoading: false });
+      fetchingNotifications = false;
+      if (!background) set({ isLoading: false });
     }
   },
 
@@ -141,6 +149,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   },
 
   markAsRead: async (id) => {
+    pendingNotificationWrites++;
     set((state) => {
       const nextList = state.notifications.map((n) => (n.id === id ? { ...n, read: true } : n));
       return {
@@ -153,10 +162,13 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       if (typeof res?.unreadCount === 'number') {
         set({ unreadCount: res.unreadCount });
       }
-    } catch {}
+    } catch {} finally {
+      pendingNotificationWrites--;
+    }
   },
 
   markAllAsRead: async () => {
+    pendingNotificationWrites++;
     set((state) => ({
       notifications: state.notifications.map((n) => ({ ...n, read: true })),
       unreadCount: 0,
@@ -166,17 +178,23 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       if (typeof res?.unreadCount === 'number') {
         set({ unreadCount: res.unreadCount });
       }
-    } catch {}
+    } catch {} finally {
+      pendingNotificationWrites--;
+    }
   },
 
   clearAll: async () => {
+    pendingNotificationWrites++;
     set({ notifications: [], unreadCount: 0 });
     try {
       await cleanzoApi.notifications.clearAllAdmin();
-    } catch {}
+    } catch {} finally {
+      pendingNotificationWrites--;
+    }
   },
 
   deleteNotification: async (id) => {
+    pendingNotificationWrites++;
     set((state) => {
       const nextList = state.notifications.filter((n) => n.id !== id);
       return {
@@ -189,7 +207,9 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       if (typeof res?.unreadCount === 'number') {
         set({ unreadCount: res.unreadCount });
       }
-    } catch {}
+    } catch {} finally {
+      pendingNotificationWrites--;
+    }
   },
 
   cleanupDuplicates: async () => {

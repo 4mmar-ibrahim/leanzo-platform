@@ -209,7 +209,7 @@ export function ZoCanvas({
 
     // Animation Loop
     let animationFrameId: number;
-    let lastTime = performance.now();
+    const lastTime = performance.now();
     let isVisible = true;
 
     const clock = new THREE.Clock();

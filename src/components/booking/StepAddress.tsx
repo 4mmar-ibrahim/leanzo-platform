@@ -86,7 +86,7 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
     : (isAuthenticated && user?.phone ? user.phone : (guestPhone || ''));
   const initialName = isAdminContext
     ? (targetCustomer?.name || '')
-    : (isAuthenticated && user?.name ? user.name : (guestName || ''));
+    : (guestName || (isAuthenticated ? user?.name : '') || '');
 
   const [guestPhoneInput, setGuestPhoneInput] = useState(initialPhone);
   const [phoneError, setPhoneError] = useState<string | null>(null);
@@ -160,8 +160,8 @@ export function StepAddress({ isAdminContext = false, targetCustomer = null }: S
       if (!VALID_EGYPTIAN_PREFIXES.includes(prefix as any)) {
         setPhoneError(
           isAr
-            ? 'رقم الهاتف يجب أن يبدأ بـ 010 أو 011.'
-            : 'Phone number must start with 010 or 011.'
+            ? 'رقم الهاتف يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015.'
+            : 'Phone number must start with 010, 011, 012, or 015.'
         );
       } else if (digits.length === 11) {
         setPhoneError(null);

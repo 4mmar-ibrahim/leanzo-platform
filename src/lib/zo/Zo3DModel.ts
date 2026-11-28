@@ -826,11 +826,11 @@ export function createZo3DCharacter(): Zo3DInstance {
 
       // Organic living breathing
       const breath = Math.sin(elapsedTime * 2.8) * 0.035;
-      let targetScaleX = 1.0 - breath * 0.5;
+      const targetScaleX = 1.0 - breath * 0.5;
       let targetScaleY = 1.0 + breath;
       let targetPosX = 0;
       let targetPosY = 1.2;
-      let targetPosZ = 0;
+      const targetPosZ = 0;
       let targetRotX = 0;
       let targetRotY = 0;
       let targetRotZ = 0;

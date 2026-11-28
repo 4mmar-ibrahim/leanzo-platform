@@ -24,7 +24,7 @@ interface ServiceState {
   deleteService: (id: string) => Promise<boolean>;
   duplicateService: (id: string) => Promise<Service | undefined>;
   toggleServiceVisibility: (id: string) => Promise<boolean>;
-  reorderServices: (startIndex: number, endIndex: number) => void;
+  reorderServices: (startIndex: number, endIndex: number) => Promise<void>;
   getServiceById: (id: string) => Service | undefined;
   getServicesByCategory: (category: ServiceCategory | 'all') => Service[];
 
@@ -195,13 +195,16 @@ export const useServiceStore = create<ServiceState>()(
     }
   },
 
-  reorderServices: (startIndex, endIndex) => {
-    set((state) => {
-      const result = Array.from(state.services);
-      const [removed] = result.splice(startIndex, 1);
-      result.splice(endIndex, 0, removed);
-      return { services: result };
-    });
+  reorderServices: async (startIndex, endIndex) => {
+    const [source, target] = [get().services[startIndex], get().services[endIndex]];
+    if (!source || !target || source.id === target.id) return;
+    const savedOrder = await cleanzoApi.services.move(source.id, target.id);
+    const orderById = new Map(savedOrder.map(service => [service.id, service.order]));
+    set((state) => ({
+      services: state.services
+        .map(service => ({ ...service, order: orderById.get(service.id) ?? service.order }))
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    }));
   },
 
   getServiceById: (id) => {

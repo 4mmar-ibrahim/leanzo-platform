@@ -31,12 +31,12 @@ export async function getCustomerNotifications(req: AuthenticatedRequest, res: R
 export async function markCustomerNotificationRead(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const userId = req.user?._id?.toString();
+    const userId = req.user?._id?.toString() || req.user?.id?.toString();
 
     const notif = await Notification.findOne({
       _id: id,
       target: 'customer',
-      $or: [{ userId }, { userId: { $exists: false } }],
+      userId,
     });
 
     if (!notif) {
@@ -52,7 +52,18 @@ export async function markCustomerNotificationRead(req: AuthenticatedRequest, re
   }
 }
 
+export async function markAllCustomerNotificationsRead(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const userId = req.user?._id?.toString() || req.user?.id?.toString();
+    await Notification.updateMany({ target: 'customer', userId, read: false }, { $set: { read: true } });
+    sendSuccess(res, null, 'تم تحديث الإشعارات');
+  } catch (err: any) {
+    sendError(res, err.message, 500);
+  }
+}
+
 export async function getAdminNotifications(req: Request, res: Response): Promise<void> {
+  res.setHeader('Cache-Control', 'private, no-store');
   try {
     const filter = { target: { $in: ['admin', 'all'] } };
     const [notifications, unreadCount, totalCount] = await Promise.all([
@@ -74,7 +85,7 @@ export async function getAdminNotifications(req: Request, res: Response): Promis
 export async function markAdminNotificationRead(req: Request, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    await Notification.findByIdAndUpdate(id, { read: true });
+    await Notification.updateMany({ id, target: { $in: ['admin', 'all'] } }, { $set: { read: true } });
     const unreadCount = await Notification.count({ target: { $in: ['admin', 'all'] }, read: false });
     sendSuccess(res, { unreadCount: Number(unreadCount) || 0 }, 'تم تحديد الإشعار كمقروء');
   } catch (err: any) {
@@ -103,7 +114,7 @@ export async function clearAllAdminNotifications(req: Request, res: Response): P
 export async function deleteAdminNotification(req: Request, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    await Notification.findByIdAndDelete(id);
+    await Notification.deleteOne({ id, target: { $in: ['admin', 'all'] } });
     const unreadCount = await Notification.count({ target: { $in: ['admin', 'all'] }, read: false });
     sendSuccess(res, { unreadCount: Number(unreadCount) || 0 }, 'تم حذف الإشعار');
   } catch (err: any) {
@@ -113,14 +124,14 @@ export async function deleteAdminNotification(req: Request, res: Response): Prom
 
 export async function createAdminNotification(req: Request, res: Response): Promise<void> {
   try {
-    const { title, titleEn, message, messageEn, type, link, target, userId, eventId } = req.body;
+    const { title, titleEn, message, messageEn, type, link, eventId } = req.body;
     if (!title || !message) {
       sendError(res, 'العنوان والرسالة مطلوبان', 422);
       return;
     }
 
     if (eventId) {
-      const existing = await Notification.findOne({ eventId });
+      const existing = await Notification.findOne({ eventId, target: 'admin' });
       if (existing) {
         sendSuccess(res, existing, 'تم العثور على الإشعار المسجل مسبقاً لهذا الحدث', 200);
         return;
@@ -128,8 +139,7 @@ export async function createAdminNotification(req: Request, res: Response): Prom
     }
 
     const created = await Notification.create({
-      target: target || 'admin',
-      userId: userId || undefined,
+      target: 'admin',
       eventId: eventId || undefined,
       title,
       titleEn: titleEn || title,

@@ -31,7 +31,7 @@ import { useLocationStore } from '@/store/useLocationStore';
 import { useCustomerStore } from '@/store/useCustomerStore';
 import { useAddressStore, isSameAddress } from '@/store/useAddressStore';
 import { useBookingStore } from '@/store/useBookingStore';
-import { getUpcomingBookingDates, getTimeSlotsForDate, BookingSlot, isSameTime } from '@/lib/bookingEngine';
+import { getUpcomingBookingDates, BookingSlot, isSameTime } from '@/lib/bookingEngine';
 import { cleanzoApi } from '@/lib/api/cleanzoApi';
 import { formatTimeTo12Hour } from '@/lib/timeUtils';
 import { Service, ServiceCategory, Address, ServicePackage, ServiceAddon } from '@/types';
@@ -177,7 +177,6 @@ export function QuickBookingBottomSheet({
   }, [storeServices]);
 
   const addOrder = useOrderStore((s) => s.addOrder);
-  const orders = useOrderStore((s) => s.orders) || [];
   const { user, isAuthenticated } = useAuthStore();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
@@ -528,28 +527,7 @@ export function QuickBookingBottomSheet({
     };
   }, [selectedDate, selectedService?.id, serviceDuration, selectedService?.category]);
 
-  const timeSlots = useMemo(() => {
-    let baseSlots: BookingSlot[] = [];
-    const effectiveCategory = selectedService?.category;
-    if (liveSlots !== null) {
-      baseSlots = [...liveSlots];
-    } else {
-      baseSlots = getTimeSlotsForDate(
-        selectedDate,
-        bookingSettings,
-        selectedService?.id,
-        selectedService?.title,
-        orders,
-        serviceDuration,
-        selectedService?.travelTimeMinutes,
-        selectedService?.id ? [selectedService.id] : [],
-        effectiveCategory,
-        false
-      );
-    }
-
-    return baseSlots.filter((s) => s.isAvailable);
-  }, [selectedDate, liveSlots, bookingSettings, selectedService, orders, serviceDuration]);
+  const timeSlots = useMemo(() => (liveSlots ?? []).filter(slot => slot.isAvailable), [liveSlots]);
 
   useEffect(() => {
     if (timeSlots.length > 0) {
@@ -1306,7 +1284,7 @@ export function QuickBookingBottomSheet({
                   <div className="absolute z-40 mt-1.5 w-full bg-white dark:bg-[#071E34] border border-[#DDE7EC] dark:border-[#133B61] rounded-xl shadow-xl max-h-56 overflow-y-auto p-1.5 space-y-1">
                     {timeSlots.length === 0 ? (
                       <div className="p-4 text-center text-xs text-slate-500 dark:text-slate-400 font-medium">
-                        {isAr ? 'لا توجد مواعيد متاحة لهذا اليوم' : 'No available slots for this date'}
+                        {liveSlots === null ? (isAr ? 'جارٍ جلب المواعيد من السيرفر…' : 'Checking live availability…') : (isAr ? 'لا توجد مواعيد متاحة لهذا اليوم' : 'No available slots for this date')}
                       </div>
                     ) : (
                       timeSlots.map((slot) => {

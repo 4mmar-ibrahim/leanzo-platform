@@ -5,6 +5,7 @@ import {
   getAllServicesAdmin,
   createService,
   updateService,
+  moveService,
   deleteService,
   getServicePackages,
   createServicePackage,
@@ -34,6 +35,7 @@ router.get('/:id/addons', getServiceAddons);
 // Admin Service endpoints (Requires SERVICES permission)
 router.get('/admin/all', authenticateAdmin, authorize('services', 'view'), getAllServicesAdmin);
 router.post('/admin', authenticateAdmin, authorize('services', 'create'), recordAuditLog('create_service', 'services'), createService);
+router.patch('/admin/order', authenticateAdmin, authorize('services', 'edit'), recordAuditLog('reorder_services', 'services'), moveService);
 router.put('/admin/:id', authenticateAdmin, authorize('services', 'edit'), recordAuditLog('update_service', 'services'), updateService);
 router.delete('/admin/:id', authenticateAdmin, authorize('services', 'delete'), recordAuditLog('delete_service', 'services'), deleteService);
 

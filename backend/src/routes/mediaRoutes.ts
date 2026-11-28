@@ -12,10 +12,9 @@ import { recordAuditLog } from '../middleware/auditMiddleware.js';
 
 const router = Router();
 
-// Publicly readable or authenticated:
-// Anyone can view media details / lists if needed (frontend or admin)
-router.get('/', getAllMedia);
-router.get('/:id', getMediaById);
+// Media library metadata is restricted to administrators with media access.
+router.get('/', authenticateAdmin, authorize('media', 'view'), getAllMedia);
+router.get('/:id', authenticateAdmin, authorize('media', 'view'), getMediaById);
 
 // Protected Admin Actions:
 router.post(

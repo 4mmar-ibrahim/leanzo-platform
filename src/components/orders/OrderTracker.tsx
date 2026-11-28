@@ -51,20 +51,20 @@ export function OrderTracker({ order, onOpenReview, onOrderUpdate }: OrderTracke
 
   const [isCancelOpen, setIsCancelOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
-  const canCancel = ['pending', 'confirmed', 'assigned', 'on_the_way'].includes(order.status);
+  const cancellationPending = order.metadata?.cancellationRequest?.status === 'pending';
+  const canCancel = !cancellationPending && ['pending', 'confirmed', 'assigned', 'on_the_way'].includes(order.status);
 
   const cancelBooking = async () => {
     if (isCancelling) return;
     setIsCancelling(true);
     try {
       const updated = await cleanzoApi.bookings.cancel(order.id);
-      if (updated?.id !== order.id || updated.status !== 'cancelled') {
+      if (updated?.id !== order.id || updated.metadata?.cancellationRequest?.status !== 'pending' && updated.status !== 'cancelled') {
         throw new Error(isAr ? 'تعذر تأكيد إلغاء الحجز' : 'Could not confirm cancellation');
       }
       onOrderUpdate?.({ ...order, ...updated });
       setIsCancelOpen(false);
-      window.dispatchEvent(new CustomEvent('cleanzo:booking-changed', { detail: { date: updated.date } }));
-      toast.success(isAr ? 'تم إلغاء الحجز' : 'Booking cancelled');
+      toast.success(isAr ? 'تم إرسال طلب الإلغاء للإدارة' : 'Cancellation request submitted');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : (isAr ? 'تعذر إلغاء الحجز' : 'Could not cancel booking'));
     } finally {
@@ -390,15 +390,17 @@ export function OrderTracker({ order, onOpenReview, onOrderUpdate }: OrderTracke
         </div>
       </div>
 
+      {cancellationPending && <p role="status" className="text-sm font-semibold text-amber-700 dark:text-amber-300">{isAr ? 'طلب الإلغاء بانتظار موافقة الإدارة' : 'Cancellation request awaiting approval'}</p>}
       {canCancel && onOrderUpdate && (
         <Button variant="outline" size="sm" onClick={() => setIsCancelOpen(true)}>
-          {isAr ? 'إلغاء الحجز' : 'Cancel booking'}
+          {isAr ? 'طلب إلغاء الحجز' : 'Request cancellation'}
         </Button>
       )}
       <Dialog
         isOpen={isCancelOpen}
         onClose={() => { if (!isCancelling) setIsCancelOpen(false); }}
-        title={isAr ? 'تأكيد إلغاء الحجز' : 'Confirm cancellation'}
+        title={isAr ? 'إرسال طلب إلغاء الحجز' : 'Request booking cancellation'}
+        description={isAr ? 'الموعد هيفضل محجوز لحد ما الإدارة توافق.' : 'Your appointment remains reserved until approval.'}
         maxWidth="sm"
       >
         <div className="flex justify-end gap-2">
@@ -406,7 +408,7 @@ export function OrderTracker({ order, onOpenReview, onOrderUpdate }: OrderTracke
             {isAr ? 'رجوع' : 'Back'}
           </Button>
           <Button variant="danger" isLoading={isCancelling} onClick={cancelBooking}>
-            {isAr ? 'نعم، إلغاء الحجز' : 'Yes, cancel booking'}
+            {isAr ? 'إرسال الطلب' : 'Send request'}
           </Button>
         </div>
       </Dialog>

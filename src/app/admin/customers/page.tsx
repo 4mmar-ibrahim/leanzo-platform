@@ -200,7 +200,7 @@ export default function AdminCustomersPage() {
         toast.success('تمت إضافة العميل بنجاح');
         const createdCust = (res as any).customer || res;
         const newStoreCustomer = {
-          id: String(createdCust.id || createdCust._id || `usr-${Date.now()}`),
+          id: String(createdCust.id || createdCust._id || `usr-${createdCust.phone || newPhone.trim()}`),
           name: createdCust.name || newName.trim(),
           phone: createdCust.phone || newPhone.trim(),
           email: createdCust.email || (newEmail.trim() ? newEmail.trim() : undefined),

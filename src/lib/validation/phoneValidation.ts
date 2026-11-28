@@ -1,14 +1,14 @@
 /**
  * CLEANZO - STRICT EGYPTIAN CUSTOMER PHONE NUMBER VALIDATION
- * Canonical regex: /^(010|011)[0-9]{8}$/
- * Exactly 11 ASCII digits starting with 010 or 011.
+ * Canonical regex: /^(010|011|012|015)[0-9]{8}$/
+ * Exactly 11 ASCII digits starting with 010, 011, 012, or 015.
  */
 
-export const EGYPTIAN_PHONE_REGEX = /^(010|011)[0-9]{8}$/;
-export const VALID_EGYPTIAN_PREFIXES = ['010', '011'] as const;
+export const EGYPTIAN_PHONE_REGEX = /^(010|011|012|015)[0-9]{8}$/;
+export const VALID_EGYPTIAN_PREFIXES = ['010', '011', '012', '015'] as const;
 
 export const CANONICAL_PHONE_ERROR_MESSAGE =
-  'رقم الهاتف يجب أن يتكون من 11 رقمًا ويبدأ بـ 010 أو 011.';
+  'رقم الهاتف يجب أن يتكون من 11 رقمًا ويبدأ بـ 010 أو 011 أو 012 أو 015.';
 export const CANONICAL_PHONE_ERROR_CODE = 'INVALID_PHONE_NUMBER';
 
 export interface PhoneValidationResult {
@@ -71,7 +71,7 @@ export function validateEgyptianPhone(phone: any): PhoneValidationResult {
   // Reject invalid prefix
   const prefix = clean.substring(0, 3);
   if (!VALID_EGYPTIAN_PREFIXES.includes(prefix as any)) {
-    const msg = 'رقم الهاتف يجب أن يبدأ بـ 010 أو 011.';
+    const msg = 'رقم الهاتف يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015.';
     return {
       isValid: false,
       message: msg,

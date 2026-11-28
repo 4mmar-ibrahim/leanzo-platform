@@ -54,16 +54,7 @@ export class ApiError extends Error {
 
 export function getCustomerAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
-  try {
-    const token = useAuthStore.getState().token;
-    if (token) return token;
-    const raw = localStorage.getItem('cleanzo-auth-storage');
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return parsed?.state?.token || null;
-  } catch {
-    return null;
-  }
+  return useAuthStore.getState().token;
 }
 
 export function getAdminAuthToken(): string | null {
@@ -85,18 +76,6 @@ export function setCustomerAuthToken(newToken: string, user?: any): void {
 export function clearCustomerAuthSession(): void {
   if (typeof window === 'undefined') return;
   try {
-    const raw = localStorage.getItem('cleanzo-auth-storage');
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (parsed.state) {
-          parsed.state.token = null;
-          parsed.state.isAuthenticated = false;
-          parsed.state.user = null;
-          localStorage.setItem('cleanzo-auth-storage', JSON.stringify(parsed));
-        }
-      } catch {}
-    }
     localStorage.removeItem('cleanzo_address_storage');
     // Preserve cleanzo_booking_store so user's active booking progress is never lost
     window.dispatchEvent(new CustomEvent('cleanzo:customer-session-expired'));

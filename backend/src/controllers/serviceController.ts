@@ -20,6 +20,45 @@ function buildCategoryFilter(category?: any): any {
   return category.trim();
 }
 
+export async function moveService(req: Request, res: Response): Promise<void> {
+  const { serviceId, neighborId } = req.body ?? {};
+  if (typeof serviceId !== 'string' || typeof neighborId !== 'string' || !serviceId || !neighborId || serviceId === neighborId) {
+    sendError(res, 'اختيار ترتيب الخدمة غير صالح', 400, 'INVALID_SERVICE_ORDER');
+    return;
+  }
+
+  try {
+    const order = await inDatabaseTransaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('cleanzo:service-order', 0))`;
+      const services = await tx.service.findMany({
+        where: { isArchived: false },
+        select: { id: true, order: true },
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      });
+      const sourceIndex = services.findIndex(service => service.id === serviceId);
+      const targetIndex = services.findIndex(service => service.id === neighborId);
+      if (sourceIndex < 0 || targetIndex < 0) return null;
+
+      [services[sourceIndex], services[targetIndex]] = [services[targetIndex], services[sourceIndex]];
+      const savedOrder = services.map((service, index) => ({ id: service.id, order: index }));
+      for (const [index, service] of services.entries()) {
+        if (service.order !== index) {
+          await tx.service.update({ where: { id: service.id }, data: { order: index } });
+        }
+      }
+      return savedOrder;
+    });
+    if (!order) {
+      sendError(res, 'قائمة الخدمات اتغيرت. حدّث الصفحة وحاول مرة أخرى.', 409, 'SERVICE_ORDER_CHANGED');
+      return;
+    }
+    sendSuccess(res, order, 'تم حفظ ترتيب الخدمات');
+  } catch (error) {
+    console.error('Service reorder failed:', error);
+    sendError(res, 'تعذّر حفظ ترتيب الخدمات', 500, 'SERVICE_ORDER_SAVE_FAILED');
+  }
+}
+
 export async function getPublicServices(req: Request, res: Response): Promise<void> {
   try {
     const { category } = req.query;
@@ -29,7 +68,7 @@ export async function getPublicServices(req: Request, res: Response): Promise<vo
       filter.category = catFilter;
     }
 
-    const services = await Service.find(filter).sort({ order: 1, createdAt: 1 });
+    const services = await Service.find(filter).sort({ order: 1, createdAt: 1, id: 1 });
     const serviceIds = services.map((s: any) => s.id);
 
     const [allPackages, allAddons] = await Promise.all([
@@ -90,7 +129,7 @@ export async function getAllServicesAdmin(req: Request, res: Response): Promise<
     if (catFilter) {
       filter.category = catFilter;
     }
-    const services = await Service.find(filter).sort({ order: 1, createdAt: 1 });
+    const services = await Service.find(filter).sort({ order: 1, createdAt: 1, id: 1 });
     const serviceIds = services.map((s: any) => s.id);
 
     const [allPackages, allAddons] = await Promise.all([
@@ -738,7 +777,7 @@ export async function createCategory(req: Request, res: Response): Promise<void>
     }
 
     // Check if category with same id or slug already exists
-    let existing = await ServiceCategory.findOne({
+    const existing = await ServiceCategory.findOne({
       $or: [{ id: data.id }, { slug: data.slug }],
     });
     if (existing) {

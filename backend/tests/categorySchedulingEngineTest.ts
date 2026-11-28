@@ -513,6 +513,25 @@ async function runCategorySchedulingEngineTests() {
       create: { name: 'عميل اختبار الاشتراك', phone: '01112345678', password: randomUUID() },
     });
     const subscriptionToken = generateCustomerToken({ id: subscriptionUser.id, phone: subscriptionUser.phone });
+    const legacyCustomer = await prisma.user.create({
+      data: { name: 'عميل 123', phone: '01244445555', password: randomUUID() },
+    });
+    try {
+      const headers = { Authorization: `Bearer ${generateCustomerToken({ id: legacyCustomer.id, phone: legacyCustomer.phone })}` };
+      const attempt = { ...bookingPayload, time: '19:00' };
+      const badName = await request('', { ...attempt, guestName: legacyCustomer.name }, headers);
+      assert(badName.status === 422, 'Booking rejects a name containing digits');
+      const fixedName = 'عميل اختبار مصحح';
+      const corrected = await request('', { ...attempt, guestName: fixedName }, headers);
+      assert(corrected.status === 201 && corrected.json.data.customerName === fixedName &&
+        corrected.json.data.customerPhone === legacyCustomer.phone,
+        'Correcting the booking name succeeds with a 012 customer and the persisted booking uses the corrected name');
+      assert((await prisma.user.findUniqueOrThrow({ where: { id: legacyCustomer.id } })).name === legacyCustomer.name,
+        'Booking correction does not change the account name');
+    } finally {
+      await prisma.booking.deleteMany({ where: { customerId: legacyCustomer.id } });
+      await prisma.user.delete({ where: { id: legacyCustomer.id } });
+    }
     const subscribe = (time: string) => fetch(`${baseUrl}/api/subscriptions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${subscriptionToken}` },
@@ -549,8 +568,10 @@ async function runCategorySchedulingEngineTests() {
     assert(movedAddonBooking.status === 200 && movedAddonBooking.json.data.scheduledEnd === '17:15' &&
       movedAddonBooking.json.data.totalOccupiedMinutes === 75,
       'Rescheduling preserves the duration of the booking with its add-on');
-    const cancelledAddonBooking = await request(`/${addonBooking.id}/cancel`, {}, addonHeaders);
-    assert(cancelledAddonBooking.status === 200, 'The add-on booking releases its appointment after cancellation');
+    const addonRequest = await request(`/${addonBooking.id}/cancel`, {}, addonHeaders);
+    assert(addonRequest.json.data.metadata.cancellationRequest.status === 'pending', 'An add-on booking can request cancellation');
+    const cancelledAddonBooking = await request(`/admin/${addonBooking.id}/status`, { status: 'cancelled', approveCancellationRequest: true }, adminHeaders, 'PUT');
+    assert(cancelledAddonBooking.status === 200, 'Admin approval cancels the add-on booking');
     const past = await request('', { ...bookingPayload, date: '2000-01-01' });
     assert(past.status === 422, 'Past dates cannot reserve an appointment');
     const tracked = await request(`/track/${guestBooking.id}`, undefined, guestHeaders);
@@ -558,7 +579,17 @@ async function runCategorySchedulingEngineTests() {
     const rescheduled = await request(`/${guestBooking.id}/reschedule`, { newDate: testDate, newTime: '16:00' }, guestHeaders);
     assert(rescheduled.status === 200 && rescheduled.json.data.scheduledStart === '16:00', 'Guest reschedule commits the new appointment');
     const cancelled = await request(`/${guestBooking.id}/cancel`, { reason: 'تجربة الإلغاء' }, guestHeaders);
-    assert(cancelled.status === 200 && cancelled.json.data.status === 'cancelled', 'Guest cancellation commits the cancelled state');
+    assert(cancelled.status === 200 && cancelled.json.data.status !== 'cancelled' &&
+      cancelled.json.data.metadata.cancellationRequest.status === 'pending', 'Customer cancellation starts a request and keeps the booking active');
+    const reserved = await request('/admin/create', { ...bookingPayload, time: '16:00' }, adminHeaders);
+    assert(reserved.status === 409, 'A pending cancellation does not release the appointment');
+    const unauthorizedApproval = await request(`/admin/${guestBooking.id}/status`, { status: 'cancelled', approveCancellationRequest: true }, guestHeaders, 'PUT');
+    assert([401, 403].includes(unauthorizedApproval.status), 'Customer cannot approve their own cancellation request');
+    const approval = await request(`/admin/${guestBooking.id}/status`, { status: 'cancelled', approveCancellationRequest: true }, adminHeaders, 'PUT');
+    assert(approval.status === 200 && approval.json.data.status === 'cancelled' &&
+      approval.json.data.metadata.cancellationRequest.status === 'approved', 'Admin approval commits cancellation');
+    const afterApproval = await request(`/track/${guestBooking.id}`, undefined, guestHeaders);
+    assert(afterApproval.json.data.status === 'cancelled', 'Tracking shows the approved cancellation');
     const adminCreated = await request('/admin/create', { ...bookingPayload, time: '16:00' }, adminHeaders);
     assert(adminCreated.status === 201, 'Admin can book a slot released by guest cancellation');
 
@@ -629,8 +660,16 @@ async function runCategorySchedulingEngineTests() {
         request(`/${original.id}/cancel`, {}, headers),
         request(`/${original.id}/cancel`, {}, headers),
       ]);
-      assert(cancellations.every(item => item.status === 200 && item.json.data.status === 'cancelled'),
-        'Concurrent cancellation requests return the same final cancelled state');
+      assert(cancellations.every(item => item.status === 200 &&
+        item.json.data.metadata.cancellationRequest.status === 'pending'),
+        'Concurrent customer requests return the same pending cancellation');
+      const requestId = cancellations[0].json.data.metadata.cancellationRequest.id;
+      assert(cancellations[1].json.data.metadata.cancellationRequest.id === requestId &&
+        await prisma.notification.count({ where: { eventId: `order:cancel-request:${requestId}` } }) === 1,
+        'Duplicate requests send exactly one admin notification');
+      const reviewingAdmin = { Authorization: `Bearer ${generateAdminToken({ id: testAdmin.id, username: testAdmin.username, role: testAdmin.role })}` };
+      const approved = await request(`/admin/${original.id}/status`, { status: 'cancelled', approveCancellationRequest: true }, reviewingAdmin, 'PUT');
+      assert(approved.status === 200, 'Admin approves the request during the appointment');
       const persisted = await prisma.booking.findUniqueOrThrow({ where: { id: original.id } });
       assert((persisted.timeline as any[]).filter(event => event.status === 'cancelled').length === 1,
         'Cancelling twice records one timeline event');
@@ -652,11 +691,13 @@ async function runCategorySchedulingEngineTests() {
       await prisma.booking.update({ where: { id: active.id }, data: { status: 'assigned', assignedTechnicianId: 'scheduling-test-technician' } });
       stoppedAt = realDate.parse(`${liveDay}T13:10:00Z`);
       const currentAdminHeaders = { Authorization: `Bearer ${generateAdminToken({ id: testAdmin.id, username: testAdmin.username, role: testAdmin.role })}` };
+      const awaiting = await request(`/${active.id}/cancel`, {}, { 'X-Booking-Access': active.bookingAccess });
+      assert(awaiting.json.data.metadata.cancellationRequest.status === 'pending', 'Visit has a pending cancellation request before the race');
       const race = await Promise.all([
-        request(`/${active.id}/cancel`, {}, { 'X-Booking-Access': active.bookingAccess }),
+        request(`/admin/${active.id}/status`, { status: 'cancelled', approveCancellationRequest: true }, currentAdminHeaders, 'PUT'),
         request(`/admin/${active.id}/status`, { status: 'in_progress' }, currentAdminHeaders, 'PUT'),
       ]);
-      assert(race.filter(item => item.status === 200).length === 1, 'Only one of service start and customer cancellation can commit');
+      assert(race.filter(item => item.status === 200).length === 1, 'Only one of service start and cancellation approval can commit');
       const finalState = await prisma.booking.findUniqueOrThrow({ where: { id: active.id } });
       assert(race[0].status === 200 ? finalState.status === 'cancelled' : finalState.status === 'in_progress',
         'The stored status matches the result of the winning operation');

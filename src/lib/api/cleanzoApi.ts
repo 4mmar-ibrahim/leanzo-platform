@@ -86,7 +86,7 @@ export const cleanzoApi = {
   // Services
   services: {
     getServices: (category?: ServiceCategory) =>
-      apiRequest<Service[]>(`/services${category ? `?category=${encodeURIComponent(category)}` : ''}`),
+      apiRequest<Service[]>(`/services${category ? `?category=${encodeURIComponent(category)}` : ''}`, { cache: 'no-store' }),
     getServiceById: (id: string, category?: ServiceCategory) =>
       apiRequest<Service>(`/services/${encodeURIComponent(id)}${category ? `?category=${encodeURIComponent(category)}` : ''}`),
     getCategories: () => apiRequest<any[]>('/services/categories'),
@@ -115,6 +115,12 @@ export const cleanzoApi = {
         isAdmin: true,
       });
     },
+    move: (serviceId: string, neighborId: string) =>
+      apiRequest<Array<{ id: string; order: number }>>('/services/admin/order', {
+        method: 'PATCH',
+        body: JSON.stringify({ serviceId, neighborId }),
+        isAdmin: true,
+      }),
     update: (id: string, updates: Partial<Service>) =>
       apiRequest<Service>(`/services/admin/${id}`, {
         method: 'PUT',
@@ -278,9 +284,10 @@ export const cleanzoApi = {
       let key = bookingAttempts.get(attempt);
       if (!key) {
         if (bookingAttempts.size >= 32) bookingAttempts.delete(bookingAttempts.keys().next().value!);
-        key = Array.from(crypto.getRandomValues(new Uint8Array(16)), byte =>
-          byte.toString(16).padStart(2, '0'),
-        ).join('');
+        key = globalThis.crypto?.randomUUID?.() ??
+          (globalThis.crypto?.getRandomValues
+            ? Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('')
+            : `booking-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`);
         bookingAttempts.set(attempt, key);
       }
       const { bookingAccess, ...booking } = await apiRequest<Order & { bookingAccess?: string }>(
@@ -296,7 +303,7 @@ export const cleanzoApi = {
       return booking;
     },
     getMyBookings: () => apiRequest<Order[]>('/bookings/my'),
-    getBookingById: (id: string) => apiRequest<Order>(`/bookings/${id}`),
+    getBookingById: (id: string, signal?: AbortSignal) => apiRequest<Order>(`/bookings/${id}`, { signal, cache: 'no-store' }),
     submitReview: (id: string, rating: number, comment: string) =>
       apiRequest<{ id: string }>(`/bookings/${encodeURIComponent(id)}/review`, {
         method: 'POST',
@@ -762,11 +769,11 @@ export const cleanzoApi = {
     },
     getOrderById: (orderId: string) =>
       apiRequest<Order>(`/bookings/admin/${orderId}`, { isAdmin: true }),
-    updateOrderStatus: (orderId: string, status: string, note?: string) =>
+    updateOrderStatus: (orderId: string, status: string, note?: string, approveCancellationRequest?: boolean) =>
       apiRequest<Order>(`/bookings/admin/${orderId}/status`, {
         method: 'PUT',
         isAdmin: true,
-        body: JSON.stringify({ status, note }),
+        body: JSON.stringify({ status, note, approveCancellationRequest }),
       }),
     updateOrderNotes: (orderId: string, notes: string) =>
       apiRequest<{ id: string; notes: string }>(`/bookings/admin/${encodeURIComponent(orderId)}/notes`, {
@@ -1371,7 +1378,7 @@ export const cleanzoApi = {
   },
   notifications: {
     getAdmin: async () => {
-      const res = await apiRequest<any>('/notifications/admin', { isAdmin: true });
+      const res = await apiRequest<any>('/notifications/admin', { isAdmin: true, cache: 'no-store' });
       if (res && Array.isArray(res.notifications)) {
         return res;
       }
@@ -1401,6 +1408,7 @@ export const cleanzoApi = {
       apiRequest<any>('/notifications/admin', { method: 'POST', isAdmin: true, body: JSON.stringify(data) }),
     getCustomer: () =>
       apiRequest<any[]>('/notifications/customer'),
+    markAllCustomerRead: () => apiRequest<void>('/notifications/customer/read-all', { method: 'PUT' }),
     markCustomerRead: (id: string) =>
       apiRequest<void>(`/notifications/customer/${id}/read`, { method: 'PUT' }),
   },
