@@ -13,7 +13,6 @@ import { AuditLog } from '../models/AuditLog.js';
 import { auditService } from '../services/auditService.js';
 import {
   assertSlotAvailability,
-  isDuringCairoAppointment,
   withBookingLock,
   SCHEDULE_LOCK,
   mapCategoryCanonical,
@@ -1993,24 +1992,22 @@ export async function cancelBookingCustomer(req: AuthenticatedRequest, res: Resp
         return null;
       }
 
-      // 4. Enforce 6-hour cancellation rule for customer bookings
       const subSettings = await getSubscriptionSettings();
-      const noticeHours = subSettings.normalBookingCancellationNoticeHours ?? 6;
+      const noticeHours = subSettings.normalBookingCancellationNoticeHours;
+      const requestedAt = new Date();
       const { isAllowed } = isNoticeSufficient(
         booking.date,
         booking.scheduledStart || booking.timeSlotStart || booking.time,
-        noticeHours
+        noticeHours,
+        requestedAt.getTime()
       );
 
-      const cancelledAt = new Date();
-      const interval = getBookingTimeInterval(booking);
-      const waitingDuringAppointment = isDuringCairoAppointment(booking.date, interval.startMin, interval.endMin, cancelledAt);
-      if (!isAllowed && !waitingDuringAppointment) {
+      if (!isAllowed) {
         sendError(
           res,
-          `لا يمكن إلغاء أو تغيير الحجز قبل الموعد بأقل من ${noticeHours} ساعة. يُرجى التواصل مع الدعم للمساعدة.`,
+          `يجب إرسال طلب إلغاء الحجز قبل الموعد بـ ${noticeHours} ساعة على الأقل. يمكنك التواصل مع الدعم للمساعدة.`,
           400,
-          'CANCELLATION_RESTRICTED_6H'
+          'CANCELLATION_NOTICE_REQUIRED'
         );
         return null;
       }
@@ -2019,7 +2016,7 @@ export async function cancelBookingCustomer(req: AuthenticatedRequest, res: Resp
       const cancellationRequest = {
         id: requestId,
         status: 'pending',
-        requestedAt: cancelledAt.toISOString(),
+        requestedAt: requestedAt.toISOString(),
         reason: typeof reason === 'string' ? reason.trim().slice(0, 300) : '',
       };
       booking.metadata = { ...booking.metadata, cancellationRequest };

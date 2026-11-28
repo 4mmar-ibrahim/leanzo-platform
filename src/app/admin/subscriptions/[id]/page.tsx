@@ -155,6 +155,7 @@ export default function AdminSubscriptionDetailPage({ params }: { params: Promis
     try {
       setIsSubmitting(true);
       await apiPost(`/subscriptions/admin/visits/${selectedVisit.id}/cancel`, {
+        approveCancellationRequest: selectedVisit.metadata?.cancellationRequest?.status === 'pending',
         reason: cancelReason,
       });
       toast.success('تم إلغاء الزيارة بنجاح');
@@ -414,9 +415,11 @@ export default function AdminSubscriptionDetailPage({ params }: { params: Promis
                                 setActiveModal('cancel');
                               }}
                               className="p-1.5 rounded-lg bg-muted hover:bg-rose-500/10 text-foreground/70 hover:text-rose-500 transition"
-                              title="إلغاء الزيارة"
+                              title={visit.metadata?.cancellationRequest?.status === 'pending' ? 'الموافقة على طلب الإلغاء' : 'إلغاء الزيارة'}
                             >
-                              <XCircle className="w-3.5 h-3.5" />
+                              {visit.metadata?.cancellationRequest?.status === 'pending'
+                                ? <span className="text-xs font-bold text-amber-700 dark:text-amber-300">مراجعة طلب الإلغاء</span>
+                                : <XCircle className="w-3.5 h-3.5" />}
                             </button>
                           )}
 
@@ -634,7 +637,9 @@ export default function AdminSubscriptionDetailPage({ params }: { params: Promis
       {activeModal === 'cancel' && selectedVisit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
           <div className="w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-xl space-y-4">
-            <h3 className="text-lg font-bold text-rose-500">إلغاء الزيارة</h3>
+            <h3 className="text-lg font-bold text-rose-500">
+              {selectedVisit.metadata?.cancellationRequest?.status === 'pending' ? 'الموافقة على طلب إلغاء الزيارة' : 'إلغاء الزيارة'}
+            </h3>
             <p className="text-xs text-foreground/60">
               هل أنت متأكد من إلغاء الزيارة <span className="font-bold">{selectedVisit.visitNumber}</span>؟ لن تستهلك رصيد الزيارات وستصبح بحالة ملغاة.
             </p>

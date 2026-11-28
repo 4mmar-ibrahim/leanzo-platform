@@ -12,6 +12,7 @@ import {
   renewSubscription,
   getSubscriptionSettings,
   getSubscriptionAnalytics,
+  resolveVisitCancellationRequest,
 } from '../services/subscriptionService.js';
 import { Technician } from '../models/Technician.js';
 import { SystemSettings } from '../models/SystemSettings.js';
@@ -264,7 +265,7 @@ export async function getMySubscriptionById(req: AuthenticatedRequest, res: Resp
 }
 
 /**
- * Customer: Cancel an individual visit (Enforces 12-hour notice)
+ * Customer: Request cancellation of an individual visit
  */
 export async function cancelVisitCustomer(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -284,7 +285,9 @@ export async function cancelVisitCustomer(req: AuthenticatedRequest, res: Respon
       overrideRestrictions: false,
     });
 
-    sendSuccess(res, updatedVisit, 'تم إلغاء موعد الزيارة بنجاح');
+    sendSuccess(res, updatedVisit, updatedVisit.status === 'cancelled'
+      ? 'الزيارة ملغاة بالفعل'
+      : 'تم إرسال طلب إلغاء الزيارة بانتظار موافقة الإدارة');
   } catch (err: any) {
     sendError(res, err.message, err.statusCode || 400, err.code || 'VISIT_CANCEL_FAILED');
   }
@@ -895,6 +898,7 @@ export async function updateVisitStatusAdmin(req: AuthenticatedAdminRequest, res
         where: { id: visitId, updatedAt: visit.updatedAt },
         data: {
           status,
+          ...(status === 'in_progress' ? { metadata: resolveVisitCancellationRequest(visit.metadata, 'closed') } : {}),
           ...(notes ? { notes: String(notes) } : {}),
           timeline: updatedTimeline,
         },
@@ -953,7 +957,7 @@ export async function rescheduleVisitAdmin(req: AuthenticatedAdminRequest, res: 
 export async function cancelVisitAdmin(req: AuthenticatedAdminRequest, res: Response): Promise<void> {
   try {
     const visitId = req.params.visitId as string;
-    const { reason } = req.body;
+    const { reason, approveCancellationRequest } = req.body || {};
 
     const updated = await cancelSubscriptionVisit({
       visitId,
@@ -963,11 +967,12 @@ export async function cancelVisitAdmin(req: AuthenticatedAdminRequest, res: Resp
       actorRole: req.admin?.role || 'manager',
       reason,
       overrideRestrictions: true,
+      approveCancellationRequest: approveCancellationRequest === true,
     });
 
     sendSuccess(res, updated, 'تم إلغاء موعد الزيارة بنجاح');
   } catch (err: any) {
-    sendError(res, err.message, err.statusCode || 400);
+    sendError(res, err.message, err.statusCode || 400, err.code);
   }
 }
 
@@ -1059,6 +1064,13 @@ export async function updateSubscriptionSettingsHandler(req: AuthenticatedAdminR
       reminderBeforeAppointmentHours,
       reminderBeforeExpirationDays,
     } = req.body;
+
+    for (const value of [subscriptionCancellationNoticeHours, normalBookingCancellationNoticeHours]) {
+      if (value !== undefined && (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 72)) {
+        sendError(res, 'مهلة طلب الإلغاء يجب أن تكون عدد ساعات صحيحًا من 1 إلى 72', 400, 'INVALID_CANCELLATION_NOTICE');
+        return;
+      }
+    }
 
     const currentDoc = (await SystemSettings.findOne({ key: 'global_settings' })) || {};
     const existingSub = currentDoc.subscriptions || {};

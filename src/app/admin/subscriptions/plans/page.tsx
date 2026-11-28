@@ -408,7 +408,7 @@ export default function AdminSubscriptionPlansPage() {
                       <span className="flex items-center gap-1.5 text-foreground/60">
                         <Clock className="w-3.5 h-3.5 text-primary" /> مهلة الإلغاء المسبق:
                       </span>
-                      <span className="font-bold font-mono">{plan.cancellationNoticeHours || 12} ساعة</span>
+                      <Link href="/admin/subscriptions/settings" className="font-bold text-primary">إعدادات الإلغاء</Link>
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -702,15 +702,8 @@ export default function AdminSubscriptionPlansPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="font-bold text-foreground/70">مهلة الإلغاء (ساعات) *</label>
-                  <input
-                    type="number"
-                    min={1}
-                    required
-                    value={formData.cancellationNoticeHours}
-                    onChange={(e) => setFormData({ ...formData, cancellationNoticeHours: parseInt(e.target.value) || 12 })}
-                    className="w-full p-2.5 rounded-xl bg-background border border-border font-mono"
-                  />
+                  <p className="font-bold text-foreground/70">مهلة طلب الإلغاء</p>
+                  <Link href="/admin/subscriptions/settings" className="text-primary">تعديل المهلة من إعدادات الاشتراكات</Link>
                 </div>
 
                 <div className="space-y-1">
@@ -769,7 +762,7 @@ export default function AdminSubscriptionPlansPage() {
 
                   <label className="flex items-center justify-between p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:border-primary/50 transition">
                     <div>
-                      <div className="font-bold text-xs">إلغاء الزيارات</div>
+                      <div className="font-bold text-xs">السماح بطلب إلغاء الزيارات</div>
                       <div className="text-[10px] text-foreground/50">
                         {formData.allowCancellation ? 'مسموح (ON)' : 'محظور (OFF)'}
                       </div>

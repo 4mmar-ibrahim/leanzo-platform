@@ -37,6 +37,7 @@ interface ISubscriptionVisit {
   status: string;
   rescheduledFrom?: string;
   cancellationReason?: string;
+  metadata?: { cancellationRequest?: { status: string } };
   serviceSnapshot?: any;
   technician?: any;
 }
@@ -172,8 +173,9 @@ export default function AccountSubscriptionsPage() {
       });
 
       if (res && res.success) {
-        toast.success(isAr ? 'تم إلغاء موعد الزيارة بنجاح' : 'Visit cancelled successfully');
-        window.dispatchEvent(new CustomEvent('cleanzo:booking-changed', { detail: { date: cancelModalVisit.visit.date } }));
+        toast.success(res.data?.status === 'cancelled'
+          ? (isAr ? 'الزيارة ملغاة بالفعل' : 'Visit already cancelled')
+          : (isAr ? 'تم إرسال طلب الإلغاء للإدارة' : 'Cancellation request submitted'));
         setCancelModalVisit(null);
         fetchSubscriptions();
       } else {
@@ -410,7 +412,11 @@ export default function AccountSubscriptionsPage() {
                                     >
                                       {isAr ? 'تغيير الموعد' : 'Reschedule'}
                                     </button>
-                                <button
+                                {visit.metadata?.cancellationRequest?.status === 'pending' ? (
+                                  <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                                    {isAr ? 'طلب الإلغاء بانتظار الموافقة' : 'Cancellation request awaiting approval'}
+                                  </span>
+                                ) : <button
                                   type="button"
                                   onClick={() => {
                                     setCancelModalVisit({ visit, sub });
@@ -418,8 +424,8 @@ export default function AccountSubscriptionsPage() {
                                   }}
                                   className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-slate-200 dark:border-slate-700 text-xs font-bold transition-all shadow-xs"
                                 >
-                                  {isAr ? 'إلغاء' : 'Cancel'}
-                                </button>
+                                  {isAr ? 'طلب إلغاء' : 'Request cancellation'}
+                                </button>}
                               </div>
                             )}
                           </div>
@@ -528,7 +534,7 @@ export default function AccountSubscriptionsPage() {
           <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 sm:p-8 space-y-6 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                {isAr ? 'تأكيد إلغاء موعد الزيارة' : 'Confirm Cancellation'}
+                {isAr ? 'إرسال طلب إلغاء الزيارة' : 'Request visit cancellation'}
               </h3>
               <button
                 onClick={() => setCancelModalVisit(null)}
@@ -540,8 +546,8 @@ export default function AccountSubscriptionsPage() {
 
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-normal">
               {isAr
-                ? `هل أنت متأكد من رغبتك في إلغاء موعد الزيارة رقم (${cancelModalVisit.visit.visitIndex}) بتاريخ ${cancelModalVisit.visit.date}؟`
-                : `Are you sure you want to cancel visit #${cancelModalVisit.visit.visitIndex} on ${cancelModalVisit.visit.date}?`}
+                ? `سيظل موعد الزيارة رقم (${cancelModalVisit.visit.visitIndex}) محجوزًا حتى توافق الإدارة على طلب الإلغاء.`
+                : `Visit #${cancelModalVisit.visit.visitIndex} stays reserved until staff approve the request.`}
             </p>
 
             <div className="space-y-1.5">
@@ -571,7 +577,7 @@ export default function AccountSubscriptionsPage() {
                 disabled={cancelling}
                 className="px-5 py-2.5 rounded-xl bg-rose-600 text-white text-xs font-bold shadow-md shadow-rose-600/20 disabled:opacity-50"
               >
-                {cancelling ? (isAr ? 'جاري الإلغاء...' : 'Cancelling...') : isAr ? 'تأكيد الإلغاء' : 'Confirm Cancel'}
+                {cancelling ? (isAr ? 'جاري الإرسال...' : 'Submitting...') : isAr ? 'إرسال الطلب' : 'Submit request'}
               </button>
             </div>
           </div>

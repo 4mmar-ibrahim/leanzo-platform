@@ -22,9 +22,9 @@ export default function AdminSubscriptionSettingsPage() {
   const [saving, setSaving] = useState(false);
 
   const [settings, setSettings] = useState({
-    subscriptionCancellationNoticeHours: 12,
+    subscriptionCancellationNoticeHours: 1,
     subscriptionRescheduleNoticeHours: 12,
-    bookingCancellationNoticeHours: 6,
+    normalBookingCancellationNoticeHours: 1,
     bookingRescheduleNoticeHours: 6,
     appointmentReminderHours: 24,
     expirationReminderDays: 3,
@@ -34,24 +34,15 @@ export default function AdminSubscriptionSettingsPage() {
   const fetchSettings = async () => {
     try {
       setLoading(true);
-      let res: any;
-      try {
-        res = await apiGet('/subscriptions/admin/settings');
-      } catch {
-        try {
-          res = await apiGet('/admin/subscriptions/settings');
-        } catch {
-          res = await apiGet('/subscriptions/settings');
-        }
-      }
+      const res = await apiGet('/subscriptions/admin/settings', { isAdmin: true });
       if (res?.data) {
         setSettings({
-          subscriptionCancellationNoticeHours: res.data.subscriptionCancellationNoticeHours ?? 12,
+          subscriptionCancellationNoticeHours: res.data.subscriptionCancellationNoticeHours ?? 1,
           subscriptionRescheduleNoticeHours: res.data.subscriptionRescheduleNoticeHours ?? 12,
-          bookingCancellationNoticeHours: res.data.bookingCancellationNoticeHours ?? 6,
-          bookingRescheduleNoticeHours: res.data.bookingRescheduleNoticeHours ?? 6,
-          appointmentReminderHours: res.data.appointmentReminderHours ?? 24,
-          expirationReminderDays: res.data.expirationReminderDays ?? 3,
+          normalBookingCancellationNoticeHours: res.data.normalBookingCancellationNoticeHours ?? 1,
+          bookingRescheduleNoticeHours: res.data.normalBookingRescheduleNoticeHours ?? 6,
+          appointmentReminderHours: res.data.reminderBeforeAppointmentHours ?? 24,
+          expirationReminderDays: res.data.reminderBeforeExpirationDays ?? 3,
           autoRenewalEnabled: res.data.autoRenewalEnabled ?? true,
         });
       }
@@ -70,15 +61,7 @@ export default function AdminSubscriptionSettingsPage() {
     e.preventDefault();
     try {
       setSaving(true);
-      try {
-        await apiPut('/subscriptions/admin/settings', settings);
-      } catch {
-        try {
-          await apiPut('/admin/subscriptions/settings', settings);
-        } catch {
-          await apiPut('/subscriptions/settings', settings);
-        }
-      }
+      await apiPut('/subscriptions/admin/settings', settings, { isAdmin: true });
       toast.success('تم حفظ إعدادات الاشتراكات بنجاح');
     } catch (err: any) {
       toast.error(err.message || 'فشل حفظ الإعدادات');
@@ -131,13 +114,13 @@ export default function AdminSubscriptionSettingsPage() {
               سياسة مواعيد زيارات الاشتراكات الشهرية
             </div>
             <p className="text-xs text-foreground/60">
-              المهلة الزمنية الإلزامية التي يُسمح للعميل خلالها بالإلغاء أو إعادة جدولة مواعيد زيارة الاشتراك ذاتياً من حسابه.
+              طلب إلغاء زيارة الاشتراك ينتظر موافقة الإدارة ويظل الموعد محجوزًا حتى الموافقة.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-foreground/80">
-                  مهلة إلغاء زيارة الاشتراك (ساعات قبل الموعد)
+                  الحد الأدنى لإرسال طلب إلغاء زيارة الاشتراك (بالساعات)
                 </label>
                 <div className="relative">
                   <input
@@ -149,7 +132,7 @@ export default function AdminSubscriptionSettingsPage() {
                     onChange={(e) =>
                       setSettings({
                         ...settings,
-                        subscriptionCancellationNoticeHours: parseInt(e.target.value) || 12,
+                        subscriptionCancellationNoticeHours: Number(e.target.value),
                       })
                     }
                     className="w-full p-2.5 rounded-xl bg-background border border-border text-xs font-mono"
@@ -159,7 +142,7 @@ export default function AdminSubscriptionSettingsPage() {
                   </span>
                 </div>
                 <p className="text-[11px] text-foreground/50">
-                  القيمة الافتراضية: 12 ساعة. أقل من هذا الحد يتم توجيه العميل للدعم.
+                  تُطبّق هذه المهلة على زيارات جميع الباقات التي تسمح بطلب الإلغاء.
                 </p>
               </div>
 
@@ -206,19 +189,19 @@ export default function AdminSubscriptionSettingsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-foreground/80">
-                  مهلة إلغاء الحجز العادي (ساعات قبل الموعد)
+                  الحد الأدنى لإرسال طلب إلغاء الحجز العادي (بالساعات)
                 </label>
                 <div className="relative">
                   <input
                     type="number"
                     min={1}
-                    max={48}
+                    max={72}
                     required
-                    value={settings.bookingCancellationNoticeHours}
+                    value={settings.normalBookingCancellationNoticeHours}
                     onChange={(e) =>
                       setSettings({
                         ...settings,
-                        bookingCancellationNoticeHours: parseInt(e.target.value) || 6,
+                        normalBookingCancellationNoticeHours: Number(e.target.value),
                       })
                     }
                     className="w-full p-2.5 rounded-xl bg-background border border-border text-xs font-mono"
@@ -227,7 +210,7 @@ export default function AdminSubscriptionSettingsPage() {
                     ساعة
                   </span>
                 </div>
-                <p className="text-[11px] text-foreground/50">القيمة المعتمدة: 6 ساعات قبل الموعد.</p>
+                <p className="text-[11px] text-foreground/50">يظل الطلب بانتظار موافقة الإدارة.</p>
               </div>
 
               <div className="space-y-1.5">

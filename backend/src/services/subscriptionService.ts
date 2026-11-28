@@ -1,4 +1,6 @@
 import prisma, { inDatabaseTransaction } from '../config/prisma.js';
+import { randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 import { SubscriptionPlan, ISubscriptionPlan } from '../models/SubscriptionPlan.js';
 import { Subscription, ISubscription } from '../models/Subscription.js';
 import { SubscriptionVisit, ISubscriptionVisit } from '../models/SubscriptionVisit.js';
@@ -15,7 +17,6 @@ import {
   minutesToDisplayTime,
   getCairoDateFromDate,
   getCairoTimeFromDate,
-  isDuringCairoAppointment,
   withBookingLock,
   doIntervalsOverlap,
   normalizeCategory,
@@ -34,9 +35,9 @@ export interface SubscriptionSettingsConfig {
 }
 
 export const DEFAULT_SUBSCRIPTION_SETTINGS: SubscriptionSettingsConfig = {
-  subscriptionCancellationNoticeHours: 12,
+  subscriptionCancellationNoticeHours: 1,
   subscriptionRescheduleNoticeHours: 12,
-  normalBookingCancellationNoticeHours: 6,
+  normalBookingCancellationNoticeHours: 1,
   normalBookingRescheduleNoticeHours: 6,
   reminderBeforeAppointmentHours: 24,
   reminderBeforeExpirationDays: 3,
@@ -84,7 +85,8 @@ export async function getSubscriptionSettings(): Promise<SubscriptionSettingsCon
 export function isNoticeSufficient(
   dateStr: string,
   timeStr: string,
-  requiredNoticeHours: number
+  requiredNoticeHours: number,
+  now = Math.floor(Date.now() / 60_000) * 60_000
 ): { isAllowed: boolean; hoursRemaining: number } {
   const [year, month, day] = String(dateStr || '').split('-').map(Number);
   const start = String(timeStr || '').split(/[-–—]/)[0].trim();
@@ -98,7 +100,6 @@ export function isNoticeSufficient(
   const instant = [3, 2].map(offset => new Date(wallClock - offset * 3_600_000))
     .find(candidate => getCairoDateFromDate(candidate) === dateStr && getCairoTimeFromDate(candidate) === clock);
   if (!instant) return { isAllowed: false, hoursRemaining: -999 };
-  const now = Math.floor(Date.now() / 60_000) * 60_000;
   const hoursRemaining = (instant.getTime() - now) / 3_600_000;
   return { isAllowed: hoursRemaining >= requiredNoticeHours, hoursRemaining };
 }
@@ -404,9 +405,18 @@ export async function createSubscriptionAtomic(input: CreateSubscriptionInput): 
   });
 }
 
-/**
- * Cancels an individual subscription visit with strict 12-hour notice validation for customers
- */
+type VisitCancellationRequest = { id: string; status: string; reason: string };
+
+export function resolveVisitCancellationRequest(metadata: Prisma.JsonValue, status: 'approved' | 'closed') {
+  const data = (metadata || {}) as { cancellationRequest?: VisitCancellationRequest };
+  if (data.cancellationRequest?.status !== 'pending') return undefined;
+  return {
+    ...data,
+    cancellationRequest: { ...data.cancellationRequest, status, reviewedAt: new Date().toISOString() },
+  };
+}
+
+/** Records a customer request or cancels the visit when an administrator acts. */
 export async function cancelSubscriptionVisit(params: {
   visitId: string;
   actor: 'customer' | 'admin';
@@ -416,8 +426,9 @@ export async function cancelSubscriptionVisit(params: {
   customerPhone?: string;
   reason?: string;
   overrideRestrictions?: boolean;
+  approveCancellationRequest?: boolean;
 }): Promise<any> {
-  const { visitId, actor, actorId, actorName, actorRole, customerPhone, reason, overrideRestrictions } = params;
+  const { visitId, actor, actorId, actorName, actorRole, reason } = params;
 
   return withBookingLock(SCHEDULE_LOCK, async () => {
     const visit = await prisma.subscriptionVisit.findUnique({
@@ -443,6 +454,9 @@ export async function cancelSubscriptionVisit(params: {
       }
     }
 
+    if (params.approveCancellationRequest && (visit.metadata as { cancellationRequest?: VisitCancellationRequest } | null)?.cancellationRequest?.status !== 'pending') {
+      throw Object.assign(new Error('طلب الإلغاء لم يعد قابلًا للموافقة'), { statusCode: 409, code: 'CANCELLATION_REQUEST_CHANGED' });
+    }
     if (visit.status === 'completed') {
       const err: any = new Error('لا يمكن إلغاء زيارة مكتملة بالفعل');
       err.statusCode = 400;
@@ -456,37 +470,57 @@ export async function cancelSubscriptionVisit(params: {
     }
 
     const cancelledAt = new Date();
+    const metadata = (visit.metadata || {}) as { cancellationRequest?: VisitCancellationRequest };
+    const pendingRequest = metadata.cancellationRequest?.status === 'pending' ? metadata.cancellationRequest : undefined;
 
     // Cancellation rules for customer
-    if (actor === 'customer' && !overrideRestrictions) {
+    if (actor === 'customer') {
+      if (pendingRequest) return visit;
       // 1. Plan setting: allowCancellation
       const plan = visit.subscription?.plan;
       const planSnapshot = (visit.subscription?.planSnapshot as any);
       const allowCancellation = plan ? plan.allowCancellation : (planSnapshot?.allowCancellation ?? true);
 
       if (allowCancellation === false) {
-        const err: any = new Error('باقة هذا الاشتراك لا تتيح ميزة الإلغاء الذاتي للزيارات');
+        const err: any = new Error('باقة هذا الاشتراك لا تسمح بإرسال طلب إلغاء الزيارة');
         err.statusCode = 400;
         err.code = 'CANCELLATION_NOT_ALLOWED_BY_PLAN';
         throw err;
       }
 
-      // 2. 12-hour rule
       const settings = await getSubscriptionSettings();
-      const noticeHours = plan?.cancellationNoticeHours || settings.subscriptionCancellationNoticeHours || 12;
-      const { isAllowed } = isNoticeSufficient(visit.date, visit.scheduledStart || visit.time, noticeHours);
+      const noticeHours = settings.subscriptionCancellationNoticeHours;
+      const { isAllowed } = isNoticeSufficient(visit.date, visit.scheduledStart || visit.time, noticeHours, cancelledAt.getTime());
 
-      const start = timeStringToMinutes(visit.scheduledStart || visit.time);
-      const end = timeStringToMinutes(visit.scheduledEnd) || start + (visit.totalOccupiedMinutes || visit.duration);
-      const waitingDuringAppointment = isDuringCairoAppointment(visit.date, start, end, cancelledAt);
-      if (!isAllowed && !waitingDuringAppointment) {
+      if (!isAllowed) {
         const err: any = new Error(
-          `لا يمكن إلغاء موعد الاشتراك قبل الموعد بأقل من ${noticeHours} ساعة. يُرجى التواصل مع الدعم للمساعدة.`
+          `يجب إرسال طلب إلغاء زيارة الاشتراك قبل الموعد بـ ${noticeHours} ساعة على الأقل. يمكنك التواصل مع الدعم للمساعدة.`
         );
         err.statusCode = 400;
-        err.code = 'CANCELLATION_RESTRICTED_12H';
+        err.code = 'CANCELLATION_NOTICE_REQUIRED';
         throw err;
       }
+      const cancellationRequest = {
+        id: randomUUID(),
+        status: 'pending',
+        requestedAt: cancelledAt.toISOString(),
+        reason: typeof reason === 'string' ? reason.trim().slice(0, 300) : '',
+      };
+      const updated = await prisma.subscriptionVisit.update({
+        where: { id: visit.id, updatedAt: visit.updatedAt },
+        data: { metadata: { ...metadata, cancellationRequest } },
+      });
+      await Notification.create({
+        target: 'admin',
+        eventId: `subscription:cancel-request:${cancellationRequest.id}`,
+        title: `طلب إلغاء زيارة اشتراك #${visit.id}`,
+        titleEn: `Cancellation requested for subscription visit #${visit.id}`,
+        message: `طلب ${visit.customerName} إلغاء الزيارة. الموعد يظل محجوزًا حتى الموافقة.`,
+        type: 'order',
+        read: false,
+        link: `/admin/subscriptions/${visit.subscriptionId}`,
+      });
+      return updated;
     }
 
     const updatedTimeline = Array.isArray(visit.timeline) ? [...(visit.timeline as any[])] : [];
@@ -506,7 +540,8 @@ export async function cancelSubscriptionVisit(params: {
         status: 'cancelled',
         cancelledAt,
         cancellationSource: actor,
-        cancellationReason: reason || 'إلغاء الموعد',
+        cancellationReason: reason || pendingRequest?.reason || 'إلغاء الموعد',
+        metadata: resolveVisitCancellationRequest(visit.metadata, 'approved'),
         timeline: updatedTimeline,
       },
     });
@@ -659,6 +694,7 @@ export async function rescheduleSubscriptionVisit(params: {
         rescheduledFrom: previousTimeDesc,
         rescheduledAt: new Date(),
         timeline: updatedTimeline,
+        metadata: resolveVisitCancellationRequest(visit.metadata, 'closed'),
       },
     });
 
@@ -753,6 +789,7 @@ export async function completeSubscriptionVisit(params: {
         cashbackAwarded: cashbackAmount,
         cashbackAwardedAt: cashbackAmount > 0 ? new Date() : null,
         timeline: updatedTimeline,
+        metadata: resolveVisitCancellationRequest(visit.metadata, 'closed'),
       },
     });
 

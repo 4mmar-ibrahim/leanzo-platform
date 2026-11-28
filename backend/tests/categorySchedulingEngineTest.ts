@@ -646,16 +646,30 @@ async function runCategorySchedulingEngineTests() {
     let liveSubscriptionId: string | undefined;
     global.Date = ScenarioClock as DateConstructor;
     try {
+      const settingsPath = `${baseUrl}/api/subscriptions/admin/settings`;
+      const settingsHeaders = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${generateAdminToken({ id: testAdmin.id, username: testAdmin.username, role: testAdmin.role })}`,
+      };
+      const saveNotice = (subscriptionHours: number) => fetch(settingsPath, {
+        method: 'PUT', headers: settingsHeaders,
+        body: JSON.stringify({ normalBookingCancellationNoticeHours: 1, subscriptionCancellationNoticeHours: subscriptionHours }),
+      });
+      assert((await saveNotice(0)).status === 400, 'Invalid cancellation notice is rejected');
+      assert((await saveNotice(2)).ok, 'Admin can save independent cancellation notice settings');
+      const savedNotice = (await (await fetch(settingsPath, { headers: settingsHeaders })).json() as any).data;
+      assert(savedNotice.normalBookingCancellationNoticeHours === 1 && savedNotice.subscriptionCancellationNoticeHours === 2,
+        'The booking and subscription notice values are saved independently');
       const firstAppointment = await request('', { ...bookingPayload, date: liveDay, time: '13:00' });
       const nextAppointment = await request('', { ...bookingPayload, date: liveDay, time: '14:00' });
       const workingAppointment = await request('', { ...bookingPayload, date: liveDay, time: '15:00' });
       assert([firstAppointment, nextAppointment, workingAppointment].every(item => item.status === 201), 'Set up three real bookings for late-cancellation checks');
       const original = firstAppointment.json.data;
       const headers = { 'X-Booking-Access': original.bookingAccess };
-      stoppedAt = realDate.parse(`${liveDay}T10:55:00Z`);
+      stoppedAt = realDate.parse(`${liveDay}T10:00:01Z`);
       const shortNotice = await request(`/${original.id}/cancel`, {}, headers);
-      assert(shortNotice.json.code === 'CANCELLATION_RESTRICTED_6H', 'Pre-appointment cancellation still respects configured notice');
-      stoppedAt = realDate.parse(`${liveDay}T11:10:00Z`);
+      assert(shortNotice.json.code === 'CANCELLATION_NOTICE_REQUIRED', 'Requests less than one hour before the booking are rejected');
+      stoppedAt = realDate.parse(`${liveDay}T10:00:00Z`);
       const cancellations = await Promise.all([
         request(`/${original.id}/cancel`, {}, headers),
         request(`/${original.id}/cancel`, {}, headers),
@@ -666,7 +680,8 @@ async function runCategorySchedulingEngineTests() {
       const requestId = cancellations[0].json.data.metadata.cancellationRequest.id;
       assert(cancellations[1].json.data.metadata.cancellationRequest.id === requestId &&
         await prisma.notification.count({ where: { eventId: `order:cancel-request:${requestId}` } }) === 1,
-        'Duplicate requests send exactly one admin notification');
+        'Requests exactly one hour before the booking send one admin notification');
+      stoppedAt = realDate.parse(`${liveDay}T11:10:00Z`);
       const reviewingAdmin = { Authorization: `Bearer ${generateAdminToken({ id: testAdmin.id, username: testAdmin.username, role: testAdmin.role })}` };
       const approved = await request(`/admin/${original.id}/status`, { status: 'cancelled', approveCancellationRequest: true }, reviewingAdmin, 'PUT');
       assert(approved.status === 200, 'Admin approves the request during the appointment');
@@ -689,10 +704,12 @@ async function runCategorySchedulingEngineTests() {
       assert(following.scheduledStart === '14:00', 'Previously scheduled customers keep their committed appointment');
       const active = workingAppointment.json.data;
       await prisma.booking.update({ where: { id: active.id }, data: { status: 'assigned', assignedTechnicianId: 'scheduling-test-technician' } });
-      stoppedAt = realDate.parse(`${liveDay}T13:10:00Z`);
+      stoppedAt = realDate.parse(`${liveDay}T12:00:00Z`);
       const currentAdminHeaders = { Authorization: `Bearer ${generateAdminToken({ id: testAdmin.id, username: testAdmin.username, role: testAdmin.role })}` };
       const awaiting = await request(`/${active.id}/cancel`, {}, { 'X-Booking-Access': active.bookingAccess });
       assert(awaiting.json.data.metadata.cancellationRequest.status === 'pending', 'Visit has a pending cancellation request before the race');
+      stoppedAt = realDate.parse(`${liveDay}T13:10:00Z`);
+      currentAdminHeaders.Authorization = `Bearer ${generateAdminToken({ id: testAdmin.id, username: testAdmin.username, role: testAdmin.role })}`;
       const race = await Promise.all([
         request(`/admin/${active.id}/status`, { status: 'cancelled', approveCancellationRequest: true }, currentAdminHeaders, 'PUT'),
         request(`/admin/${active.id}/status`, { status: 'in_progress' }, currentAdminHeaders, 'PUT'),
@@ -721,14 +738,28 @@ async function runCategorySchedulingEngineTests() {
         'Customer and admin see the same stored subscription visit');
       assert(adminDetails.user && !('password' in adminDetails.user),
         'Subscription details exclude customer password data');
-      stoppedAt = realDate.parse(`${liveDay}T14:10:00Z`);
+      stoppedAt = realDate.parse(`${liveDay}T13:00:00Z`);
       const currentCustomerToken = generateCustomerToken({ id: subscriptionUser.id, phone: subscriptionUser.phone });
-      const visitCancellation = await fetch(`${baseUrl}/api/subscriptions/visits/${liveSubscriptionData.visits[0].id}/cancel`, {
+      const requestVisitCancellation = () => fetch(`${baseUrl}/api/subscriptions/visits/${liveSubscriptionData.visits[0].id}/cancel`, {
         method: 'POST',
         headers: { ...subscriptionHeaders, Authorization: `Bearer ${currentCustomerToken}` },
         body: '{}',
       });
-      assert(visitCancellation.status === 200, 'Customer can cancel an unstarted subscription visit within its appointment');
+      assert((await requestVisitCancellation()).status === 400, 'A subscription request one hour before the visit fails when configured for two hours');
+      settingsHeaders.Authorization = `Bearer ${generateAdminToken({ id: testAdmin.id, username: testAdmin.username, role: testAdmin.role })}`;
+      assert((await saveNotice(1)).ok, 'Admin can update subscription notice to one hour');
+      const visitCancellation = await requestVisitCancellation();
+      const pendingVisit = (await visitCancellation.json() as any).data;
+      assert(visitCancellation.status === 200 && pendingVisit.metadata.cancellationRequest.status === 'pending' &&
+        pendingVisit.status !== 'cancelled', 'Customer can request cancellation exactly one hour before a visit without releasing the reservation');
+      stoppedAt = realDate.parse(`${liveDay}T14:10:00Z`);
+      const approvedVisit = await fetch(`${baseUrl}/api/subscriptions/admin/visits/${pendingVisit.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${generateAdminToken({ id: testAdmin.id, username: testAdmin.username, role: testAdmin.role })}` },
+        body: JSON.stringify({ approveCancellationRequest: true }),
+      });
+      assert(approvedVisit.ok && (await approvedVisit.json() as any).data.metadata.cancellationRequest.status === 'approved',
+        'Admin approval cancels the subscription visit');
       const afterVisit = await getAvailableSlots(liveDay, tireWash.id);
       assert(afterVisit.slots[0]?.start === '16:10', 'Subscription cancellation releases the rest of the visit at the exact minute');
       const cancelledVisitId = liveSubscriptionData.visits[0].id;
@@ -761,14 +792,18 @@ async function runCategorySchedulingEngineTests() {
       assert(reservation.status === 201, 'Reserve a visit for the simultaneous start and cancel test');
       const raceSubscription = (await reservation.json() as any).data;
       try {
-        stoppedAt = realDate.parse(`${liveDay}T17:10:00Z`);
+        stoppedAt = realDate.parse(`${liveDay}T16:00:00Z`);
         const visitId = raceSubscription.visits[0].id;
         const visitPath = `${baseUrl}/api/subscriptions`;
         const cancelHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${raceToken()}` };
         const adminHeaders = { 'Content-Type': 'application/json',
           Authorization: `Bearer ${generateAdminToken({ id: testAdmin.id, username: testAdmin.username, role: testAdmin.role })}` };
+        const visitRequest = await fetch(`${visitPath}/visits/${visitId}/cancel`, { method: 'POST', headers: cancelHeaders, body: '{}' });
+        assert(visitRequest.ok, 'Subscription visit has a pending request before the race');
         const [cancel, start] = await Promise.all([
-          fetch(`${visitPath}/visits/${visitId}/cancel`, { method: 'POST', headers: cancelHeaders, body: '{}' }),
+          fetch(`${visitPath}/admin/visits/${visitId}/cancel`, {
+            method: 'POST', headers: adminHeaders, body: JSON.stringify({ approveCancellationRequest: true }),
+          }),
           fetch(`${visitPath}/admin/visits/${visitId}/status`, {
             method: 'PUT', headers: adminHeaders, body: JSON.stringify({ status: 'in_progress' }),
           }),
@@ -790,7 +825,7 @@ async function runCategorySchedulingEngineTests() {
       }
       await Booking.deleteMany({ date: liveDay });
       if (settings) {
-        await prisma.systemSettings.update({ where: { id: record.id }, data: { booking: settings.booking ?? {} } });
+        await prisma.systemSettings.update({ where: { id: record.id }, data: { booking: settings.booking ?? {}, subscriptions: settings.subscriptions ?? {} } });
       } else {
         await prisma.systemSettings.delete({ where: { id: record.id } });
       }

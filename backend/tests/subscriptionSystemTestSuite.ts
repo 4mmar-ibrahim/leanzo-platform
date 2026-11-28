@@ -292,7 +292,7 @@ async function runTestSuite() {
     // ========================================================
     console.log('\n--- 7. Testing Subscription Visit Cancellation ---');
     const thirdVisitId = createdVisitIds[2];
-    const cancelledVisit = await cancelSubscriptionVisit({
+    const requestedCancellation = await cancelSubscriptionVisit({
       visitId: thirdVisitId,
       actor: 'customer',
       actorId: testUserId,
@@ -300,6 +300,14 @@ async function runTestSuite() {
       reason: 'QA Cancellation Test',
     });
 
+    assert(requestedCancellation.status !== 'cancelled' && requestedCancellation.metadata.cancellationRequest.status === 'pending',
+      'Customer cancellation stays pending until approval');
+    const cancelledVisit = await cancelSubscriptionVisit({
+      visitId: thirdVisitId,
+      actor: 'admin',
+      actorId: 'admin_test',
+      approveCancellationRequest: true,
+    });
     assert(cancelledVisit.status === 'cancelled', 'Visit status marked as cancelled');
 
     const subAfterCancel = await prisma.subscription.findUnique({ where: { id: testSubId } });
